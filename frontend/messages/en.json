@@ -1,0 +1,69 @@
+{
+  "nav": {
+    "home": "Home",
+    "services": "Services",
+    "features": "Features",
+    "projects": "Projects",
+    "about": "About",
+    "contact": "Contact",
+    "login": "Login",
+    "register": "Register",
+    "dashboard": "Dashboard"
+  },
+
+  "hero": {
+    "title": "Integrated Management System",
+    "subtitle": "For Construction Companies",
+    "description": "Manage projects, subcontractors, warehouses, and invoices in one place",
+    "cta": "Contact Us",
+    "learnMore": "Our Services"
+  },
+
+  "stats": {
+    "projects": "Completed Projects",
+    "clients": "Happy Clients",
+    "years": "Years Experience",
+    "team": "Team Members"
+  },
+  "services": {
+    "title": "Our Services",
+    "subtitle": "Integrated solutions for construction project management"
+  },
+  "features": {
+    "title": "System Features",
+    "subtitle": "Smart tools to manage your projects efficiently"
+  },
+  "projects": {
+    "title": "Our Projects",
+    "subtitle": "Samples of our completed projects",
+    "viewAll": "View All"
+  },
+  "about": {
+    "title": "About Us",
+    "subtitle": "A leading company in urban development"
+  },
+  "contact": {
+    "title": "Contact Us",
+    "subtitle": "We are here to help you",
+    "name": "Name",
+    "email": "Email",
+    "message": "Message",
+    "send": "Send"
+  },
+  "auth": {
+    "login": "Login",
+    "register": "Register",
+    "email": "Email",
+    "password": "Password",
+    "name": "Full Name",
+    "submit": "Submit",
+    "noAccount": "Don't have an account?",
+    "hasAccount": "Already have an account?"
+  },
+  "dashboard": {
+    "admin": "Admin Panel",
+    "projects": "Projects",
+    "logout": "Logout"
+  },
+  "loading": "Loading system..."
+}

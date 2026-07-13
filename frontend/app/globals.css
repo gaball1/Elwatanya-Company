@@ -1,0 +1,67 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #1e3a5f;
+  --color-primary-dark: #0f2a40;
+  --color-primary-light: #3b82f6;
+  --color-gold: #c9a03d;
+  --color-gold-light: #e2c28b;
+  --color-gray-light: #f3f4f6;
+  --color-gray: #6b7280;
+  --color-dark: #1f2937;
+}
+
+/* تحسين وضوح النصوص */
+body {
+  font-family: "Cairo", sans-serif;
+  color: #1f2937;
+}
+
+/* تخصيص شريط التمرير */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+::-webkit-scrollbar-thumb {
+  background: #c9a03d;
+  border-radius: 10px;
+}
+
+/* كلاسات مساعدة */
+.text-gold {
+  color: #c9a03d;
+}
+.bg-gold {
+  background-color: #c9a03d;
+}
+.border-gold {
+  border-color: #c9a03d;
+}
+/* للحفاظ على أبعاد اللوجو */
+.logo-img {
+  object-fit: contain;
+  background-color: white;
+  border-radius: 12px;
+}
+
+/* New table styling utilities */
+.table-wrapper {
+  @apply overflow-x-auto rounded-lg border border-gray-200;
+}
+.table-header {
+  @apply bg-gradient-to-r from-primary to-gold text-white sticky top-0 z-10 shadow;
+}
+.status-badge {
+  @apply px-2 py-0.5 rounded-full text-xs font-medium;
+}
+.status-badge.distributed {
+  @apply bg-green-100 text-green-800;
+}
+.status-badge.partial {
+  @apply bg-yellow-100 text-yellow-800;
+}
+.status-badge.pending {
+  @apply bg-gray-100 text-gray-800;
+}
