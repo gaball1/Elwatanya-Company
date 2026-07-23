@@ -1,0 +1,24 @@
+import { Result } from '@/shared/kernel/result';
+import { UniqueEntityId } from '@/shared/kernel/unique-entity-id.vo';
+import { IProjectRepository } from '../../domain/project.repository';
+import { ProjectResult } from '../dto/project.result';
+import { toProjectResult } from './create-project.use-case';
+import {
+  ProjectApplicationError,
+  ProjectErrorCode,
+} from '../errors/project-application.error';
+
+export class GetProjectUseCase {
+  constructor(private readonly projects: IProjectRepository) {}
+
+  async execute(projectId: string): Promise<Result<ProjectResult>> {
+    const project = await this.projects.findById(new UniqueEntityId(projectId));
+    if (!project) {
+      return Result.fail(
+        new ProjectApplicationError(ProjectErrorCode.NOT_FOUND, 'Project not found'),
+      );
+    }
+
+    return Result.ok(toProjectResult(project));
+  }
+}

@@ -1,58 +1,125 @@
-// src/modules/final-boq/domain/final-boq.entity.ts
-import { BaseEntity } from '../../../common/base.entity';
-import { FinalBoqStatus } from './final-boq-status.enum';
+import { AggregateRoot } from '@/shared/kernel/aggregate-root';
+import { UniqueEntityId } from '@/shared/kernel/unique-entity-id.vo';
 import { FinalBoqItem } from './final-boq-item.entity';
 
 /**
- * Aggregate Root for a Final BOQ.
- * Contains business behaviour that ensures invariants are kept.
+ * Persistence container for Final BOQ items of a building.
+ * Frontend stores items in Map<buildingId, FinalBoqItem[]> — one root per building
+ * is only an infrastructure mapping onto the Prisma FinalBoq table.
  */
-export class FinalBoq extends BaseEntity {
-  id: string = this.id;
-  buildingId: string;
-  projectId: string;
+export interface FinalBoqProps {
+  buildingId: UniqueEntityId;
+  projectId: UniqueEntityId;
   businessCode: string;
-  status: FinalBoqStatus = FinalBoqStatus.PENDING;
-  items: FinalBoqItem[] = [];
+  status: string;
+  version: number;
+  deletedAt: Date | null;
+}
 
-  constructor(init: { buildingId: string; projectId: string; businessCode: string }) {
-    super();
-    this.buildingId = init.buildingId;
-    this.projectId = init.projectId;
-    this.businessCode = init.businessCode;
+export class FinalBoq extends AggregateRoot {
+  private props: FinalBoqProps;
+  private _items: FinalBoqItem[] = [];
+
+  private constructor(
+    props: FinalBoqProps,
+    id?: UniqueEntityId,
+    createdAt?: Date,
+    updatedAt?: Date,
+  ) {
+    super(id, createdAt, updatedAt);
+    this.props = props;
+  }
+
+  get buildingId(): UniqueEntityId {
+    return this.props.buildingId;
+  }
+
+  get projectId(): UniqueEntityId {
+    return this.props.projectId;
+  }
+
+  get businessCode(): string {
+    return this.props.businessCode;
+  }
+
+  get status(): string {
+    return this.props.status;
+  }
+
+  get version(): number {
+    return this.props.version;
+  }
+
+  get deletedAt(): Date | null {
+    return this.props.deletedAt;
+  }
+
+  get items(): FinalBoqItem[] {
+    return this._items.filter((i) => i.deletedAt === null);
+  }
+
+  get allItems(): FinalBoqItem[] {
+    return [...this._items];
+  }
+
+  public static createForBuilding(input: {
+    buildingId: UniqueEntityId;
+    projectId: UniqueEntityId;
+  }): FinalBoq {
+    return new FinalBoq({
+      buildingId: input.buildingId,
+      projectId: input.projectId,
+      businessCode: `FINAL-${input.buildingId.toValue()}`,
+      status: 'pending',
+      version: 1,
+      deletedAt: null,
+    });
+  }
+
+  public static reconstitute(
+    props: FinalBoqProps,
+    id: UniqueEntityId,
+    createdAt: Date,
+    updatedAt: Date,
+    items: FinalBoqItem[] = [],
+  ): FinalBoq {
+    const aggregate = new FinalBoq(props, id, createdAt, updatedAt);
+    aggregate._items = items;
+    return aggregate;
+  }
+
+  public findItemByCode(itemCode: string): FinalBoqItem | null {
+    return this.items.find((item) => item.itemCode === itemCode) ?? null;
+  }
+
+  public addItem(item: FinalBoqItem): void {
+    this._items.push(item);
+  }
+
+  public removeItemByCode(itemCode: string): boolean {
+    const item = this.findItemByCode(itemCode);
+    if (!item) return false;
+    item.softDelete();
+    return true;
   }
 
   /**
-   * Adds a new item to the BOQ.
+   * Mirrors syncFinalFromAnalytical set: next list becomes the full active set.
+   * Items missing from next are soft-deleted (frontend replaces the array).
    */
-  addItem(item: FinalBoqItem) {
-    this.items.push(item);
-  }
+  public replaceActiveItems(nextItems: FinalBoqItem[]): void {
+    const nextCodes = new Set(nextItems.map((i) => i.itemCode));
 
-  /**
-   * Removes an item by its id.
-   */
-  removeItem(itemId: string) {
-    this.items = this.items.filter((i) => i.id !== itemId);
-  }
+    for (const existing of this.items) {
+      if (!nextCodes.has(existing.itemCode)) {
+        existing.softDelete();
+      }
+    }
 
-  /**
-   * Change the aggregate status, validating allowed transitions.
-   */
-  changeStatus(newStatus: FinalBoqStatus) {
-    this.validateStatusTransition(newStatus);
-    this.status = newStatus;
-  }
-
-  private validateStatusTransition(target: FinalBoqStatus) {
-    const allowed: Record<FinalBoqStatus, FinalBoqStatus[]> = {
-      [FinalBoqStatus.PENDING]: [FinalBoqStatus.ANALYZED],
-      [FinalBoqStatus.ANALYZED]: [FinalBoqStatus.DISTRIBUTED],
-      [FinalBoqStatus.DISTRIBUTED]: [FinalBoqStatus.COMPLETED],
-      [FinalBoqStatus.COMPLETED]: [],
-    };
-    if (!allowed[this.status].includes(target)) {
-      throw new Error(`Invalid status transition from ${this.status} to ${target}`);
+    for (const item of nextItems) {
+      if (!this.findItemByCode(item.itemCode)) {
+        this._items.push(item);
+      }
     }
   }
 }

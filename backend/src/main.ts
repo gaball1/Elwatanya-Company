@@ -1,28 +1,36 @@
-import { NestFactory } from '@nestjs/core';
-import { ValidationPipe, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import { Logger as PinoLogger } from 'nestjs-pino';
-import { AppModule } from './app.module';
-
+import { NestFactory } from "@nestjs/core";
+import { ValidationPipe, Logger } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
+import { Logger as PinoLogger } from "nestjs-pino";
+import { AppModule } from "./app.module";
+import { LoggerModule } from "nestjs-pino";
 async function bootstrap() {
-  const logger = new Logger('Bootstrap');
+  const logger = new Logger("Bootstrap");
   const app = await NestFactory.create(AppModule);
 
   // Use nestjs-pino logger
-  app.useLogger(app.get(PinoLogger));
+  //app.useLogger(app.get(PinoLogger));
+
+  const pinoLogger = app.get(PinoLogger, { strict: false });
+  if (pinoLogger) {
+    app.useLogger(pinoLogger);
+  }
 
   const configService = app.get(ConfigService);
-  const port = configService.get<number>('PORT', 3001);
-  const corsOrigin = configService.get<string>('CORS_ORIGIN', 'http://localhost:3000');
+  const port = configService.get<number>("PORT", 3001);
+  const corsOrigin = configService.get<string>(
+    "CORS_ORIGIN",
+    "http://localhost:3000"
+  );
 
   app.enableCors({
-    origin: corsOrigin.split(',').map((o) => o.trim()),
+    origin: corsOrigin.split(",").map((o) => o.trim()),
     credentials: true,
   });
 
   // Versioned global prefix
-  app.setGlobalPrefix('api/v1');
+  app.setGlobalPrefix("api/v1");
 
   app.useGlobalPipes(
     new ValidationPipe({
@@ -30,20 +38,20 @@ async function bootstrap() {
       forbidNonWhitelisted: true,
       transform: true,
       transformOptions: { enableImplicitConversion: true },
-    }),
+    })
   );
 
   const swaggerConfig = new DocumentBuilder()
-    .setTitle('El Wataniya ERP API')
+    .setTitle("El Wataniya ERP API")
     .setDescription(
-      'Production-grade Construction ERP backend API. Business modules will be added incrementally.',
+      "Production-grade Construction ERP backend API. Business modules will be added incrementally."
     )
-    .setVersion('0.1.0')
+    .setVersion("0.1.0")
     .addBearerAuth()
     .build();
 
   const document = SwaggerModule.createDocument(app, swaggerConfig);
-  SwaggerModule.setup('api/v1/docs', app, document);
+  SwaggerModule.setup("api/v1/docs", app, document);
 
   await app.listen(port);
   logger.log(`Application running on http://localhost:${port}`);

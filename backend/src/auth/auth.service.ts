@@ -1,15 +1,21 @@
 import {
+  BadRequestException,
+  ConflictException,
   Injectable,
   UnauthorizedException,
-  ConflictException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
-import * as bcrypt from 'bcryptjs';
 import { randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoginDto, RegisterDto } from './dto/auth.dto';
 import { UserRole } from '@prisma/client';
+import { RegisterUserUseCase } from '../modules/identity/application/use-cases/register-user.use-case';
+import { AuthenticateUserUseCase } from '../modules/identity/application/use-cases/authenticate-user.use-case';
+import {
+  IdentityApplicationError,
+  IdentityErrorCode,
+} from '../modules/identity/application/errors/identity-application.error';
 
 @Injectable()
 export class AuthService {
@@ -17,48 +23,63 @@ export class AuthService {
     private prisma: PrismaService,
     private jwtService: JwtService,
     private configService: ConfigService,
+    private registerUserUseCase: RegisterUserUseCase,
+    private authenticateUserUseCase: AuthenticateUserUseCase,
   ) {}
 
   async login(dto: LoginDto) {
-    const user = await this.prisma.user.findUnique({
-      where: { email: dto.email.toLowerCase().trim() },
+    const result = await this.authenticateUserUseCase.execute({
+      email: dto.email,
+      password: dto.password,
     });
 
-    if (!user) {
+    if (result.isFailure) {
+      const error = result.error;
+      if (error instanceof IdentityApplicationError) {
+        if (error.code === IdentityErrorCode.ACCOUNT_NOT_ACTIVE) {
+          throw new UnauthorizedException(error.message);
+        }
+        throw new UnauthorizedException('Invalid credentials');
+      }
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    const valid = await bcrypt.compare(dto.password, user.passwordHash);
-    if (!valid) {
-      throw new UnauthorizedException('Invalid credentials');
-    }
-
-    if (user.status !== 'ACTIVE') {
-      throw new UnauthorizedException('Account is not active');
-    }
-
-    return this.generateTokens(user);
+    const user = result.getValue();
+    return this.generateTokens({
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role as UserRole,
+      projectId: user.projectId,
+    });
   }
 
   async register(dto: RegisterDto) {
-    const email = dto.email.toLowerCase().trim();
-    const existing = await this.prisma.user.findUnique({ where: { email } });
-
-    if (existing) {
-      throw new ConflictException('Email already registered');
-    }
-
-    const passwordHash = await bcrypt.hash(dto.password, 10);
-    const user = await this.prisma.user.create({
-      data: {
-        email,
-        passwordHash,
-        name: dto.name.trim(),
-        role: UserRole.EMPLOYEE,
-      },
+    const result = await this.registerUserUseCase.execute({
+      email: dto.email,
+      password: dto.password,
+      name: dto.name,
     });
 
-    return this.generateTokens(user);
+    if (result.isFailure) {
+      const error = result.error;
+      if (error instanceof IdentityApplicationError) {
+        if (error.code === IdentityErrorCode.EMAIL_ALREADY_REGISTERED) {
+          throw new ConflictException(error.message);
+        }
+        throw new BadRequestException(error.message);
+      }
+      throw new BadRequestException('Registration failed');
+    }
+
+    const user = result.getValue();
+    return this.generateTokens({
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role as UserRole,
+      projectId: user.projectId,
+    });
   }
 
   async refresh(refreshToken: string) {

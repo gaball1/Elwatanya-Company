@@ -5,6 +5,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './strategies/jwt.strategy';
+import { IdentityModule } from '../modules/identity/identity.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
         },
       }),
     }),
+    IdentityModule,
   ],
   controllers: [AuthController],
   providers: [AuthService, JwtStrategy],
