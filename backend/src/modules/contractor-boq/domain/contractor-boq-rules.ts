@@ -205,13 +205,12 @@ export function getAvailableQtyForContractorItem(
     maxAllowed = comp.quantity;
   }
 
-  let totalAllocatedToOthers = 0;
+  let totalAllocated = 0;
   for (const a of allBuildingAllocations) {
-    if (a.contractorId === contractorId) continue;
     if (a.itemCode === itemCode && a.componentId === componentId) {
-      totalAllocatedToOthers += a.assignedQuantity;
+      totalAllocated += a.assignedQuantity;
     }
   }
 
-  return Math.max(0, maxAllowed - totalAllocatedToOthers);
+  return Math.max(0, maxAllowed - totalAllocated);
 }

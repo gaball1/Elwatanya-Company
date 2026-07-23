@@ -338,17 +338,66 @@ enum UserRole {
 }
 
 model User {
-  id            String         @id @default(uuid())
-  email         String         @unique
-  name          String
-  passwordHash  String
-  role          UserRole       @default(EMPLOYEE)
-  status        String         @default("ACTIVE")
-  projectId     String?
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-  deletedAt     DateTime?
-  refreshTokens RefreshToken[]
+  id                String               @id @default(uuid())
+  email             String               @unique
+  name              String
+  passwordHash      String
+  role              UserRole             @default(EMPLOYEE)
+  status            String               @default("ACTIVE")
+  projectId         String?
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+  deletedAt         DateTime?
+  refreshTokens     RefreshToken[]
+  roleAssignments   UserRoleAssignment[]
+}
+
+model Role {
+  id          String               @id @default(uuid())
+  name        String               @unique
+  description String?
+  isSystem    Boolean              @default(false)
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+  permissions RolePermission[]
+  users       UserRoleAssignment[]
+
+  @@index([name])
+}
+
+model Permission {
+  id          String           @id @default(uuid())
+  name        String           @unique
+  description String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  roles       RolePermission[]
+
+  @@index([name])
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+  createdAt    DateTime   @default(now())
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@index([roleId])
+  @@index([permissionId])
+}
+
+model UserRoleAssignment {
+  userId    String
+  roleId    String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@index([userId])
+  @@index([roleId])
 }
 
 model RefreshToken {
