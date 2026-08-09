@@ -87,14 +87,14 @@ export default function CreateStatementModal({
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+      <div className="bg-surface rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         <div className="flex justify-between items-center p-5 border-b">
           <h2 className="text-xl font-bold text-primary">
             {isArabic ? "إنشاء مستخلص جديد" : "Create New Statement"}
           </h2>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600"
+            className="text-text-muted hover:text-text-secondary"
           >
             <X size={24} />
           </button>
@@ -102,7 +102,7 @@ export default function CreateStatementModal({
 
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-text-primary mb-1">
               {isArabic ? "اختر المقاول" : "Select Subcontractor"} *
             </label>
             <select
@@ -111,7 +111,7 @@ export default function CreateStatementModal({
                 setForm({ ...form, subcontractorId: e.target.value })
               }
               required
-              className="w-full p-3 border border-gray-200 rounded-xl focus:outline-none focus:border-gold"
+              className="w-full p-3 border border-border rounded-xl focus:outline-none focus:border-gold"
             >
               <option value="">
                 {isArabic ? "-- اختر --" : "-- Select --"}
@@ -125,21 +125,21 @@ export default function CreateStatementModal({
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-text-primary mb-1">
               {isArabic ? "التاريخ" : "Date"}
             </label>
             <input
               type="date"
               value={form.date}
               onChange={(e) => setForm({ ...form, date: e.target.value })}
-              className="w-full p-3 border border-gray-200 rounded-xl focus:outline-none focus:border-gold"
+              className="w-full p-3 border border-border rounded-xl focus:outline-none focus:border-gold"
             />
           </div>
 
           {/* Items */}
           <div>
             <div className="flex justify-between items-center mb-2">
-              <label className="text-sm font-medium text-gray-700">
+              <label className="text-sm font-medium text-text-primary">
                 {isArabic ? "البنود" : "Items"}
               </label>
               <button
@@ -160,25 +160,25 @@ export default function CreateStatementModal({
                     onChange={(e) =>
                       updateItem(idx, "itemName", e.target.value)
                     }
-                    className="flex-1 p-2 border border-gray-200 rounded-lg text-sm"
+                    className="flex-1 p-2 border border-border rounded-lg text-sm"
                   />
                   <input
                     type="number"
                     placeholder={isArabic ? "الكمية" : "Qty"}
-                    value={item.quantity || ""}
+                    value={item.quantity ?? ""}
                     onChange={(e) =>
                       updateItem(idx, "quantity", Number(e.target.value))
                     }
-                    className="w-20 p-2 border border-gray-200 rounded-lg text-sm"
+                    className="w-20 p-2 border border-border rounded-lg text-sm"
                   />
                   <input
                     type="number"
                     placeholder={isArabic ? "السعر" : "Price"}
-                    value={item.unitPrice || ""}
+                    value={item.unitPrice ?? ""}
                     onChange={(e) =>
                       updateItem(idx, "unitPrice", Number(e.target.value))
                     }
-                    className="w-24 p-2 border border-gray-200 rounded-lg text-sm"
+                    className="w-24 p-2 border border-border rounded-lg text-sm"
                   />
                   <span className="text-sm font-medium w-24">
                     {item.total.toLocaleString()} ج.م
@@ -186,7 +186,7 @@ export default function CreateStatementModal({
                   <button
                     type="button"
                     onClick={() => removeItem(idx)}
-                    className="text-red-500 p-1"
+                    className="text-danger p-1"
                   >
                     <Trash2 size={16} />
                   </button>
@@ -198,7 +198,7 @@ export default function CreateStatementModal({
           {/* Deductions */}
           <div>
             <div className="flex justify-between items-center mb-2">
-              <label className="text-sm font-medium text-gray-700">
+              <label className="text-sm font-medium text-text-primary">
                 {isArabic ? "الخصومات" : "Deductions"}
               </label>
               <button
@@ -221,7 +221,7 @@ export default function CreateStatementModal({
                     newDeductions[idx].amount = Number(e.target.value);
                     setForm({ ...form, deductions: newDeductions });
                   }}
-                  className="w-full p-2 border border-gray-200 rounded-lg"
+                  className="w-full p-2 border border-border rounded-lg"
                 />
               ))}
             </div>
@@ -238,7 +238,7 @@ export default function CreateStatementModal({
             </div>
             <div className="flex justify-between mb-1">
               <span>{isArabic ? "الخصومات" : "Deductions"}:</span>
-              <span className="text-red-500">
+              <span className="text-danger">
                 {form.deductions
                   .reduce((s, d) => s + d.amount, 0)
                   .toLocaleString()}{" "}

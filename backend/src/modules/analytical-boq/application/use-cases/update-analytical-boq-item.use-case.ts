@@ -10,15 +10,20 @@ import {
 } from '../errors/analytical-boq-application.error';
 import { toAnalyticalBoqItemResult } from './list-analytical-boq-items.use-case';
 import { SyncFinalFromAnalyticalUseCase } from '@/modules/final-boq/application/use-cases/sync-final-from-analytical.use-case';
+import { OwnershipService } from '@/common/services/ownership.service';
+import { AuditService } from '@/modules/audit/audit.service';
 
 export class UpdateAnalyticalBoqItemUseCase {
   constructor(
     private readonly analyticalBoq: IAnalyticalBoqRepository,
     private readonly buildings: IBuildingRepository,
     private readonly syncFinalFromAnalytical: SyncFinalFromAnalyticalUseCase,
+    private readonly ownership: OwnershipService,
+    private readonly audit: AuditService,
   ) {}
 
-  async execute(input: UpdateAnalyticalBoqItemInput): Promise<Result<AnalyticalBoqItemResult>> {
+  async execute(input: UpdateAnalyticalBoqItemInput, userProjectId?: string | null, userId?: string): Promise<Result<AnalyticalBoqItemResult>> {
+    await this.ownership.verifyBuildingAccess(userProjectId, input.buildingId);
     const buildingId = new UniqueEntityId(input.buildingId);
     const building = await this.buildings.findById(buildingId);
     if (!building) {
@@ -37,6 +42,7 @@ export class UpdateAnalyticalBoqItemUseCase {
       );
     }
 
+    const before = { itemCode: existing.itemCode, description: existing.description, unit: existing.unit, quantity: existing.quantity, unitPrice: existing.unitPrice };
     const updateResult = existing.update({
       description: input.description,
       quantity: input.quantity,
@@ -54,6 +60,9 @@ export class UpdateAnalyticalBoqItemUseCase {
     await this.analyticalBoq.save(existing);
     // Mirrors updateAnalyticalItem → syncFinalFromAnalytical
     await this.syncFinalFromAnalytical.execute({ buildingId: input.buildingId });
+    if (userId) {
+      this.audit.log({ userId, entity: 'analytical_boq', entityId: existing.id.toValue(), action: 'UPDATE', before, after: { itemCode: existing.itemCode, description: existing.description, unit: existing.unit, quantity: existing.quantity, unitPrice: existing.unitPrice } });
+    }
     return Result.ok(toAnalyticalBoqItemResult(existing));
   }
 }

@@ -8,6 +8,7 @@ import Link from "next/link";
 import { useParams, usePathname } from "next/navigation";
 import { Menu, X } from "lucide-react";
 import LanguageSwitcher from "@/components/shared/LanguageSwitcher";
+import ThemeToggle from "@/components/ui/ThemeToggle";
 import { Button } from "@/components/ui";
 
 interface NavbarProps {
@@ -101,8 +102,8 @@ export default function Navbar({ scrollTo }: NavbarProps) {
       animate={{ y: 0 }}
       className={`fixed top-0 w-full z-50 transition-all duration-300 ${
         scrolled
-          ? "bg-white shadow-md py-3"
-          : "bg-white/95 backdrop-blur-sm py-4"
+          ? "bg-surface shadow-md py-3"
+          : "bg-surface/95 backdrop-blur-sm py-4"
       } border-b border-gray-200`}
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -165,6 +166,7 @@ export default function Navbar({ scrollTo }: NavbarProps) {
 
           {/* Right Side */}
           <div className="flex items-center gap-3">
+            <ThemeToggle />
             <LanguageSwitcher />
             <Link href={`/${locale}/login`}>
               <Button variant="outline" size="sm">
@@ -186,7 +188,7 @@ export default function Navbar({ scrollTo }: NavbarProps) {
 
         {/* Mobile Menu */}
         {mobileMenuOpen && (
-          <div className="md:hidden bg-white border-t mt-4 py-4">
+          <div className="md:hidden bg-surface border-t mt-4 py-4">
             <div className="flex flex-col gap-3">
               {navItems.map((item) => (
                 <button

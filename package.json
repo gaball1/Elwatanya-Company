@@ -13,5 +13,25 @@
     "docker:down": "docker compose down",
     "db:migrate": "npm run prisma:migrate --workspace=backend",
     "db:studio": "npm run prisma:studio --workspace=backend"
-  }
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3"
+  },
+  "description": "Production-grade ERP system for construction companies.",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gaball1/Elwatanya-Company.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/gaball1/Elwatanya-Company/issues"
+  },
+  "homepage": "https://github.com/gaball1/Elwatanya-Company#readme"
 }

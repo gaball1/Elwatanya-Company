@@ -108,7 +108,7 @@ export default function FeaturesSection() {
               initial={{ opacity: 0, scale: 0.9 }}
               whileInView={{ opacity: 1, scale: 1 }}
               transition={{ delay: index * 0.1 }}
-              className="flex gap-4 p-5 bg-white rounded-xl shadow-md hover:shadow-lg transition"
+              className="flex gap-4 p-5 bg-surface rounded-xl shadow-md hover:shadow-lg transition"
             >
               <div className="text-gold mt-1">{feature.icon}</div>
               <div>

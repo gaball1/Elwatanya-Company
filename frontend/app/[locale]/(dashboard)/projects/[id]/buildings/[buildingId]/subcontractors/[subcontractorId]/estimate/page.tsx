@@ -1,6 +1,8 @@
 /* eslint-disable */
 "use client";
-import { mockProjects, mockBuildings } from "@/lib/mockData";
+import { buildingService } from "@/services/building.service";
+
+import { projectService } from "@/services/project.service";
 import { useParams } from "next/navigation";
 import { useState, useEffect, useMemo } from "react";
 import { Plus, Edit2, Trash2, X, Layers } from "lucide-react";
@@ -9,18 +11,12 @@ import SignaturesSection from "@/components/boq/SignaturesSection";
 import DeleteConfirmModal from "@/components/boq/DeleteConfirmModal";
 import { useToast } from "@/components/ui/Toast";
 import { exportToCsv, printHtml } from "@/lib/documentUtils";
-import {
-  allocateContractorItem,
-  getContractorBoq,
-  getDocSignatures,
-  getFinalItems,
-  removeContractorItem,
-  setDocSignatures,
-  getFinalItemComponents,
-  updateContractorItemQuantity,
-  getAvailableQtyForContractorItem,
-} from "@/lib/boqStore";
-import { mockSubcontractors } from "@/lib/mockData";
+import { getDocSignatures, setDocSignatures } from "@/lib/boqStore";
+import type { FinalBoqItem } from "@/types/boq";
+import { finalBoqService } from "@/services/finalBoq.service";
+import { contractorBoqService } from "@/services/contractorBoq.service";
+import { subcontractorService } from "@/services/subcontractor.service";
+import { Can } from "@/components/Can";
 
 export default function ContractorEstimatePage() {
   const params = useParams();
@@ -29,26 +25,54 @@ export default function ContractorEstimatePage() {
   const projectId = params.id as string;
   const buildingId = params.buildingId as string;
   const contractorId = params.subcontractorId as string;
-  const sub = mockSubcontractors.find((s) => s.id === contractorId);
   const docKey = `contractor-boq:${buildingId}:${contractorId}`;
   const back = `/${locale}/projects/${projectId}/buildings/${buildingId}/subcontractors`;
   const { showToast, ToastComponent } = useToast();
-  const [, refresh] = useState(0);
-  const items = getContractorBoq(buildingId, contractorId);
-  const finalItems = getFinalItems(buildingId);
+  const [mounted, setMounted] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [items, setItems] = useState<any[]>([]);
+  const [finalItems, setFinalItems] = useState<FinalBoqItem[]>([]);
   const [sigs, setSigs] = useState(getDocSignatures(docKey));
+  const [sub, setSub] = useState<any>(null);
+  const [project, setProject] = useState<any>(null);
+  const [building, setBuilding] = useState<any>(null);
   const [selected, setSelected] = useState("");
   const [qty, setQty] = useState(0);
   const [editingItem, setEditingItem] = useState<any | null>(null);
   const [editQty, setEditQty] = useState(0);
   const [deletingItem, setDeletingItem] = useState<any | null>(null);
-  const [mounted, setMounted] = useState(false);
-  const bump = () => refresh((n) => n + 1);
 
-  // ✅ منع Hydration Errors
+  const loadAll = async () => {
+    if (!buildingId || !contractorId) return;
+    try {
+      setLoading(true);
+      const [contractorItems, finalData, subs, proj, bld] = await Promise.all([
+        contractorBoqService.list(buildingId, contractorId),
+        finalBoqService.list(buildingId),
+        subcontractorService.list(),
+        projectService.getProject(projectId),
+        buildingService.getBuilding(buildingId),
+      ]);
+      setItems(contractorItems);
+      setFinalItems(finalData);
+      setSub(subs.find((s: any) => s.id === contractorId));
+      setProject(proj);
+      setBuilding(bld);
+    } catch (e) {
+      console.error(e);
+      showToast(isArabic ? "فشل تحميل البيانات" : "Failed to load data", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  useEffect(() => {
+    loadAll();
+  }, [buildingId, contractorId, projectId, isArabic]);
 
   // ✅ تجهيز خيارات القائمة المنسدلة مع الكميات المتاحة
   const selectOptions = useMemo(() => {
@@ -98,10 +122,10 @@ export default function ContractorEstimatePage() {
 
   const selectedUnit = useMemo(() => {
     const option = selectOptions.find((opt) => opt.value === selected);
-    return option?.unit || "";
+    return option?.unit ?? "";
   }, [selected, selectOptions]);
 
-  const handleAdd = () => {
+  const handleAdd = async () => {
     if (!selected) {
       showToast(
         isArabic ? "يرجى اختيار بند" : "Please select an item",
@@ -128,56 +152,56 @@ export default function ContractorEstimatePage() {
       return;
     }
 
-    const res = allocateContractorItem(buildingId, contractorId, selected, qty);
-    if (!res.ok) return showToast(res.error || "خطأ", "error");
-
-    setSelected("");
-    setQty(0);
-    bump();
-    showToast(
-      isArabic ? "تم الإسناد بنجاح" : "Assigned successfully",
-      "success"
-    );
+    try {
+      await contractorBoqService.allocate(buildingId, contractorId, selected, qty);
+      setSelected("");
+      setQty(0);
+      await loadAll();
+      showToast(
+        isArabic ? "تم الإسناد بنجاح" : "Assigned successfully",
+        "success"
+      );
+    } catch (e: any) {
+      showToast(e?.message || "خطأ", "error");
+    }
   };
 
-  const saveEdit = () => {
+  const saveEdit = async () => {
     if (!editingItem) return;
 
-    const maxQty = getAvailableQtyForContractorItem(
-      buildingId,
-      contractorId,
-      editingItem.itemCode,
-      editingItem.componentId
-    );
-
-    if (editQty > maxQty) {
-      showToast(
-        isArabic
-          ? `الكمية المطلوبة (${editQty}) تتجاوز الكمية المتاحة (${maxQty})`
-          : `Requested quantity (${editQty}) exceeds available quantity (${maxQty})`,
-        "error"
+    try {
+      const maxQty = await contractorBoqService.available(
+        buildingId, contractorId, editingItem.itemCode, editingItem.componentId
       );
-      return;
-    }
 
-    const res = updateContractorItemQuantity(
-      buildingId,
-      contractorId,
-      editingItem.itemCode,
-      editingItem.componentId,
-      editQty
-    );
-    if (!res.ok) return showToast(res.error || "خطأ", "error");
-    setEditingItem(null);
-    bump();
-    showToast(isArabic ? "تم التحديث" : "Updated", "success");
+      if (editQty > maxQty) {
+        showToast(
+          isArabic
+            ? `الكمية المطلوبة (${editQty}) تتجاوز الكمية المتاحة (${maxQty})`
+            : `Requested quantity (${editQty}) exceeds available quantity (${maxQty})`,
+          "error"
+        );
+        return;
+      }
+
+      await contractorBoqService.updateQuantity(
+        buildingId, contractorId, editingItem.itemCode, editQty, editingItem.componentId
+      );
+      setEditingItem(null);
+      await loadAll();
+      showToast(isArabic ? "تم التحديث" : "Updated", "success");
+    } catch (e: any) {
+      showToast(e?.message || "خطأ", "error");
+    }
   };
 
   // ✅ منع التصيير على السيرفر
-  if (!mounted) {
+  if (!mounted || loading) {
     return (
       <div className="min-h-screen bg-gray-light -m-6 flex items-center justify-center">
-        <div className="animate-pulse text-gray-400">جاري التحميل...</div>
+        <div className="animate-pulse text-text-muted">
+          {isArabic ? "جاري التحميل..." : "Loading..."}
+        </div>
       </div>
     );
   }
@@ -210,9 +234,6 @@ export default function ContractorEstimatePage() {
       const reader = new FileReader();
       reader.onload = () => {
         const logo = reader.result as string;
-
-        const project = mockProjects.find((p) => p.id === projectId);
-        const building = mockBuildings.find((b) => b.id === buildingId);
 
         const headerHtml = `
 <div style="
@@ -555,7 +576,7 @@ font-size:14px;
 font-weight:bold;
 margin-bottom:5px;
 ">
-${s.name || ""}
+${s.name ?? ""}
 </div>
 
 ${
@@ -680,7 +701,7 @@ img{
 
       <BoqPageHeader
         title={
-          isArabic ? `مقايسة ${sub?.name || ""}` : `${sub?.name || ""} BOQ`
+          isArabic ? `مقايسة ${sub?.name ?? ""}` : `${sub?.name ?? ""} BOQ`
         }
         subtitle={isArabic ? "بنود المقاول" : "Contractor items"}
         fallbackHref={back}
@@ -712,10 +733,10 @@ img{
       <div className="px-6 pb-6" suppressHydrationWarning>
         {/* ✅ إسناد بند للمقاول */}
         <div
-          className="bg-white rounded-xl p-4 mb-4 shadow-sm"
+          className="bg-surface rounded-xl p-4 mb-4 shadow-sm"
           suppressHydrationWarning
         >
-          <p className="text-sm text-gray-500 mb-3">
+          <p className="text-sm text-text-secondary mb-3">
             {isArabic ? "إسناد بند للمقاول" : "Assign item to contractor"}
           </p>
 
@@ -757,7 +778,7 @@ img{
               <input
                 id="qty-input"
                 type="number"
-                value={qty || ""}
+                value={qty ?? ""}
                 onChange={(e) => {
                   const val = Number(e.target.value);
                   if (selected && val > selectedMaxQty) {
@@ -781,24 +802,26 @@ img{
             </div>
 
             {/* Button */}
-            <button
-              onClick={handleAdd}
-              disabled={!selected || qty <= 0}
-              className={`px-4 py-2 rounded-lg text-sm flex items-center gap-1 flex-shrink-0 whitespace-nowrap ${
-                !selected || qty <= 0
-                  ? "bg-gray-200 text-gray-400 cursor-not-allowed"
-                  : "bg-primary text-white hover:bg-primary-dark"
-              }`}
-              suppressHydrationWarning
-            >
-              <Plus size={16} />
-              {isArabic ? "إسناد" : "Assign"}
-            </button>
+            <Can permission="contractor-boq.create">
+              <button
+                onClick={handleAdd}
+                disabled={!selected || qty <= 0}
+                className={`px-4 py-2 rounded-lg text-sm flex items-center gap-1 flex-shrink-0 whitespace-nowrap ${
+                  !selected || qty <= 0
+                    ? "bg-surface-tertiary text-text-muted cursor-not-allowed"
+                    : "bg-primary text-white hover:bg-primary-dark"
+                }`}
+                suppressHydrationWarning
+              >
+                <Plus size={16} />
+                {isArabic ? "إسناد" : "Assign"}
+              </button>
+            </Can>
           </div>
 
           {/* ✅ الكمية المتاحة */}
           {selected && (
-            <div className="mt-2 text-xs text-gray-400 flex items-center gap-2">
+            <div className="mt-2 text-xs text-text-muted flex items-center gap-2">
               <span className="inline-block w-1.5 h-1.5 rounded-full bg-gold"></span>
               {isArabic ? "الحد الأقصى" : "Max"}: {selectedMaxQty}{" "}
               {selectedUnit}
@@ -808,12 +831,12 @@ img{
 
         {/* ✅ جدول البنود */}
         <div
-          className="bg-white rounded-xl shadow-sm overflow-hidden"
+          className="bg-surface rounded-xl shadow-sm overflow-hidden"
           suppressHydrationWarning
         >
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50">
+              <thead className="bg-surface-secondary">
                 <tr>
                   <th className="p-3 text-center">#</th>
                   <th className="p-3">{isArabic ? "كود" : "Code"}</th>
@@ -840,7 +863,7 @@ img{
               <tbody>
                 {items.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="p-8 text-center text-gray-500">
+                    <td colSpan={8} className="p-8 text-center text-text-secondary">
                       {isArabic ? "لا توجد بنود مسندة" : "No assigned items"}
                     </td>
                   </tr>
@@ -851,8 +874,8 @@ img{
 
                     return (
                       <tr
-                        key={item.itemCode + (item.componentId || "")}
-                        className="border-t hover:bg-gray-50"
+                        key={item.itemCode + (item.componentId ?? "")}
+                        className="border-t hover:bg-surface-secondary"
                       >
                         <td className="p-3 text-center">{idx + 1}</td>
                         <td className="p-3 font-mono">{item.itemCode}</td>
@@ -884,8 +907,8 @@ img{
                           <span
                             className={`text-xs px-2 py-0.5 rounded-full ${
                               isComponent
-                                ? "bg-blue-100 text-blue-800"
-                                : "bg-gray-100 text-gray-600"
+                                ? "bg-info-light text-info-dark"
+                                : "bg-surface-tertiary text-text-secondary"
                             }`}
                           >
                             {isComponent
@@ -899,23 +922,27 @@ img{
                         </td>
                         <td className="p-3 text-center">
                           <div className="flex justify-center gap-2">
-                            <button
-                              onClick={() => {
-                                setEditingItem(item);
-                                setEditQty(item.assignedQuantity);
-                              }}
-                              className="text-blue-500 hover:text-blue-700"
-                              suppressHydrationWarning
-                            >
-                              <Edit2 size={18} />
-                            </button>
-                            <button
-                              onClick={() => setDeletingItem(item)}
-                              className="text-red-500 hover:text-red-700"
-                              suppressHydrationWarning
-                            >
-                              <Trash2 size={18} />
-                            </button>
+                            <Can permission="contractor-boq.update">
+                              <button
+                                onClick={() => {
+                                  setEditingItem(item);
+                                  setEditQty(item.assignedQuantity);
+                                }}
+                                className="text-info hover:text-info-dark"
+                                suppressHydrationWarning
+                              >
+                                <Edit2 size={18} />
+                              </button>
+                            </Can>
+                            <Can permission="contractor-boq.delete">
+                              <button
+                                onClick={() => setDeletingItem(item)}
+                                className="text-danger hover:text-danger-dark"
+                                suppressHydrationWarning
+                              >
+                                <Trash2 size={18} />
+                              </button>
+                            </Can>
                           </div>
                         </td>
                       </tr>
@@ -924,7 +951,7 @@ img{
                 )}
               </tbody>
               {items.length > 0 && (
-                <tfoot className="bg-gray-50">
+                <tfoot className="bg-surface-secondary">
                   <tr className="border-t-2 border-primary">
                     <td colSpan={5} className="p-3 font-bold text-primary">
                       {isArabic ? "الإجمالي" : "Total"}
@@ -956,18 +983,18 @@ img{
       {/* Edit Modal */}
       {editingItem && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-sm p-5 space-y-3">
+          <div className="bg-surface rounded-2xl w-full max-w-sm p-5 space-y-3">
             <div className="flex justify-between items-center">
               <h2 className="font-bold text-primary">{editingItem.itemCode}</h2>
               <button
                 onClick={() => setEditingItem(null)}
-                className="text-gray-400 hover:text-gray-600"
+                className="text-text-muted hover:text-text-secondary"
               >
                 <X size={24} />
               </button>
             </div>
             <div>
-              <label className="text-sm text-gray-500">
+              <label className="text-sm text-text-secondary">
                 {isArabic ? "الكمية الحالية" : "Current quantity"}: {editQty}
               </label>
               <input
@@ -975,22 +1002,7 @@ img{
                 value={editQty}
                 onChange={(e) => {
                   const val = Number(e.target.value);
-                  const maxQty = getAvailableQtyForContractorItem(
-                    buildingId,
-                    contractorId,
-                    editingItem.itemCode,
-                    editingItem.componentId
-                  );
-                  if (val > maxQty) {
-                    showToast(
-                      isArabic
-                        ? `الكمية لا يمكن أن تتجاوز ${maxQty}`
-                        : `Quantity cannot exceed ${maxQty}`,
-                      "error"
-                    );
-                  } else {
-                    setEditQty(val);
-                  }
+                  setEditQty(val);
                 }}
                 className="w-full p-3 border rounded-xl mt-1"
                 min={1}
@@ -1018,16 +1030,20 @@ img{
               : "Delete item and return quantity?"
           }
           onCancel={() => setDeletingItem(null)}
-          onConfirm={() => {
-            removeContractorItem(
-              buildingId,
-              contractorId,
-              deletingItem.itemCode,
-              deletingItem.componentId
-            );
-            setDeletingItem(null);
-            bump();
-            showToast(isArabic ? "تم الحذف" : "Deleted", "success");
+          onConfirm={async () => {
+            try {
+              await contractorBoqService.remove(
+                buildingId,
+                contractorId,
+                deletingItem.itemCode,
+                deletingItem.componentId
+              );
+              setDeletingItem(null);
+              await loadAll();
+              showToast(isArabic ? "تم الحذف" : "Deleted", "success");
+            } catch (e: any) {
+              showToast(e?.message || "خطأ", "error");
+            }
           }}
         />
       )}

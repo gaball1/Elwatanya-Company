@@ -10,7 +10,7 @@ interface BackButtonProps {
 
 export default function BackButton({
   fallbackHref,
-  className = "text-gray-500 hover:text-primary transition",
+  className = "text-text-secondary hover:text-gold transition",
 }: BackButtonProps) {
   const router = useRouter();
 

@@ -3,7 +3,8 @@
 
 import { useParams } from "next/navigation";
 import { Card } from "@/components/ui";
-import { mockProjects } from "@/lib/mockData";
+import { useEffect, useState } from "react";
+import { projectService } from '@/services/project.service';
 
 export default function ProjectAnalyticsPage() {
   const params = useParams();
@@ -11,7 +12,11 @@ export default function ProjectAnalyticsPage() {
   const isArabic = locale === "ar";
   const projectId = params.id as string;
 
-  const project = mockProjects.find((p) => p.id === projectId);
+  const [projects, setProjects] = useState<any[]>([]);
+  useEffect(() => {
+    projectService.getProjects().then(setProjects).catch(console.error);
+  }, []);
+  const project = projects.find((p) => p.id === projectId);
 
   if (!project) return null;
 
@@ -25,7 +30,7 @@ export default function ProjectAnalyticsPage() {
           <div className="text-5xl font-bold text-gold mb-2">
             {project.progress}%
           </div>
-          <div className="w-full bg-gray-200 rounded-full h-3">
+          <div className="w-full bg-surface-tertiary rounded-full h-3">
             <div
               className="bg-gold rounded-full h-3"
               style={{ width: `${project.progress}%` }}
@@ -39,16 +44,18 @@ export default function ProjectAnalyticsPage() {
         </h3>
         <div className="space-y-2">
           <div className="flex justify-between">
-            <span className="text-gray-500">
+            <span className="text-text-secondary">
               {isArabic ? "تاريخ البدء" : "Start Date"}
             </span>
-            <span className="font-medium">{project.startDate}</span>
+            <span className="font-medium">
+              {project.startDate ? new Date(project.startDate).toLocaleDateString() : "—"}
+            </span>
           </div>
           <div className="flex justify-between">
-            <span className="text-gray-500">
+            <span className="text-text-secondary">
               {isArabic ? "تاريخ الانتهاء المتوقع" : "Expected End Date"}
             </span>
-            <span className="font-medium">2024-12-31</span>
+            <span className="font-medium">—</span>
           </div>
         </div>
       </Card>

@@ -1,15 +1,20 @@
 import { Result } from '@/shared/kernel/result';
 import { UniqueEntityId } from '@/shared/kernel/unique-entity-id.vo';
 import { IBuildingRepository } from '../../domain/building.repository';
+import { OwnershipService } from '@/common/services/ownership.service';
 import {
   BuildingApplicationError,
   BuildingErrorCode,
 } from '../errors/building-application.error';
 
 export class SoftDeleteBuildingUseCase {
-  constructor(private readonly buildings: IBuildingRepository) {}
+  constructor(
+    private readonly buildings: IBuildingRepository,
+    private readonly ownership: OwnershipService,
+  ) {}
 
-  async execute(buildingId: string): Promise<Result<void>> {
+  async execute(buildingId: string, userProjectId?: string | null): Promise<Result<void>> {
+    await this.ownership.verifyBuildingAccess(userProjectId, buildingId);
     const building = await this.buildings.findById(new UniqueEntityId(buildingId));
     if (!building) {
       return Result.fail(

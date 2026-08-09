@@ -12,7 +12,9 @@ import {
   Search,
   ExternalLink,
 } from "lucide-react";
-import { financeApi, buildTreasuryHref } from "@/lib/api/financeApi";
+
+import { projectFundService } from "@/services/project-fund.service";
+import { fundTransactionService } from "@/services/fund-transaction.service";
 import type { TreasuryTransaction, TreasurySourceType } from "@/types/finance";
 import { useToast } from "@/components/ui/Toast";
 import { sanitizeInput, isValidAmount } from "@/lib/security";
@@ -20,6 +22,18 @@ import React from "react";
 import { useDebounce } from "@/hooks/useDebounce";
 import { usePagination } from "@/hooks/usePagination";
 import Pagination from "@/components/ui/Pagination";
+import { Can } from "@/components/Can";
+import { printHtmlDocument } from "@/lib/printUtils";
+
+function buildTreasuryHref(locale: string, projectId: string, tx: TreasuryTransaction): string | null {
+  const base = `/${locale}/projects/${projectId}`;
+  if (tx.sourceType === "extract" && tx.metadata?.buildingId && tx.metadata?.contractorId) {
+    return `${base}/buildings/${tx.metadata.buildingId}/subcontractors/${tx.metadata.contractorId}/extracts/${tx.sourceId}`;
+  }
+  if (tx.sourceType === "purchase") return `${base}/purchases`;
+  if (tx.sourceType === "miscellaneous") return `${base}/miscellaneous`;
+  return null;
+}
 
 const TransactionItem = React.memo(
   ({
@@ -41,7 +55,7 @@ const TransactionItem = React.memo(
       <>
         <div className="flex items-center gap-4 flex-1">
           <div className="text-center min-w-[80px]">
-            <p className="text-xs text-gray-400">{transaction.date}</p>
+            <p className="text-xs text-text-muted">{transaction.date}</p>
             <span
               className={`text-xs px-2 py-0.5 rounded-full ${getTypeColor(
                 transaction.sourceType
@@ -51,11 +65,11 @@ const TransactionItem = React.memo(
             </span>
           </div>
           <div className="flex-1">
-            <p className="font-medium text-gray-800">
+            <p className="font-medium text-text-primary">
               {sanitizeInput(transaction.description)}
             </p>
             {transaction.metadata?.extractLabel && (
-              <p className="text-xs text-gray-400">
+              <p className="text-xs text-text-muted">
                 {transaction.metadata.extractLabel}
               </p>
             )}
@@ -64,7 +78,7 @@ const TransactionItem = React.memo(
         <div className="flex items-center gap-3">
           <p
             className={`font-bold ${
-              transaction.amount > 0 ? "text-green-600" : "text-red-500"
+              transaction.amount > 0 ? "text-success-dark" : "text-danger"
             }`}
           >
             {transaction.amount > 0 ? "+" : ""}
@@ -80,7 +94,7 @@ const TransactionItem = React.memo(
         <button
           type="button"
           onClick={() => onNavigate(href)}
-          className="w-full bg-white p-4 rounded-lg shadow-sm flex justify-between items-center hover:shadow-md hover:bg-gold/5 transition text-right border border-transparent hover:border-gold/30"
+          className="w-full bg-surface p-4 rounded-lg shadow-sm flex justify-between items-center hover:shadow-md hover:bg-gold/5 transition text-right border border-transparent hover:border-gold/30"
         >
           {inner}
         </button>
@@ -88,7 +102,7 @@ const TransactionItem = React.memo(
     }
 
     return (
-      <div className="bg-white p-4 rounded-lg shadow-sm flex justify-between items-center">
+      <div className="bg-surface p-4 rounded-lg shadow-sm flex justify-between items-center">
         {inner}
       </div>
     );
@@ -115,6 +129,7 @@ export default function ProjectTreasuryPage() {
     "all"
   );
   const [showAddModal, setShowAddModal] = useState(false);
+  const [fundId, setFundId] = useState<string | null>(null);
 
   const debouncedSearch = useDebounce(searchTerm, 300);
   const isMounted = useRef(true);
@@ -123,12 +138,54 @@ export default function ProjectTreasuryPage() {
     if (!isMounted.current) return;
     setLoading(true);
     try {
-      const data = await financeApi.getTreasury(projectId);
+      const funds = await projectFundService.list();
       if (!isMounted.current) return;
-      setTransactions(data.transactions);
-      setTotalIncome(data.totalIncome);
-      setTotalExpenses(data.totalExpenses);
-      setCurrentBalance(data.currentBalance);
+      const fund = funds.find((f) => f.projectId === projectId);
+      if (fund) {
+        setFundId(fund.id);
+        const allTx = await fundTransactionService.list();
+        const fundTransactions = allTx.filter((tx) => tx.fundId === fund.id);
+        const mapped: TreasuryTransaction[] = fundTransactions.map((tx) => {
+          let metadata: TreasuryTransaction["metadata"];
+          try {
+            if (tx.notes && (tx.notes.startsWith("{") || tx.notes.startsWith('{"'))) {
+              metadata = JSON.parse(tx.notes);
+            }
+          } catch {}
+          return {
+            id: tx.id,
+            projectId,
+            sourceType: (tx.category === "purchase"
+              ? "purchase"
+              : tx.category === "miscellaneous"
+              ? "miscellaneous"
+              : tx.category === "extract"
+              ? "extract"
+              : "adjustment") as TreasurySourceType,
+            sourceId: tx.referenceId || tx.id,
+            amount: tx.type === "deduct" ? -Math.abs(tx.amount) : Math.abs(tx.amount),
+            description: tx.description,
+            date: tx.date,
+            notes: tx.notes || undefined,
+            metadata,
+          };
+        });
+        const income = mapped
+          .filter((t) => t.amount > 0)
+          .reduce((sum, t) => sum + t.amount, 0);
+        const expenses = mapped
+          .filter((t) => t.amount < 0)
+          .reduce((sum, t) => sum + Math.abs(t.amount), 0);
+        setTransactions(mapped);
+        setTotalIncome(income);
+        setTotalExpenses(expenses);
+        setCurrentBalance(fund.currentBalance);
+      } else {
+        setTransactions([]);
+        setTotalIncome(0);
+        setTotalExpenses(0);
+        setCurrentBalance(0);
+      }
     } catch {
       // Error handled by parent
     } finally {
@@ -181,13 +238,13 @@ export default function ProjectTreasuryPage() {
 
   const getTypeColor = useCallback((type: TreasurySourceType) => {
     const colors: Record<TreasurySourceType, string> = {
-      initial: "text-green-600 bg-green-50",
-      purchase: "text-blue-600 bg-blue-50",
-      miscellaneous: "text-orange-600 bg-orange-50",
+      initial: "text-success-dark bg-success-light",
+      purchase: "text-info-dark bg-info-light",
+      miscellaneous: "text-warning-dark bg-warning-light",
       extract: "text-purple-600 bg-purple-50",
-      adjustment: "text-yellow-600 bg-yellow-50",
+      adjustment: "text-warning-dark bg-warning-light",
     };
-    return colors[type] || "text-gray-600 bg-gray-50";
+    return colors[type] || "text-text-secondary bg-gray-50";
   }, []);
 
   const handleAddBalance = useCallback(
@@ -207,8 +264,20 @@ export default function ProjectTreasuryPage() {
         return;
       }
 
+      if (!fundId) {
+        showToast(isArabic ? "لم يتم العثور على العهدة" : "Fund not found", "error");
+        return;
+      }
+
       try {
-        await financeApi.addTreasuryBalance(projectId, amount, description);
+        await fundTransactionService.create({
+          fundId,
+          type: "add",
+          category: "miscellaneous",
+          amount: Math.abs(amount),
+          description,
+          status: "approved",
+        });
         showToast(
           isArabic ? "تم إضافة الرصيد بنجاح" : "Balance added successfully",
           "success"
@@ -219,7 +288,7 @@ export default function ProjectTreasuryPage() {
         showToast(err instanceof Error ? err.message : "Error", "error");
       }
     },
-    [projectId, showToast, isArabic, loadTreasury]
+    [fundId, showToast, isArabic, loadTreasury]
   );
 
   // ✅ طباعة PDF محسنة
@@ -348,24 +417,7 @@ export default function ProjectTreasuryPage() {
     </html>
     `;
 
-    const iframe = document.createElement("iframe");
-    iframe.style.position = "fixed";
-    iframe.style.right = "0";
-    iframe.style.bottom = "0";
-    iframe.style.width = "0";
-    iframe.style.height = "0";
-    iframe.style.border = "0";
-    document.body.appendChild(iframe);
-
-    iframe.srcdoc = htmlContent;
-    iframe.onload = () => {
-      setTimeout(() => {
-        iframe.contentWindow?.print();
-        setTimeout(() => {
-          document.body.removeChild(iframe);
-        }, 1000);
-      }, 500);
-    };
+    printHtmlDocument(title, htmlContent, `${title}.pdf`);
   }, [filteredTransactions, isArabic, getTypeLabel, getTypeColor, projectId]);
 
   // ✅ تصدير Excel محسن
@@ -425,24 +477,24 @@ export default function ProjectTreasuryPage() {
 
       {/* Summary Cards */}
       <div className="grid md:grid-cols-3 gap-4">
-        <Card className="p-5 text-center border-r-4 border-green-500">
-          <p className="text-gray-500 text-sm mb-1">
+        <Card className="p-5 text-center border-r-4 border-success">
+          <p className="text-text-secondary text-sm mb-1">
             {isArabic ? "إجمالي الإيرادات" : "Total Income"}
           </p>
-          <p className="text-2xl font-bold text-green-600">
+          <p className="text-2xl font-bold text-success-dark">
             {totalIncome.toLocaleString()} ج.م
           </p>
         </Card>
-        <Card className="p-5 text-center border-r-4 border-red-500">
-          <p className="text-gray-500 text-sm mb-1">
+        <Card className="p-5 text-center border-r-4 border-danger">
+          <p className="text-text-secondary text-sm mb-1">
             {isArabic ? "إجمالي المصروفات" : "Total Expenses"}
           </p>
-          <p className="text-2xl font-bold text-red-500">
+          <p className="text-2xl font-bold text-danger">
             {totalExpenses.toLocaleString()} ج.م
           </p>
         </Card>
         <Card className="p-5 text-center border-r-4 border-gold">
-          <p className="text-gray-500 text-sm mb-1">
+          <p className="text-text-secondary text-sm mb-1">
             {isArabic ? "الرصيد الحالي" : "Current Balance"}
           </p>
           <p className="text-3xl font-bold text-gold">
@@ -451,7 +503,7 @@ export default function ProjectTreasuryPage() {
         </Card>
       </div>
 
-      <p className="text-xs text-gray-500">
+      <p className="text-xs text-text-secondary">
         {isArabic
           ? "اضغط على أي معاملة للانتقال إلى مصدرها (مستخلص / مشتريات / نثريات)"
           : "Click any transaction to navigate to its source"}
@@ -459,16 +511,18 @@ export default function ProjectTreasuryPage() {
 
       {/* Actions */}
       <div className="flex flex-wrap gap-3">
-        <button
-          onClick={() => setShowAddModal(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition text-sm font-medium"
-        >
-          <Plus size={18} />
-          {isArabic ? "إضافة رصيد" : "Add Balance"}
-        </button>
+        <Can permission="fund-transactions.create">
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-success-dark text-white rounded-lg hover:bg-success-dark transition text-sm font-medium"
+          >
+            <Plus size={18} />
+            {isArabic ? "إضافة رصيد" : "Add Balance"}
+          </button>
+        </Can>
         <button
           onClick={exportToExcel}
-          className="flex items-center gap-2 px-4 py-2 border border-green-600 text-green-600 rounded-lg hover:bg-green-600 hover:text-white transition text-sm font-medium"
+          className="flex items-center gap-2 px-4 py-2 border border-success-dark text-success-dark rounded-lg hover:bg-success-dark hover:text-white transition text-sm font-medium"
         >
           <Download size={18} />
           {isArabic ? "تصدير Excel" : "Export Excel"}
@@ -483,25 +537,25 @@ export default function ProjectTreasuryPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-3 items-center bg-white p-3 rounded-lg shadow-sm">
+      <div className="flex flex-wrap gap-3 items-center bg-surface p-3 rounded-lg shadow-sm">
         <div className="relative flex-1 min-w-[200px]">
-          <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+          <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 text-text-muted w-4 h-4" />
           <input
             type="text"
             placeholder={isArabic ? "بحث..." : "Search..."}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="pr-10 pl-4 py-2 border border-gray-200 rounded-lg w-full text-sm focus:outline-none focus:border-gold"
+            className="pr-10 pl-4 py-2 border border-border rounded-lg w-full text-sm focus:outline-none focus:border-gold"
           />
         </div>
         <div className="relative min-w-[150px]">
-          <Filter className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+          <Filter className="absolute right-3 top-1/2 transform -translate-y-1/2 text-text-muted w-4 h-4" />
           <select
             value={typeFilter}
             onChange={(e) =>
               setTypeFilter(e.target.value as TreasurySourceType | "all")
             }
-            className="pr-10 pl-4 py-2 border border-gray-200 rounded-lg appearance-none text-sm focus:outline-none focus:border-gold w-full"
+            className="pr-10 pl-4 py-2 border border-border rounded-lg appearance-none text-sm focus:outline-none focus:border-gold w-full"
           >
             <option value="all">{isArabic ? "الكل" : "All"}</option>
             <option value="initial">
@@ -526,12 +580,12 @@ export default function ProjectTreasuryPage() {
       {/* Transactions List */}
       <div className="space-y-2">
         {loading ? (
-          <Card className="p-8 text-center text-gray-400">
+          <Card className="p-8 text-center text-text-muted">
             {isArabic ? "جاري التحميل..." : "Loading..."}
           </Card>
         ) : currentItems.length === 0 ? (
           <Card className="p-8 text-center">
-            <p className="text-gray-500">
+            <p className="text-text-secondary">
               {isArabic ? "لا توجد معاملات" : "No transactions"}
             </p>
           </Card>
@@ -562,21 +616,21 @@ export default function ProjectTreasuryPage() {
       {/* Add Balance Modal */}
       {showAddModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-md">
+          <div className="bg-surface rounded-2xl w-full max-w-md">
             <div className="p-5 border-b flex justify-between items-center">
               <h2 className="text-xl font-bold text-primary">
                 {isArabic ? "إضافة رصيد" : "Add Balance"}
               </h2>
               <button
                 onClick={() => setShowAddModal(false)}
-                className="text-gray-400 hover:text-gray-600 text-xl"
+                className="text-text-muted hover:text-text-secondary text-xl"
               >
                 ✕
               </button>
             </div>
             <form onSubmit={handleAddBalance} className="p-5 space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-text-primary mb-1">
                   {isArabic ? "المبلغ" : "Amount"}
                 </label>
                 <input
@@ -585,18 +639,18 @@ export default function ProjectTreasuryPage() {
                   required
                   min="1"
                   step="any"
-                  className="w-full p-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-gold"
+                  className="w-full p-3 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-gold"
                   placeholder={isArabic ? "أدخل المبلغ" : "Enter amount"}
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-text-primary mb-1">
                   {isArabic ? "البيان" : "Description"}
                 </label>
                 <input
                   type="text"
                   name="description"
-                  className="w-full p-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-gold"
+                  className="w-full p-3 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-gold"
                   placeholder={isArabic ? "سبب الإضافة" : "Reason for addition"}
                 />
               </div>
@@ -604,13 +658,13 @@ export default function ProjectTreasuryPage() {
                 <button
                   type="button"
                   onClick={() => setShowAddModal(false)}
-                  className="flex-1 px-4 py-2 border border-gray-300 rounded-xl hover:bg-gray-50 transition"
+                  className="flex-1 px-4 py-2 border border-border-dark rounded-xl hover:bg-surface-secondary transition"
                 >
                   {isArabic ? "إلغاء" : "Cancel"}
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 px-4 py-2 bg-green-600 text-white rounded-xl hover:bg-green-700 transition"
+                  className="flex-1 px-4 py-2 bg-success-dark text-white rounded-xl hover:bg-success-dark transition"
                 >
                   {isArabic ? "إضافة" : "Add"}
                 </button>

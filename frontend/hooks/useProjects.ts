@@ -49,7 +49,7 @@ export function useProjects() {
       const res = await fetch("/api/projects");
       if (res.ok) {
         const data = await res.json();
-        setProjects(data.projects ?? MOCK_PROJECTS);
+        setProjects(data.items ?? MOCK_PROJECTS);
       } else {
         setProjects(MOCK_PROJECTS);
       }

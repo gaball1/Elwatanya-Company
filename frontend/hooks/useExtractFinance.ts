@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ExtractDeduction } from "@/types/finance";
 import type { ExtractItem } from "@/types/boq";
+import { extractService } from "@/services/extract.service";
 import {
   buildInsuranceDeduction,
   buildPreviousPaidDeduction,
@@ -49,12 +50,9 @@ export function useExtractMeta(
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(
-        `/api/extracts?buildingId=${buildingId}&contractorId=${contractorId}&meta=1&runningNumber=${runningNumber}`
-      );
-      const data = await res.json();
+      const data = await extractService.getMeta(buildingId, contractorId);
       setPreviousPaid(data.previousPaid || 0);
-      setPreviousQuantities(data.previousQuantities || {});
+      setPreviousQuantities(data.previousQuantities ?? {});
     } finally {
       setLoading(false);
     }

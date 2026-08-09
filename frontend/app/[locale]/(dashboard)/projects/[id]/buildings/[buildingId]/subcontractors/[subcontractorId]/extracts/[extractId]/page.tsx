@@ -14,8 +14,8 @@ import { ExtractSummaryCardsCompact } from "@/components/boq/ExtractSummaryCards
 import ExtractWorkItemsTable from "@/components/boq/ExtractWorkItemsTable";
 import { useToast } from "@/components/ui/Toast";
 import { exportToCsv, printHtml } from "@/lib/documentUtils";
-import { financeApi } from "@/lib/api/financeApi";
-import { mockSubcontractors } from "@/lib/mockData";
+import { extractService } from "@/services/extract.service";
+import { subcontractorService } from "@/services/subcontractor.service";
 import type { ContractorExtract } from "@/types/boq";
 
 export default function ExtractDetailPage() {
@@ -30,17 +30,18 @@ export default function ExtractDetailPage() {
   const { showToast, ToastComponent } = useToast();
 
   const [extract, setExtract] = useState<ContractorExtract | null>(null);
-  const sub = mockSubcontractors.find((s) => s.id === contractorId);
+  const [subName, setSubName] = useState<string>("");
 
   useEffect(() => {
-    financeApi.listExtracts(buildingId, contractorId).then(({ extracts }) => {
-      setExtract(extracts.find((e) => e.id === extractId) || null);
+    extractService.get(buildingId, contractorId, extractId).then((data) => {
+      setExtract(data as unknown as ContractorExtract);
     });
+    subcontractorService.get(contractorId).then((sub) => setSubName(sub.name));
   }, [buildingId, contractorId, extractId]);
 
   if (!extract) {
     return (
-      <div className="p-8 text-center text-gray-500">
+      <div className="p-8 text-center text-text-secondary">
         {isArabic ? "جاري التحميل..." : "Loading..."}
       </div>
     );
@@ -61,7 +62,7 @@ export default function ExtractDetailPage() {
       .join("");
     printHtml(
       extract.label,
-      `<div class="header"><h1>${extract.label}</h1><p>${sub?.name} | ${extract.date}</p></div>
+      `<div class="header"><h1>${extract.label}</h1><p>${subName} | ${extract.date}</p></div>
       <table><thead><tr><th>م</th><th>كود</th><th>بيان</th><th>سابق</th><th>حالي</th><th>إجمالي</th><th>منفذ</th><th>قيمة</th></tr></thead><tbody>${rows}</tbody></table>
       <h3>بيان الاستقطاعات</h3><table><thead><tr><th>البيان</th><th>%</th><th>المبلغ</th></tr></thead><tbody>${dedRows}</tbody></table>
       <p>الإجمالي: ${extract.totalWorkValue.toLocaleString()} | الاستقطاعات: ${extract.totalDeductions.toLocaleString()} | المستحق: ${extract.netPayable.toLocaleString()}</p>`
@@ -70,32 +71,42 @@ export default function ExtractDetailPage() {
 
   const handleSaveSignatures = async (sigs: ContractorExtract["signatures"]) => {
     const updated = { ...extract, signatures: sigs };
-    await financeApi.saveExtract(updated);
     setExtract(updated);
   };
 
   return (
     <div className="min-h-screen bg-gray-light -m-6">
       {ToastComponent}
-      <div className="bg-white border-b px-6 py-4">
+      <div className="bg-surface border-b px-6 py-4">
         <div className="flex justify-between flex-wrap gap-4">
           <div className="flex items-center gap-4">
             <BackButton fallbackHref={base} />
             <div>
               <h1 className="text-2xl font-bold text-primary">{extract.label}</h1>
-              <p className="text-sm text-gray-500">
-                {sub?.name} | {extract.date}
+              <p className="text-sm text-text-secondary">
+                {subName} | {extract.date}
               </p>
             </div>
           </div>
           <div className="flex gap-2">
-            <Link
-              href={`${base}/${extractId}/edit`}
-              className="flex items-center gap-2 px-4 py-2 border border-blue-500 text-blue-500 rounded-lg hover:bg-blue-500 hover:text-white text-sm"
-            >
-              <Edit2 size={18} />
-              {isArabic ? "تعديل" : "Edit"}
-            </Link>
+            {extract.status === "final" ? (
+              <button
+                disabled
+                title={isArabic ? "المستخلص معتمد ولا يمكن تعديله" : "Final extract is locked"}
+                className="flex items-center gap-2 px-4 py-2 border border-border text-text-muted rounded-lg cursor-not-allowed text-sm"
+              >
+                <Edit2 size={18} />
+                {isArabic ? "تعديل (معتمد)" : "Edit (Approved)"}
+              </button>
+            ) : (
+              <Link
+                href={`${base}/${extractId}/edit`}
+                className="flex items-center gap-2 px-4 py-2 border border-blue-500 text-info rounded-lg hover:bg-info hover:text-white text-sm"
+              >
+                <Edit2 size={18} />
+                {isArabic ? "تعديل" : "Edit"}
+              </Link>
+            )}
             <button
               onClick={() => {
                 exportToCsv(
@@ -111,7 +122,7 @@ export default function ExtractDetailPage() {
                 );
                 showToast("تم", "success");
               }}
-              className="flex items-center gap-2 px-4 py-2 border border-green-600 text-green-600 rounded-lg hover:bg-green-600 hover:text-white text-sm"
+              className="flex items-center gap-2 px-4 py-2 border border-green-600 text-success-dark rounded-lg hover:bg-success-dark hover:text-white text-sm"
             >
               <Download size={18} />
               Excel

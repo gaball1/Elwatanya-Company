@@ -56,14 +56,57 @@
     "email": "Email",
     "password": "Password",
     "name": "Full Name",
+    "fullName": "Full Name",
     "submit": "Submit",
     "noAccount": "Don't have an account?",
-    "hasAccount": "Already have an account?"
+    "hasAccount": "Already have an account?",
+    "alreadyHaveAccount": "Already have an account?",
+    "createAccount": "Create Account",
+    "backToHome": "Back to Home",
+    "welcomeMessage": "Welcome to El Wataniya Urban Development System",
+    "registerDescription": "Sign up now to start managing your projects",
+    "forgotPassword": "Forgot Password?",
+    "invalidCredentials": "Invalid email or password",
+    "registrationFailed": "Failed to create account",
+    "passwordMismatch": "Passwords do not match",
+    "passwordTooWeak": "Password is too weak",
+    "weak": "Weak",
+    "medium": "Medium",
+    "strong": "Strong",
+    "passwordRequirement": "8 characters minimum",
+    "confirmPassword": "Confirm Password"
   },
   "dashboard": {
     "admin": "Admin Panel",
     "projects": "Projects",
+    "ai_agent": "AI Agent",
     "logout": "Logout"
   },
-  "loading": "Loading system..."
+  "loading": "Loading system...",
+  "ai_agent": {
+    "title": "AI ERP Agent",
+    "subtitle": "Powered by backend AI engine",
+    "analytics": "Agent Analytics",
+    "total_requests": "Total Requests",
+    "error_rate": "Error Rate",
+    "unique_intents": "Unique Intents",
+    "unique_tools": "Unique Tools",
+    "uptime": "Uptime",
+    "top_intents": "Top Intents",
+    "tool_usage": "Tool Usage",
+    "workflows": "Workflows",
+    "hourly_traffic": "Hourly Traffic",
+    "no_data": "No data yet. Start chatting with the AI Agent.",
+    "greeting": "Hello! I'm your ERP AI Agent. I can help with projects, buildings, approvals, employees, inventory, finances, and more. Ask me anything or try one of the suggestions below.",
+    "suggestions": {
+      "create_project": "How do I create a new project?",
+      "pending_approvals": "Show me my pending approvals",
+      "list_subcontractors": "List active subcontractors",
+      "explain_boq": "Explain how BOQ works"
+    },
+    "input_placeholder": "Ask about projects, approvals, inventory...",
+    "data_received": "Data received. Ask me to explain or filter further.",
+    "error_message": "Failed to get response. Please try again.",
+    "suggested_questions": "Suggested questions:"
+  }
 }

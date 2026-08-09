@@ -21,6 +21,8 @@ import {
 } from '../errors/final-boq-application.error';
 import { applyFinalItemQuantityUpdate } from '../../domain/final-boq-rules';
 import { getOrCreateFinalBoq, toFinalBoqItemResult, toItemStateInput } from './final-boq-mappers';
+import { OwnershipService } from '@/common/services/ownership.service';
+import { AuditService } from '@/modules/audit/audit.service';
 
 /** Mirrors updateFinalItem */
 export class UpdateFinalBoqItemUseCase {
@@ -28,9 +30,12 @@ export class UpdateFinalBoqItemUseCase {
     private readonly finalBoq: IFinalBoqRepository,
     private readonly buildings: IBuildingRepository,
     private readonly allocations: IFinalBoqAllocationReader,
+    private readonly ownership: OwnershipService,
+    private readonly audit: AuditService,
   ) {}
 
-  async execute(input: UpdateFinalBoqItemInput): Promise<Result<FinalBoqItemResult>> {
+  async execute(input: UpdateFinalBoqItemInput, userProjectId?: string | null, userId?: string): Promise<Result<FinalBoqItemResult>> {
+    await this.ownership.verifyBuildingAccess(userProjectId, input.buildingId);
     const buildingId = new UniqueEntityId(input.buildingId);
     const building = await this.buildings.findById(buildingId);
     if (!building) {
@@ -57,6 +62,9 @@ export class UpdateFinalBoqItemUseCase {
 
     await this.finalBoq.save(aggregate);
     const allocationRefs = await this.allocations.getAllocationsForBuilding(buildingId);
+    if (userId) {
+      this.audit.log({ userId, entity: 'final_boq', entityId: item.id.toValue(), action: 'UPDATE', before: null, after: { itemCode: item.businessCode, description: item.description, quantity: item.quantity, unitPrice: item.unitPrice } });
+    }
     // Frontend calls recalcFinalRemaining after patch
     return Result.ok(toFinalBoqItemResult(item, allocationRefs));
   }
@@ -68,9 +76,12 @@ export class UpdateFinalItemQuantityUseCase {
     private readonly finalBoq: IFinalBoqRepository,
     private readonly buildings: IBuildingRepository,
     private readonly allocations: IFinalBoqAllocationReader,
+    private readonly ownership: OwnershipService,
+    private readonly audit: AuditService,
   ) {}
 
-  async execute(input: UpdateFinalItemQuantityInput): Promise<Result<FinalBoqItemResult | null>> {
+  async execute(input: UpdateFinalItemQuantityInput, userProjectId?: string | null, userId?: string): Promise<Result<FinalBoqItemResult | null>> {
+    await this.ownership.verifyBuildingAccess(userProjectId, input.buildingId);
     const buildingId = new UniqueEntityId(input.buildingId);
     const building = await this.buildings.findById(buildingId);
     if (!building) {
@@ -122,6 +133,9 @@ export class UpdateFinalItemQuantityUseCase {
     }
 
     await this.finalBoq.save(aggregate);
+    if (userId) {
+      this.audit.log({ userId, entity: 'final_boq', entityId: item.id.toValue(), action: 'UPDATE_QUANTITY', before: null, after: { itemCode: item.businessCode, quantity: input.quantity, unitPrice: input.unitPrice } });
+    }
     return Result.ok(toFinalBoqItemResult(item, allocationRefs));
   }
 }
@@ -131,9 +145,12 @@ export class RemoveFinalBoqItemUseCase {
   constructor(
     private readonly finalBoq: IFinalBoqRepository,
     private readonly buildings: IBuildingRepository,
+    private readonly ownership: OwnershipService,
+    private readonly audit: AuditService,
   ) {}
 
-  async execute(buildingId: string, itemCode: string): Promise<Result<void>> {
+  async execute(buildingId: string, itemCode: string, userProjectId?: string | null, userId?: string): Promise<Result<void>> {
+    await this.ownership.verifyBuildingAccess(userProjectId, buildingId);
     const buildingEntityId = new UniqueEntityId(buildingId);
     const building = await this.buildings.findById(buildingEntityId);
     if (!building) {
@@ -156,6 +173,9 @@ export class RemoveFinalBoqItemUseCase {
     }
 
     await this.finalBoq.save(aggregate);
+    if (userId) {
+      this.audit.log({ userId, entity: 'final_boq', entityId: buildingId, action: 'DELETE', before: { itemCode }, after: null });
+    }
     return Result.ok();
   }
 }

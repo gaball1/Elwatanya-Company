@@ -9,11 +9,9 @@ import ExtractDeductionsTable from "@/components/boq/ExtractDeductionsTable";
 import ExtractSummaryCards from "@/components/boq/ExtractSummaryCards";
 import ExtractWorkItemsTable from "@/components/boq/ExtractWorkItemsTable";
 import DeleteConfirmModal from "@/components/boq/DeleteConfirmModal";
-import {
-  calcExtractItem,
-  validateExtractItems,
-} from "@/lib/boqStore";
-import { financeApi } from "@/lib/api/financeApi";
+import { calcExtractItem, toBoqExtractItem, fromBoqExtractItem } from "@/lib/extractCalculations";
+import { extractService } from "@/services/extract.service";
+import { contractorBoqService, type ContractorBoqItem } from "@/services/contractorBoq.service";
 import type { ContractorExtract, ExtractItem } from "@/types/boq";
 import type { ExtractDeduction } from "@/types/finance";
 import { useExtractCalculations } from "@/hooks/useExtractFinance";
@@ -37,21 +35,24 @@ export default function EditContractorExtractPage() {
   const [rows, setRows] = useState<ExtractItem[]>([]);
   const [manualDeductions, setManualDeductions] = useState<ExtractDeduction[]>([]);
   const [previousPaid, setPreviousPaid] = useState(0);
+  const [boqItems, setBoqItems] = useState<ContractorBoqItem[]>([]);
   const [deleteDedIdx, setDeleteDedIdx] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    financeApi.listExtracts(buildingId, contractorId).then(({ extracts }) => {
-      const ex = extracts.find((e) => e.id === extractId);
-      if (!ex) return;
-      setInitial(ex);
+    Promise.all([
+      extractService.get(buildingId, contractorId, extractId),
+      contractorBoqService.list(buildingId, contractorId),
+    ]).then(([ex, boq]) => {
+      setInitial(ex as unknown as ContractorExtract);
       setDate(ex.date);
       setInsurancePercent(ex.insurancePercent);
-      setRows(ex.items);
+      setRows(ex.items.map((i) => toBoqExtractItem(i)));
       setManualDeductions(
         ex.deductions.filter((d) => d.type === "manual") as ExtractDeduction[]
       );
       setPreviousPaid(ex.previousPaid ?? 0);
+      setBoqItems(boq);
     });
   }, [buildingId, contractorId, extractId]);
 
@@ -72,33 +73,45 @@ export default function EditContractorExtractPage() {
 
   if (!initial) {
     return (
-      <div className="p-8 text-center text-gray-500">
+      <div className="p-8 text-center text-text-secondary">
         {isArabic ? "جاري التحميل..." : "Loading..."}
       </div>
     );
   }
 
   const handleSave = async () => {
-    const validation = validateExtractItems(buildingId, contractorId, rows);
-    if (!validation.ok) {
-      showToast(validation.error || "خطأ", "error");
-      return;
+    for (const item of rows) {
+      const contract = boqItems.find((b) => b.itemCode === item.itemCode);
+      if (!contract) continue;
+      if (item.total > contract.assignedQuantity) {
+        showToast(
+          isArabic
+            ? `الكمية المنفذة للبند ${item.itemCode} تتجاوز الكمية المسندة (${contract.assignedQuantity})`
+            : `Executed quantity for item ${item.itemCode} exceeds assigned quantity (${contract.assignedQuantity})`,
+          "error"
+        );
+        return;
+      }
     }
     setSaving(true);
     try {
-      await financeApi.saveExtract(
-        {
-          ...initial,
-          date,
-          insurancePercent,
-          items: rows,
-          deductions,
-          totalWorkValue,
-          totalDeductions,
-          netPayable,
-        },
-        manualDeductions
-      );
+      const manualDeductionsPayload = manualDeductions
+        .filter((d) => d.name.trim() !== "")
+        .map((d) => ({
+          id: d.id,
+          name: d.name,
+          amount: d.amount,
+          type: "manual" as const,
+        }));
+      await extractService.update(buildingId, contractorId, extractId, {
+        runningNumber: initial.runningNumber ?? 0,
+        date,
+        status: initial.status,
+        insurancePercent,
+        previousPaid,
+        items: rows.map((r) => fromBoqExtractItem(r)),
+        manualDeductions: manualDeductionsPayload,
+      });
       showToast(isArabic ? "تم التحديث" : "Updated", "success");
       router.push(`${base}/${extractId}`);
     } catch (e) {
@@ -111,7 +124,7 @@ export default function EditContractorExtractPage() {
   return (
     <div className="min-h-screen bg-gray-light -m-6 space-y-4 pb-8">
       {ToastComponent}
-      <div className="bg-white border-b px-6 py-4 flex justify-between items-center flex-wrap gap-3">
+      <div className="bg-surface border-b px-6 py-4 flex justify-between items-center flex-wrap gap-3">
         <div className="flex items-center gap-4">
           <BackButton fallbackHref={`${base}/${extractId}`} />
           <h1 className="text-xl font-bold text-primary">
@@ -130,8 +143,8 @@ export default function EditContractorExtractPage() {
 
       <div className="p-6 space-y-4">
         <div className="grid md:grid-cols-2 gap-3">
-          <div className="bg-white p-3 rounded-lg shadow-sm">
-            <label className="text-xs text-gray-500">
+          <div className="bg-surface p-3 rounded-lg shadow-sm">
+            <label className="text-xs text-text-secondary">
               {isArabic ? "التاريخ" : "Date"}
             </label>
             <input
@@ -141,8 +154,8 @@ export default function EditContractorExtractPage() {
               className="w-full border-b outline-none font-medium"
             />
           </div>
-          <div className="bg-white p-3 rounded-lg shadow-sm">
-            <label className="text-xs text-gray-500">
+          <div className="bg-surface p-3 rounded-lg shadow-sm">
+            <label className="text-xs text-text-secondary">
               {isArabic ? "التأمين %" : "Insurance %"}
             </label>
             <input

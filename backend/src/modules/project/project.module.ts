@@ -1,5 +1,8 @@
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '@/prisma/prisma.module';
+import { PrismaService } from '@/prisma/prisma.service';
+import { OwnershipService } from '@/common/services/ownership.service';
+import { EventBusImpl } from '@/modules/domain-events/event-bus.impl';
 import { PROJECT_REPOSITORY } from './domain/project.repository';
 import { PrismaProjectRepository } from './infrastructure/prisma-project.repository';
 import { CreateProjectUseCase } from './application/use-cases/create-project.use-case';
@@ -15,30 +18,39 @@ import { ProjectController } from './project.controller';
   providers: [
     { provide: PROJECT_REPOSITORY, useClass: PrismaProjectRepository },
     {
+      provide: OwnershipService,
+      useFactory: (prisma: PrismaService) => new OwnershipService(prisma),
+      inject: [PrismaService],
+    },
+    {
       provide: CreateProjectUseCase,
-      useFactory: (projects: PrismaProjectRepository) => new CreateProjectUseCase(projects),
-      inject: [PROJECT_REPOSITORY],
+      useFactory: (projects: PrismaProjectRepository, eventBus: EventBusImpl) =>
+        new CreateProjectUseCase(projects, eventBus),
+      inject: [PROJECT_REPOSITORY, EventBusImpl],
     },
     {
       provide: UpdateProjectUseCase,
-      useFactory: (projects: PrismaProjectRepository) => new UpdateProjectUseCase(projects),
-      inject: [PROJECT_REPOSITORY],
+      useFactory: (projects: PrismaProjectRepository, ownership: OwnershipService, eventBus: EventBusImpl) =>
+        new UpdateProjectUseCase(projects, ownership, eventBus),
+      inject: [PROJECT_REPOSITORY, OwnershipService, EventBusImpl],
     },
     {
       provide: GetProjectUseCase,
-      useFactory: (projects: PrismaProjectRepository) => new GetProjectUseCase(projects),
-      inject: [PROJECT_REPOSITORY],
+      useFactory: (projects: PrismaProjectRepository, ownership: OwnershipService) =>
+        new GetProjectUseCase(projects, ownership),
+      inject: [PROJECT_REPOSITORY, OwnershipService],
     },
     {
       provide: ListProjectsUseCase,
-      useFactory: (projects: PrismaProjectRepository) => new ListProjectsUseCase(projects),
-      inject: [PROJECT_REPOSITORY],
+      useFactory: (projects: PrismaProjectRepository, ownership: OwnershipService) =>
+        new ListProjectsUseCase(projects, ownership),
+      inject: [PROJECT_REPOSITORY, OwnershipService],
     },
     {
       provide: SoftDeleteProjectUseCase,
-      useFactory: (projects: PrismaProjectRepository) =>
-        new SoftDeleteProjectUseCase(projects),
-      inject: [PROJECT_REPOSITORY],
+      useFactory: (projects: PrismaProjectRepository, ownership: OwnershipService) =>
+        new SoftDeleteProjectUseCase(projects, ownership),
+      inject: [PROJECT_REPOSITORY, OwnershipService],
     },
   ],
   exports: [PROJECT_REPOSITORY, GetProjectUseCase],

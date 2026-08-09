@@ -1,9 +1,23 @@
 import { Result } from '@/shared/kernel/result';
 import { ISubcontractorRepository } from '../../domain/subcontractor.repository';
+import { SubcontractorResult } from '../dto/subcontractor.dto';
+import { Subcontractor } from '../../domain/subcontractor.entity';
 
-export interface SubcontractorResult {
-  id: string;
-  name: string;
+export function toResult(s: Subcontractor): SubcontractorResult {
+  return {
+    id: s.id.toValue(),
+    name: s.name,
+    workType: s.workType,
+    marginType: s.marginType,
+    marginValue: s.marginValue,
+    phone: s.phone,
+    email: s.email,
+    address: s.address,
+    joinDate: s.joinDate,
+    status: s.status,
+    createdAt: s.createdAt,
+    updatedAt: s.updatedAt,
+  };
 }
 
 export class ListSubcontractorsUseCase {
@@ -11,11 +25,6 @@ export class ListSubcontractorsUseCase {
 
   async execute(): Promise<Result<SubcontractorResult[]>> {
     const list = await this.subcontractors.findAll();
-    return Result.ok(
-      list.map((s) => ({
-        id: s.id.toValue(),
-        name: s.name,
-      })),
-    );
+    return Result.ok(list.map(toResult));
   }
 }

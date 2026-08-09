@@ -18,6 +18,9 @@ import {
   ApiOperation,
   ApiTags,
 } from '@nestjs/swagger';
+import { RequirePermission } from '../../common/decorators/permissions.decorator';
+import { Permissions } from '../../common/constants/permissions.constant';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { CreateBuildingUseCase } from './application/use-cases/create-building.use-case';
 import { UpdateBuildingUseCase } from './application/use-cases/update-building.use-case';
 import { GetBuildingUseCase } from './application/use-cases/get-building.use-case';
@@ -43,14 +46,24 @@ export class BuildingController {
   @Post('projects/:projectId/buildings')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Create a building under a project' })
+  @RequirePermission(Permissions.Buildings.Create)
   async create(
     @Param('projectId', ParseUUIDPipe) projectId: string,
     @Body() dto: CreateBuildingDto,
+    @CurrentUser('projectId') currentProjectId?: string,
   ) {
     const result = await this.createBuilding.execute({
       projectId,
       name: dto.name,
-    });
+      code: dto.code,
+      type: dto.type,
+      startDate: dto.startDate ? new Date(dto.startDate) : undefined,
+      description: dto.description,
+      status: dto.status,
+      latitude: dto.latitude,
+      longitude: dto.longitude,
+      allowedRadius: dto.allowedRadius,
+    }, currentProjectId);
     if (result.isFailure) {
       throw this.mapError(result.error);
     }
@@ -59,8 +72,9 @@ export class BuildingController {
 
   @Get('projects/:projectId/buildings')
   @ApiOperation({ summary: 'List buildings for a project' })
-  async listByProject(@Param('projectId', ParseUUIDPipe) projectId: string) {
-    const result = await this.listBuildingsByProject.execute(projectId);
+  @RequirePermission(Permissions.Buildings.Read)
+  async listByProject(@Param('projectId', ParseUUIDPipe) projectId: string, @CurrentUser('projectId') currentProjectId?: string) {
+    const result = await this.listBuildingsByProject.execute(projectId, currentProjectId);
     if (result.isFailure) {
       throw this.mapError(result.error);
     }
@@ -69,23 +83,34 @@ export class BuildingController {
 
   @Get('buildings/:id')
   @ApiOperation({ summary: 'Get building by id' })
-  async getById(@Param('id', ParseUUIDPipe) id: string) {
-    const result = await this.getBuilding.execute(id);
+  @RequirePermission(Permissions.Buildings.Read)
+  async getById(@Param('id', ParseUUIDPipe) id: string, @CurrentUser('projectId') projectId?: string) {
+    const result = await this.getBuilding.execute(id, projectId);
     if (result.isFailure) {
       throw this.mapError(result.error);
     }
     return { building: result.getValue() };
   }
   @Patch('buildings/:id')
-  @ApiOperation({ summary: 'Update building name' })
+  @ApiOperation({ summary: 'Update building' })
+  @RequirePermission(Permissions.Buildings.Update)
   async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateBuildingDto,
+    @CurrentUser('projectId') projectId?: string,
   ) {
     const result = await this.updateBuilding.execute({
       buildingId: id,
       name: dto.name,
-    });
+      code: dto.code,
+      type: dto.type,
+      startDate: dto.startDate !== undefined ? new Date(dto.startDate) : undefined,
+      description: dto.description,
+      status: dto.status,
+      latitude: dto.latitude,
+      longitude: dto.longitude,
+      allowedRadius: dto.allowedRadius,
+    }, projectId);
     if (result.isFailure) {
       throw this.mapError(result.error);
     }
@@ -94,8 +119,9 @@ export class BuildingController {
   @Delete('buildings/:id')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Soft-delete a building' })
-  async remove(@Param('id', ParseUUIDPipe) id: string) {
-    const result = await this.softDeleteBuilding.execute(id);
+  @RequirePermission(Permissions.Buildings.Delete)
+  async remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser('projectId') projectId?: string) {
+    const result = await this.softDeleteBuilding.execute(id, projectId);
     if (result.isFailure) {
       throw this.mapError(result.error);
     }

@@ -5,14 +5,17 @@ import { BuildingApplicationError, BuildingErrorCode } from '@/modules/building/
 import { IEmployerBoqRepository } from '../../domain/employer-boq.repository';
 import { EmployerBoqItem } from '../../domain/employer-boq-item.entity';
 import { EmployerBoqItemResult } from '../dto/employer-boq.dto';
+import { OwnershipService } from '@/common/services/ownership.service';
 
 export class ListEmployerBoqItemsUseCase {
   constructor(
     private readonly employerBoq: IEmployerBoqRepository,
     private readonly buildings: IBuildingRepository,
+    private readonly ownership: OwnershipService,
   ) {}
 
-  async execute(buildingId: string): Promise<Result<EmployerBoqItemResult[]>> {
+  async execute(buildingId: string, userProjectId?: string | null): Promise<Result<EmployerBoqItemResult[]>> {
+    await this.ownership.verifyBuildingAccess(userProjectId, buildingId);
     const building = await this.buildings.findById(new UniqueEntityId(buildingId));
     if (!building) {
       return Result.fail(

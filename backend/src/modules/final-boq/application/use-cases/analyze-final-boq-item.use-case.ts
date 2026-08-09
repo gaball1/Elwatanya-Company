@@ -21,6 +21,8 @@ import {
   FinalBoqErrorCode,
 } from '../errors/final-boq-application.error';
 import { getOrCreateFinalBoq, toFinalBoqItemResult } from './final-boq-mappers';
+import { OwnershipService } from '@/common/services/ownership.service';
+import { AuditService } from '@/modules/audit/audit.service';
 
 /** Mirrors analyzeFinalItem */
 export class AnalyzeFinalBoqItemUseCase {
@@ -28,9 +30,12 @@ export class AnalyzeFinalBoqItemUseCase {
     private readonly finalBoq: IFinalBoqRepository,
     private readonly buildings: IBuildingRepository,
     private readonly allocations: IFinalBoqAllocationReader,
+    private readonly ownership: OwnershipService,
+    private readonly audit: AuditService,
   ) {}
 
-  async execute(input: AnalyzeFinalBoqItemInput): Promise<Result<FinalBoqItemResult>> {
+  async execute(input: AnalyzeFinalBoqItemInput, userProjectId?: string | null, userId?: string): Promise<Result<FinalBoqItemResult>> {
+    await this.ownership.verifyBuildingAccess(userProjectId, input.buildingId);
     const buildingId = new UniqueEntityId(input.buildingId);
     const building = await this.buildings.findById(buildingId);
     if (!building) {
@@ -50,6 +55,10 @@ export class AnalyzeFinalBoqItemUseCase {
     item.analyze(input.components);
     await this.finalBoq.save(aggregate);
 
+    if (userId) {
+      this.audit.log({ userId, entity: 'final_boq', entityId: item.id.toValue(), action: 'ANALYZE', before: null, after: { itemCode: item.businessCode, components: input.components } });
+    }
+
     const allocationRefs = await this.allocations.getAllocationsForBuilding(buildingId);
     return Result.ok(toFinalBoqItemResult(item, allocationRefs));
   }
@@ -61,9 +70,12 @@ export class AddFinalBoqComponentUseCase {
     private readonly finalBoq: IFinalBoqRepository,
     private readonly buildings: IBuildingRepository,
     private readonly allocations: IFinalBoqAllocationReader,
+    private readonly ownership: OwnershipService,
+    private readonly audit: AuditService,
   ) {}
 
-  async execute(input: AddFinalBoqComponentInput): Promise<Result<FinalBoqItemResult>> {
+  async execute(input: AddFinalBoqComponentInput, userProjectId?: string | null, userId?: string): Promise<Result<FinalBoqItemResult>> {
+    await this.ownership.verifyBuildingAccess(userProjectId, input.buildingId);
     const buildingId = new UniqueEntityId(input.buildingId);
     const building = await this.buildings.findById(buildingId);
     if (!building) {
@@ -87,6 +99,10 @@ export class AddFinalBoqComponentUseCase {
     });
     await this.finalBoq.save(aggregate);
 
+    if (userId) {
+      this.audit.log({ userId, entity: 'final_boq', entityId: item.id.toValue(), action: 'ADD_COMPONENT', before: null, after: { itemCode: item.businessCode, componentName: input.name } });
+    }
+
     const allocationRefs = await this.allocations.getAllocationsForBuilding(buildingId);
     return Result.ok(toFinalBoqItemResult(item, allocationRefs));
   }
@@ -98,9 +114,12 @@ export class RemoveFinalBoqComponentUseCase {
     private readonly finalBoq: IFinalBoqRepository,
     private readonly buildings: IBuildingRepository,
     private readonly allocations: IFinalBoqAllocationReader,
+    private readonly ownership: OwnershipService,
+    private readonly audit: AuditService,
   ) {}
 
-  async execute(input: RemoveFinalBoqComponentInput): Promise<Result<FinalBoqItemResult>> {
+  async execute(input: RemoveFinalBoqComponentInput, userProjectId?: string | null, userId?: string): Promise<Result<FinalBoqItemResult>> {
+    await this.ownership.verifyBuildingAccess(userProjectId, input.buildingId);
     const buildingId = new UniqueEntityId(input.buildingId);
     const building = await this.buildings.findById(buildingId);
     if (!building) {
@@ -127,6 +146,9 @@ export class RemoveFinalBoqComponentUseCase {
     }
 
     await this.finalBoq.save(aggregate);
+    if (userId) {
+      this.audit.log({ userId, entity: 'final_boq', entityId: item.id.toValue(), action: 'REMOVE_COMPONENT', before: null, after: { itemCode: item.businessCode, componentId: input.componentId } });
+    }
     const allocationRefs = await this.allocations.getAllocationsForBuilding(buildingId);
     return Result.ok(toFinalBoqItemResult(item, allocationRefs));
   }
@@ -141,9 +163,12 @@ export class UpdateFinalBoqComponentUseCase {
     private readonly finalBoq: IFinalBoqRepository,
     private readonly buildings: IBuildingRepository,
     private readonly allocations: IFinalBoqAllocationReader,
+    private readonly ownership: OwnershipService,
+    private readonly audit: AuditService,
   ) {}
 
-  async execute(input: UpdateFinalBoqComponentInput): Promise<Result<FinalBoqItemResult | null>> {
+  async execute(input: UpdateFinalBoqComponentInput, userProjectId?: string | null, userId?: string): Promise<Result<FinalBoqItemResult | null>> {
+    await this.ownership.verifyBuildingAccess(userProjectId, input.buildingId);
     const buildingId = new UniqueEntityId(input.buildingId);
     const building = await this.buildings.findById(buildingId);
     if (!building) {
@@ -186,6 +211,9 @@ export class UpdateFinalBoqComponentUseCase {
     }
 
     await this.finalBoq.save(aggregate);
+    if (userId) {
+      this.audit.log({ userId, entity: 'final_boq', entityId: item.id.toValue(), action: 'UPDATE_COMPONENT', before: null, after: { itemCode: item.businessCode, componentId: input.componentId, quantity: input.quantity, unitPrice: input.unitPrice } });
+    }
     const allocationRefs = await this.allocations.getAllocationsForBuilding(buildingId);
     return Result.ok(toFinalBoqItemResult(item, allocationRefs));
   }

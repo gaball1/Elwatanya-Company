@@ -12,6 +12,11 @@ import {
 import { toEmployerBoqItemResult } from './list-employer-boq-items.use-case';
 import { SyncAnalyticalFromEmployerUseCase } from '@/modules/analytical-boq/application/use-cases/sync-analytical-from-employer.use-case';
 import { AddAnalyticalFromEmployerUseCase } from '@/modules/analytical-boq/application/use-cases/sync-analytical-from-employer.use-case';
+import { OwnershipService } from '@/common/services/ownership.service';
+import { AuditService } from '@/modules/audit/audit.service';
+import { NotificationService } from '@/common/services/notification.service';
+import { EventBusImpl } from '@/modules/domain-events/event-bus.impl';
+import { BOQUpdatedEvent } from '@/modules/domain-events/events';
 
 export class UpsertEmployerBoqItemUseCase {
   constructor(
@@ -19,9 +24,14 @@ export class UpsertEmployerBoqItemUseCase {
     private readonly buildings: IBuildingRepository,
     private readonly syncAnalyticalFromEmployer: SyncAnalyticalFromEmployerUseCase,
     private readonly addAnalyticalFromEmployer: AddAnalyticalFromEmployerUseCase,
+    private readonly ownership: OwnershipService,
+    private readonly audit: AuditService,
+    private readonly notifications: NotificationService,
+    private readonly eventBus: EventBusImpl,
   ) {}
 
-  async execute(input: UpsertEmployerBoqItemInput): Promise<Result<EmployerBoqItemResult>> {
+  async execute(input: UpsertEmployerBoqItemInput, userProjectId?: string | null, userId?: string): Promise<Result<EmployerBoqItemResult>> {
+    await this.ownership.verifyBuildingAccess(userProjectId, input.buildingId);
     const buildingId = new UniqueEntityId(input.buildingId);
     const building = await this.buildings.findById(buildingId);
     if (!building) {
@@ -31,7 +41,7 @@ export class UpsertEmployerBoqItemUseCase {
     }
 
     if (input.itemCode) {
-      return this.upsertByItemCode(buildingId, input);
+      return this.upsertByItemCode(buildingId, input, userId);
     }
 
     const existing = await this.employerBoq.findByBuildingIdDescriptionAndUnit(
@@ -40,7 +50,7 @@ export class UpsertEmployerBoqItemUseCase {
       input.unit,
     );
     if (existing) {
-      return this.updateExisting(existing, input);
+      return this.updateExisting(existing, input, userId);
     }
 
     const itemCode = await this.employerBoq.generateNextItemCode(buildingId);
@@ -67,18 +77,50 @@ export class UpsertEmployerBoqItemUseCase {
       buildingId: input.buildingId,
       itemCode: item.itemCode,
     });
+    if (userId) {
+      this.audit.log({ userId, entity: 'employer_boq', entityId: item.id.toValue(), action: 'CREATE', before: null, after: { itemCode: item.itemCode, description: item.description, unit: item.unit, quantity: item.quantity, unitPrice: item.unitPrice } });
+    }
+    await this.notifications.createForProjectMembers(building.projectId.toValue(), {
+      title: 'تم تحديث مقايسة جهة الإسناد',
+      titleEn: 'Employer BOQ Updated',
+      message: `تم إضافة بند جديد ${item.itemCode} - ${item.description}`,
+      messageEn: `New item added ${item.itemCode} - ${item.description}`,
+      type: 'info',
+      entityType: 'employer_boq',
+      entityId: input.buildingId,
+      link: `/projects/${building.projectId.toValue()}/buildings/${input.buildingId}/estimates/client`,
+      createdBy: userId,
+    });
+    await this.publishBoqUpdated(input.buildingId, item.itemCode, 'created', userId);
     return Result.ok(toEmployerBoqItemResult(item));
+  }
+
+  private async publishBoqUpdated(buildingId: string, itemCode: string, action: 'created' | 'updated', userId?: string) {
+    await this.eventBus.publish(
+      new BOQUpdatedEvent(
+        `${buildingId}:${itemCode}`,
+        'boq',
+        {
+          id: buildingId,
+          projectId: '',
+          businessCode: itemCode,
+          status: action,
+          updatedBy: userId,
+        },
+      ),
+    );
   }
 
   private async upsertByItemCode(
     buildingId: UniqueEntityId,
     input: UpsertEmployerBoqItemInput,
+    userId?: string,
   ): Promise<Result<EmployerBoqItemResult>> {
     const itemCode = input.itemCode as string;
     const existing = await this.employerBoq.findByBuildingIdAndItemCode(buildingId, itemCode);
 
     if (existing) {
-      return this.updateExisting(existing, input);
+      return this.updateExisting(existing, input, userId);
     }
 
     const created = EmployerBoqItem.create({
@@ -104,13 +146,31 @@ export class UpsertEmployerBoqItemUseCase {
       buildingId: input.buildingId,
       itemCode: item.itemCode,
     });
+    if (userId) {
+      this.audit.log({ userId, entity: 'employer_boq', entityId: item.id.toValue(), action: 'CREATE', before: null, after: { itemCode: item.itemCode, description: item.description, unit: item.unit, quantity: item.quantity, unitPrice: item.unitPrice } });
+    }
+    const building = await this.buildings.findById(buildingId);
+    await this.notifications.createForProjectMembers(building?.projectId.toValue() ?? '', {
+      title: 'تم تحديث مقايسة جهة الإسناد',
+      titleEn: 'Employer BOQ Updated',
+      message: `تم إضافة بند جديد ${item.itemCode} - ${item.description}`,
+      messageEn: `New item added ${item.itemCode} - ${item.description}`,
+      type: 'info',
+      entityType: 'employer_boq',
+      entityId: input.buildingId,
+      link: `/projects/${building?.projectId.toValue() ?? ''}/buildings/${input.buildingId}/estimates/client`,
+      createdBy: userId,
+    });
+    await this.publishBoqUpdated(input.buildingId, item.itemCode, 'created', userId);
     return Result.ok(toEmployerBoqItemResult(item));
   }
 
   private async updateExisting(
     existing: EmployerBoqItem,
     input: UpsertEmployerBoqItemInput,
+    userId?: string,
   ): Promise<Result<EmployerBoqItemResult>> {
+    const before = { itemCode: existing.itemCode, description: existing.description, unit: existing.unit, quantity: existing.quantity, unitPrice: existing.unitPrice };
     const updateResult = existing.update({
       description: input.description,
       unit: input.unit,
@@ -131,6 +191,22 @@ export class UpsertEmployerBoqItemUseCase {
       buildingId: input.buildingId,
       itemCode: existing.itemCode,
     });
+    if (userId) {
+      this.audit.log({ userId, entity: 'employer_boq', entityId: existing.id.toValue(), action: 'UPDATE', before, after: { itemCode: existing.itemCode, description: existing.description, unit: existing.unit, quantity: existing.quantity, unitPrice: existing.unitPrice } });
+    }
+    const building = await this.buildings.findById(existing.buildingId);
+    await this.notifications.createForProjectMembers(building?.projectId.toValue() ?? '', {
+      title: 'تم تحديث مقايسة جهة الإسناد',
+      titleEn: 'Employer BOQ Updated',
+      message: `تم تعديل البند ${existing.itemCode} - ${existing.description}`,
+      messageEn: `Item updated ${existing.itemCode} - ${existing.description}`,
+      type: 'info',
+      entityType: 'employer_boq',
+      entityId: existing.buildingId.toValue(),
+      link: `/projects/${building?.projectId.toValue() ?? ''}/buildings/${existing.buildingId.toValue()}/estimates/client`,
+      createdBy: userId,
+    });
+    await this.publishBoqUpdated(existing.buildingId.toValue(), existing.itemCode, 'updated', userId);
     return Result.ok(toEmployerBoqItemResult(existing));
   }
 }

@@ -1,5 +1,6 @@
 import { forwardRef, Module } from '@nestjs/common';
 import { PrismaModule } from '@/prisma/prisma.module';
+import { PrismaService } from '@/prisma/prisma.service';
 import { BuildingModule } from '@/modules/building/building.module';
 import { AnalyticalBoqModule } from '@/modules/analytical-boq/analytical-boq.module';
 import { EmployerBoqModule } from '@/modules/employer-boq/employer-boq.module';
@@ -10,6 +11,8 @@ import { ANALYTICAL_BOQ_REPOSITORY } from '@/modules/analytical-boq/domain/analy
 import { IAnalyticalBoqRepository } from '@/modules/analytical-boq/domain/analytical-boq.repository';
 import { EMPLOYER_BOQ_REPOSITORY } from '@/modules/employer-boq/domain/employer-boq.repository';
 import { IEmployerBoqRepository } from '@/modules/employer-boq/domain/employer-boq.repository';
+import { OwnershipService } from '@/common/services/ownership.service';
+import { AuditService } from '@/modules/audit/audit.service';
 import {
   FINAL_BOQ_ALLOCATION_READER,
   FINAL_BOQ_REPOSITORY,
@@ -45,13 +48,19 @@ import { FinalBoqController } from './final-boq.controller';
   providers: [
     { provide: FINAL_BOQ_REPOSITORY, useClass: PrismaFinalBoqRepository },
     {
+      provide: OwnershipService,
+      useFactory: (prisma: PrismaService) => new OwnershipService(prisma),
+      inject: [PrismaService],
+    },
+    {
       provide: ListFinalBoqItemsUseCase,
       useFactory: (
         finalBoq: IFinalBoqRepository,
         buildings: IBuildingRepository,
         allocations: IFinalBoqAllocationReader,
-      ) => new ListFinalBoqItemsUseCase(finalBoq, buildings, allocations),
-      inject: [FINAL_BOQ_REPOSITORY, BUILDING_REPOSITORY, FINAL_BOQ_ALLOCATION_READER],
+        ownership: OwnershipService,
+      ) => new ListFinalBoqItemsUseCase(finalBoq, buildings, allocations, ownership),
+      inject: [FINAL_BOQ_REPOSITORY, BUILDING_REPOSITORY, FINAL_BOQ_ALLOCATION_READER, OwnershipService],
     },
     {
       provide: SyncFinalFromAnalyticalUseCase,
@@ -60,12 +69,16 @@ import { FinalBoqController } from './final-boq.controller';
         analyticalBoq: IAnalyticalBoqRepository,
         buildings: IBuildingRepository,
         allocations: IFinalBoqAllocationReader,
-      ) => new SyncFinalFromAnalyticalUseCase(finalBoq, analyticalBoq, buildings, allocations),
+        ownership: OwnershipService,
+        audit: AuditService,
+      ) => new SyncFinalFromAnalyticalUseCase(finalBoq, analyticalBoq, buildings, allocations, ownership, audit),
       inject: [
         FINAL_BOQ_REPOSITORY,
         ANALYTICAL_BOQ_REPOSITORY,
         BUILDING_REPOSITORY,
         FINAL_BOQ_ALLOCATION_READER,
+        OwnershipService,
+        AuditService,
       ],
     },
     {
@@ -75,12 +88,16 @@ import { FinalBoqController } from './final-boq.controller';
         employerBoq: IEmployerBoqRepository,
         buildings: IBuildingRepository,
         allocations: IFinalBoqAllocationReader,
-      ) => new ImportFinalFromEmployerUseCase(finalBoq, employerBoq, buildings, allocations),
+        ownership: OwnershipService,
+        audit: AuditService,
+      ) => new ImportFinalFromEmployerUseCase(finalBoq, employerBoq, buildings, allocations, ownership, audit),
       inject: [
         FINAL_BOQ_REPOSITORY,
         EMPLOYER_BOQ_REPOSITORY,
         BUILDING_REPOSITORY,
         FINAL_BOQ_ALLOCATION_READER,
+        OwnershipService,
+        AuditService,
       ],
     },
     {
@@ -89,8 +106,10 @@ import { FinalBoqController } from './final-boq.controller';
         finalBoq: IFinalBoqRepository,
         buildings: IBuildingRepository,
         allocations: IFinalBoqAllocationReader,
-      ) => new UpdateFinalBoqItemUseCase(finalBoq, buildings, allocations),
-      inject: [FINAL_BOQ_REPOSITORY, BUILDING_REPOSITORY, FINAL_BOQ_ALLOCATION_READER],
+        ownership: OwnershipService,
+        audit: AuditService,
+      ) => new UpdateFinalBoqItemUseCase(finalBoq, buildings, allocations, ownership, audit),
+      inject: [FINAL_BOQ_REPOSITORY, BUILDING_REPOSITORY, FINAL_BOQ_ALLOCATION_READER, OwnershipService, AuditService],
     },
     {
       provide: UpdateFinalItemQuantityUseCase,
@@ -98,14 +117,16 @@ import { FinalBoqController } from './final-boq.controller';
         finalBoq: IFinalBoqRepository,
         buildings: IBuildingRepository,
         allocations: IFinalBoqAllocationReader,
-      ) => new UpdateFinalItemQuantityUseCase(finalBoq, buildings, allocations),
-      inject: [FINAL_BOQ_REPOSITORY, BUILDING_REPOSITORY, FINAL_BOQ_ALLOCATION_READER],
+        ownership: OwnershipService,
+        audit: AuditService,
+      ) => new UpdateFinalItemQuantityUseCase(finalBoq, buildings, allocations, ownership, audit),
+      inject: [FINAL_BOQ_REPOSITORY, BUILDING_REPOSITORY, FINAL_BOQ_ALLOCATION_READER, OwnershipService, AuditService],
     },
     {
       provide: RemoveFinalBoqItemUseCase,
-      useFactory: (finalBoq: IFinalBoqRepository, buildings: IBuildingRepository) =>
-        new RemoveFinalBoqItemUseCase(finalBoq, buildings),
-      inject: [FINAL_BOQ_REPOSITORY, BUILDING_REPOSITORY],
+      useFactory: (finalBoq: IFinalBoqRepository, buildings: IBuildingRepository, ownership: OwnershipService, audit: AuditService) =>
+        new RemoveFinalBoqItemUseCase(finalBoq, buildings, ownership, audit),
+      inject: [FINAL_BOQ_REPOSITORY, BUILDING_REPOSITORY, OwnershipService, AuditService],
     },
     {
       provide: AnalyzeFinalBoqItemUseCase,
@@ -113,8 +134,10 @@ import { FinalBoqController } from './final-boq.controller';
         finalBoq: IFinalBoqRepository,
         buildings: IBuildingRepository,
         allocations: IFinalBoqAllocationReader,
-      ) => new AnalyzeFinalBoqItemUseCase(finalBoq, buildings, allocations),
-      inject: [FINAL_BOQ_REPOSITORY, BUILDING_REPOSITORY, FINAL_BOQ_ALLOCATION_READER],
+        ownership: OwnershipService,
+        audit: AuditService,
+      ) => new AnalyzeFinalBoqItemUseCase(finalBoq, buildings, allocations, ownership, audit),
+      inject: [FINAL_BOQ_REPOSITORY, BUILDING_REPOSITORY, FINAL_BOQ_ALLOCATION_READER, OwnershipService, AuditService],
     },
     {
       provide: AddFinalBoqComponentUseCase,
@@ -122,8 +145,10 @@ import { FinalBoqController } from './final-boq.controller';
         finalBoq: IFinalBoqRepository,
         buildings: IBuildingRepository,
         allocations: IFinalBoqAllocationReader,
-      ) => new AddFinalBoqComponentUseCase(finalBoq, buildings, allocations),
-      inject: [FINAL_BOQ_REPOSITORY, BUILDING_REPOSITORY, FINAL_BOQ_ALLOCATION_READER],
+        ownership: OwnershipService,
+        audit: AuditService,
+      ) => new AddFinalBoqComponentUseCase(finalBoq, buildings, allocations, ownership, audit),
+      inject: [FINAL_BOQ_REPOSITORY, BUILDING_REPOSITORY, FINAL_BOQ_ALLOCATION_READER, OwnershipService, AuditService],
     },
     {
       provide: UpdateFinalBoqComponentUseCase,
@@ -131,8 +156,10 @@ import { FinalBoqController } from './final-boq.controller';
         finalBoq: IFinalBoqRepository,
         buildings: IBuildingRepository,
         allocations: IFinalBoqAllocationReader,
-      ) => new UpdateFinalBoqComponentUseCase(finalBoq, buildings, allocations),
-      inject: [FINAL_BOQ_REPOSITORY, BUILDING_REPOSITORY, FINAL_BOQ_ALLOCATION_READER],
+        ownership: OwnershipService,
+        audit: AuditService,
+      ) => new UpdateFinalBoqComponentUseCase(finalBoq, buildings, allocations, ownership, audit),
+      inject: [FINAL_BOQ_REPOSITORY, BUILDING_REPOSITORY, FINAL_BOQ_ALLOCATION_READER, OwnershipService, AuditService],
     },
     {
       provide: RemoveFinalBoqComponentUseCase,
@@ -140,8 +167,10 @@ import { FinalBoqController } from './final-boq.controller';
         finalBoq: IFinalBoqRepository,
         buildings: IBuildingRepository,
         allocations: IFinalBoqAllocationReader,
-      ) => new RemoveFinalBoqComponentUseCase(finalBoq, buildings, allocations),
-      inject: [FINAL_BOQ_REPOSITORY, BUILDING_REPOSITORY, FINAL_BOQ_ALLOCATION_READER],
+        ownership: OwnershipService,
+        audit: AuditService,
+      ) => new RemoveFinalBoqComponentUseCase(finalBoq, buildings, allocations, ownership, audit),
+      inject: [FINAL_BOQ_REPOSITORY, BUILDING_REPOSITORY, FINAL_BOQ_ALLOCATION_READER, OwnershipService, AuditService],
     },
   ],
   exports: [

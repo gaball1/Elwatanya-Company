@@ -11,9 +11,9 @@ import { AllocationRef } from '@/modules/final-boq/domain/final-boq-rules';
 export class PrismaContractorBoqRepository implements IContractorBoqRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  async save(contractorBoq: ContractorBoq): Promise<void> {
-    await this.prisma.$transaction(async (tx) => {
-      await tx.contractorBoq.upsert({
+  async save(contractorBoq: ContractorBoq, tx?: any): Promise<void> {
+    const run = async (client: any) => {
+      await client.contractorBoq.upsert({
         where: { id: contractorBoq.id.toValue() },
         create: {
           id: contractorBoq.id.toValue(),
@@ -37,14 +37,14 @@ export class PrismaContractorBoqRepository implements IContractorBoqRepository {
 
       for (const item of contractorBoq.allItems) {
         if (item.deletedAt) {
-          await tx.contractorBoqItem.updateMany({
+          await client.contractorBoqItem.updateMany({
             where: { id: item.id.toValue() },
             data: { deletedAt: item.deletedAt, updatedAt: new Date() },
           });
           continue;
         }
 
-        await tx.contractorBoqItem.upsert({
+        await client.contractorBoqItem.upsert({
           where: { id: item.id.toValue() },
           create: {
             id: item.id.toValue(),
@@ -76,7 +76,13 @@ export class PrismaContractorBoqRepository implements IContractorBoqRepository {
           },
         });
       }
-    });
+    };
+
+    if (tx) {
+      await run(tx);
+    } else {
+      await this.prisma.$transaction(run);
+    }
   }
 
   async findByBuildingAndSubcontractor(

@@ -1,10 +1,13 @@
 import { forwardRef, Module } from '@nestjs/common';
 import { PrismaModule } from '@/prisma/prisma.module';
+import { PrismaService } from '@/prisma/prisma.service';
 import { BuildingModule } from '@/modules/building/building.module';
 import { FinalBoqModule } from '@/modules/final-boq/final-boq.module';
 import { ContractorBoqModule } from '@/modules/contractor-boq/contractor-boq.module';
 import { BUILDING_REPOSITORY } from '@/modules/building/domain/building.repository';
 import { IBuildingRepository } from '@/modules/building/domain/building.repository';
+import { OwnershipService } from '@/common/services/ownership.service';
+import { AuditService } from '@/modules/audit/audit.service';
 import { FINAL_BOQ_REPOSITORY } from '@/modules/final-boq/domain/final-boq.repository';
 import { IFinalBoqRepository } from '@/modules/final-boq/domain/final-boq.repository';
 import { CONTRACTOR_BOQ_REPOSITORY } from '@/modules/contractor-boq/domain/contractor-boq.repository';
@@ -22,13 +25,21 @@ import { DistributionController } from './distribution.controller';
   controllers: [DistributionController],
   providers: [
     {
+      provide: OwnershipService,
+      useFactory: (prisma: PrismaService) => new OwnershipService(prisma),
+      inject: [PrismaService],
+    },
+    {
       provide: DistributeComponentUseCase,
       useFactory: (
         finalBoq: IFinalBoqRepository,
         contractorBoq: IContractorBoqRepository,
         buildings: IBuildingRepository,
-      ) => new DistributeComponentUseCase(finalBoq, contractorBoq, buildings),
-      inject: [FINAL_BOQ_REPOSITORY, CONTRACTOR_BOQ_REPOSITORY, BUILDING_REPOSITORY],
+        ownership: OwnershipService,
+        audit: AuditService,
+        prisma: PrismaService,
+      ) => new DistributeComponentUseCase(finalBoq, contractorBoq, buildings, ownership, audit, prisma),
+      inject: [FINAL_BOQ_REPOSITORY, CONTRACTOR_BOQ_REPOSITORY, BUILDING_REPOSITORY, OwnershipService, AuditService, PrismaService],
     },
   ],
   exports: [DistributeComponentUseCase],

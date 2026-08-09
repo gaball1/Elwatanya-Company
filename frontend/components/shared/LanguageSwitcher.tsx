@@ -15,13 +15,13 @@ export default function LanguageSwitcher() {
   };
 
   return (
-    <div className="flex items-center gap-1 rounded-lg border border-gray-200 p-0.5">
+    <div className="flex items-center gap-1 rounded-lg border border-border p-0.5">
       <button
         onClick={() => switchLocale("ar")}
         className={`px-2.5 py-1 text-sm font-medium rounded-md transition-colors ${
           pathname.startsWith("/ar")
             ? "bg-primary text-white"
-            : "text-gray-500 hover:text-primary"
+            : "text-text-secondary hover:text-gold"
         }`}
       >
         ع
@@ -31,7 +31,7 @@ export default function LanguageSwitcher() {
         className={`px-2.5 py-1 text-sm font-medium rounded-md transition-colors ${
           pathname.startsWith("/en")
             ? "bg-primary text-white"
-            : "text-gray-500 hover:text-primary"
+            : "text-text-secondary hover:text-gold"
         }`}
       >
         EN

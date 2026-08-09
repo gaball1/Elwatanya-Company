@@ -9,19 +9,18 @@ import {
   useState,
 } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import type { User, UserRole } from "@/types/user";
+import type { User } from "@/types/user";
 import { apiClient } from "@/lib/api/apiClient";
 import {
   getAccessToken,
   getRefreshToken,
-  saveAccessToken,
-  saveRefreshToken,
 } from "@/lib/api/tokenStorage";
 import {
   authService,
   type AuthResponse,
   type AuthUser,
 } from "@/services/auth.service";
+import { setUser as setCachedUser } from "@/hooks/useUser";
 
 interface AuthContextValue {
   user: User | null;
@@ -33,28 +32,19 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-const LEGACY_USER_STORAGE_KEY = "elwataniya_user";
-
 const PUBLIC_ROUTES = new Set(["", "/login", "/register", "/forgot-password"]);
 
 function mapApiUserToUser(apiUser: AuthUser & { createdAt?: string }): User {
-  const roleMap: Record<string, UserRole> = {
-    CEO: "admin",
-    TECHNICAL_OFFICE: "manager",
-    ACCOUNTANT: "manager",
-    SITE_ENGINEER: "viewer",
-    STORE_MANAGER: "viewer",
-    EMPLOYEE: "viewer",
-    admin: "admin",
-    manager: "manager",
-    viewer: "viewer",
-  };
-
   return {
     id: apiUser.id,
     email: apiUser.email,
     name: apiUser.name,
-    role: roleMap[apiUser.role] ?? "viewer",
+    role: apiUser.role,
+    status: apiUser.status ?? "ACTIVE",
+    projectId: apiUser.projectId,
+    permissions: apiUser.permissions,
+    roleNames: apiUser.roleNames,
+    projectIds: apiUser.projectIds,
     createdAt: apiUser.createdAt ?? new Date().toISOString(),
   };
 }
@@ -81,31 +71,50 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     async function restoreSession() {
       try {
-        localStorage.removeItem(LEGACY_USER_STORAGE_KEY);
+        localStorage.removeItem("elwataniya_user");
       } catch {
-        // ignore legacy cleanup errors
+        // ignore
       }
 
-      const hasToken = getAccessToken() || getRefreshToken();
-      if (!hasToken) {
+      const hasAccess = getAccessToken();
+      const hasRefresh = getRefreshToken();
+
+      if (!hasAccess && !hasRefresh) {
         if (!cancelled) setLoading(false);
         return;
       }
 
       try {
         const { user: currentUser } = await authService.getCurrentUser();
-        if (!cancelled) setUser(mapApiUserToUser(currentUser));
+        const mapped = mapApiUserToUser(currentUser);
+        if (!cancelled) {
+          setUser(mapped);
+          setCachedUser(mapped);
+        }
       } catch {
         try {
           await authService.refresh();
           const { user: currentUser } = await authService.getCurrentUser();
-          if (!cancelled) setUser(mapApiUserToUser(currentUser));
+          const mapped = mapApiUserToUser(currentUser);
+          if (!cancelled) {
+            setUser(mapped);
+            setCachedUser(mapped);
+          }
         } catch {
-          await authService.logout();
-          if (!cancelled) setUser(null);
+          try {
+            await authService.logout();
+          } catch {
+            // ignore
+          }
+          if (!cancelled) {
+            setUser(null);
+            setCachedUser(null);
+          }
         }
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     }
 
@@ -117,17 +126,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (loading || user || !isProtectedRoute(pathname)) return;
+    if (loading || user || !isProtectedRoute(pathname)) {
+      return;
+    }
     const locale = getLocaleFromPathname(pathname);
     router.replace(`/${locale}/login`);
   }, [loading, user, pathname, router]);
 
   const login = useCallback(async (email: string, password: string) => {
-    if (!email || !password) return false;
+    if (!email || !password) {
+      return false;
+    }
 
     try {
       const data = await authService.login(email, password);
-      setUser(mapApiUserToUser(data.user));
+      const mapped = mapApiUserToUser(data.user);
+      setUser(mapped);
+      setCachedUser(mapped);
       return true;
     } catch {
       return false;
@@ -136,7 +151,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const register = useCallback(
     async (name: string, email: string, password: string) => {
-      if (!name || !email || !password) return false;
+      if (!name || !email || !password) {
+        return false;
+      }
 
       try {
         const data = await apiClient<AuthResponse>("/auth/register", {
@@ -145,10 +162,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           skipAuth: true,
           skipAuthRetry: true,
         });
-
+        const { saveAccessToken, saveRefreshToken } = await import("@/lib/api/tokenStorage");
         saveAccessToken(data.accessToken);
         saveRefreshToken(data.refreshToken);
-        setUser(mapApiUserToUser(data.user));
+        const mapped = mapApiUserToUser(data.user);
+        setUser(mapped);
+        setCachedUser(mapped);
         return true;
       } catch {
         return false;
@@ -160,6 +179,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = useCallback(() => {
     void authService.logout().finally(() => {
       setUser(null);
+      setCachedUser(null);
     });
   }, []);
 

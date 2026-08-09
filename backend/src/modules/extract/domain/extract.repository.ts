@@ -4,7 +4,7 @@ import { Extract } from './extract.entity';
 export const EXTRACT_REPOSITORY = Symbol('EXTRACT_REPOSITORY');
 
 export interface IExtractRepository {
-  save(extract: Extract): Promise<void>;
+  save(extract: Extract, tx?: any): Promise<void>;
   findById(id: UniqueEntityId): Promise<Extract | null>;
   findByContractorBoqId(contractorBoqId: UniqueEntityId): Promise<Extract[]>;
   delete(id: UniqueEntityId): Promise<void>;

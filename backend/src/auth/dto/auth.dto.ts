@@ -1,5 +1,5 @@
-import { IsEmail, IsNotEmpty, IsString, MinLength } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
+import { IsEmail, IsNotEmpty, IsString, MinLength, IsOptional, IsUUID } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class LoginDto {
   @ApiProperty({ example: 'admin@elwataniya.com' })
@@ -36,19 +36,38 @@ export class RefreshTokenDto {
   refreshToken!: string;
 }
 
+export class ForgotPasswordDto {
+  @ApiProperty({ example: 'user@elwataniya.com' })
+  @IsEmail()
+  email!: string;
+}
+
+export class ResetPasswordDto {
+  @ApiProperty()
+  @IsString()
+  @IsNotEmpty()
+  token!: string;
+
+  @ApiProperty({ example: 'NewSecurePass123' })
+  @IsString()
+  @MinLength(8)
+  password!: string;
+}
+
+export class ChangePasswordDto {
+  @ApiProperty()
+  @IsString()
+  @IsNotEmpty()
+  currentPassword!: string;
+
+  @ApiProperty({ example: 'NewSecurePass123' })
+  @IsString()
+  @MinLength(8)
+  newPassword!: string;
+}
+
 export class AuthResponseDto {
-  @ApiProperty()
-  accessToken!: string;
-
-  @ApiProperty()
-  refreshToken!: string;
-
-  @ApiProperty()
-  user!: {
-    id: string;
-    email: string;
-    name: string;
-    role: string;
-    projectId?: string | null;
-  };
+  @ApiProperty() accessToken!: string;
+  @ApiProperty() refreshToken!: string;
+  @ApiProperty() user!: { id: string; email: string; name: string; role: string; projectId?: string | null; permissions?: string[] };
 }

@@ -1,6 +1,8 @@
 import { AggregateRoot } from '@/shared/kernel/aggregate-root';
 import { UniqueEntityId } from '@/shared/kernel/unique-entity-id.vo';
 
+export type PaymentStatus = 'pending' | 'approved';
+
 export interface PaymentProps {
   statementId: UniqueEntityId | null;
   buildingId: UniqueEntityId | null;
@@ -8,6 +10,7 @@ export interface PaymentProps {
   amount: number;
   paidAt: Date;
   notes: string | null;
+  status: PaymentStatus;
   deletedAt: Date | null;
 }
 
@@ -49,8 +52,34 @@ export class Payment extends AggregateRoot {
     return this.props.notes;
   }
 
+  get status(): PaymentStatus {
+    return this.props.status;
+  }
+
   get deletedAt(): Date | null {
     return this.props.deletedAt;
+  }
+
+  // Intentional: payments use their own domain-specific approve flow (markApproved +
+  // PaymentApprovedEvent). Do NOT wire payments into the generic approval engine.
+  public markApproved(): void {
+    this.props.status = 'approved';
+  }
+
+  public update(input: { amount?: number; paidAt?: Date; notes?: string | null }): void {
+    if (input.amount !== undefined) {
+      this.props.amount = input.amount;
+    }
+    if (input.paidAt !== undefined) {
+      this.props.paidAt = input.paidAt;
+    }
+    if (input.notes !== undefined) {
+      this.props.notes = input.notes;
+    }
+  }
+
+  public markDeleted(): void {
+    this.props.deletedAt = new Date();
   }
 
   public static create(input: {
@@ -68,6 +97,7 @@ export class Payment extends AggregateRoot {
       amount: input.amount,
       paidAt: input.paidAt,
       notes: input.notes ?? null,
+      status: 'pending',
       deletedAt: null,
     });
   }

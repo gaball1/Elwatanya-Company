@@ -2,7 +2,7 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useState, useMemo, useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Card } from "@/components/ui";
 import { Save, Plus, Trash2 } from "lucide-react";
 import BackButton from "@/components/shared/BackButton";
@@ -10,12 +10,9 @@ import ExtractDeductionsTable from "@/components/boq/ExtractDeductionsTable";
 import ExtractSummaryCards from "@/components/boq/ExtractSummaryCards";
 import ExtractWorkItemsTable from "@/components/boq/ExtractWorkItemsTable";
 import DeleteConfirmModal from "@/components/boq/DeleteConfirmModal";
-import {
-  calcExtractItem,
-  getContractorBoq,
-  validateExtractItems,
-} from "@/lib/boqStore";
-import { financeApi } from "@/lib/api/financeApi";
+import { calcExtractItem, fromBoqExtractItem } from "@/lib/extractCalculations";
+import { extractService, type Extract } from "@/services/extract.service";
+import { contractorBoqService, type ContractorBoqItem } from "@/services/contractorBoq.service";
 import type { ExtractItem } from "@/types/boq";
 import type { ExtractDeduction } from "@/types/finance";
 import {
@@ -44,6 +41,9 @@ export default function NewContractorExtractPage() {
   const [deleteDedIdx, setDeleteDedIdx] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [maxRunningNumber, setMaxRunningNumber] = useState(0);
+  const [rows, setRows] = useState<ExtractItem[]>([]);
+  const [boqItems, setBoqItems] = useState<ContractorBoqItem[]>([]);
+  const [extracts, setExtracts] = useState<Extract[]>([]);
 
   const {
     previousPaid,
@@ -51,43 +51,31 @@ export default function NewContractorExtractPage() {
     loading: metaLoading,
   } = useExtractMeta(buildingId, contractorId, runningNumber);
 
-  // ✅ منع setRunningNumber من التحديث إذا كانت القيمة نفسها
   useEffect(() => {
     let mounted = true;
-
-    financeApi
-      .getExtractMeta(buildingId, contractorId, runningNumber)
-      .then((m) => {
-        if (!mounted) return;
-        setMaxRunningNumber(m.nextRunningNumber - 1);
-        setRunningNumber((prev) =>
-          prev === m.nextRunningNumber ? prev : m.nextRunningNumber
-        );
-      })
-      .catch(() => {});
-
-    return () => {
-      mounted = false;
-    };
+    Promise.all([
+      extractService.getMeta(buildingId, contractorId),
+      contractorBoqService.list(buildingId, contractorId),
+      extractService.list(buildingId, contractorId),
+    ]).then(([meta, boq, existingExtracts]) => {
+      if (!mounted) return;
+      setMaxRunningNumber(meta.nextRunning - 1);
+      setRunningNumber((prev) =>
+        prev === meta.nextRunning ? prev : meta.nextRunning
+      );
+      setBoqItems(boq);
+      setExtracts(existingExtracts);
+    }).catch((err) => console.error("[ExtractNew] Failed to load initial data:", err));
+    return () => { mounted = false; };
   }, [buildingId, contractorId]);
 
-  // ✅ useMemo للـ boq عشان منع التغيير في كل ريندر
-  const boq = useMemo(() => {
-    return getContractorBoq(buildingId, contractorId);
-  }, [buildingId, contractorId]);
-
-  // ✅ State للـ rows
-  const [rows, setRows] = useState<ExtractItem[]>([]);
-
-  // ✅ useEffect الرئيسي - إدارة rows بطريقة صح
   useEffect(() => {
     if (metaLoading) return;
-    if (!boq.length) return;
+    if (!boqItems.length) return;
 
     setRows((prev) => {
-      // ✅ أول تحميل فقط
       if (prev.length === 0) {
-        return boq.map((b) =>
+        return boqItems.map((b) =>
           calcExtractItem({
             itemCode: b.itemCode,
             description: b.description,
@@ -100,11 +88,8 @@ export default function NewContractorExtractPage() {
           })
         );
       }
-
-      // ✅ تحديث السابق مع الحفاظ على current اللي المستخدم كتبه
       return prev.map((old) => {
-        const boqItem = boq.find((x) => x.itemCode === old.itemCode);
-
+        const boqItem = boqItems.find((x) => x.itemCode === old.itemCode);
         return calcExtractItem({
           ...old,
           previous: previousQuantities[old.itemCode] || 0,
@@ -113,7 +98,7 @@ export default function NewContractorExtractPage() {
         });
       });
     });
-  }, [metaLoading, previousQuantities, boq]);
+  }, [metaLoading, previousQuantities, boqItems]);
 
   const updateRow = (idx: number, field: keyof ExtractItem, value: number) => {
     const next = [...rows];
@@ -121,7 +106,6 @@ export default function NewContractorExtractPage() {
     setRows(next);
   };
 
-  // ✅ استخدام rows مباشرة في الحسابات
   const { totalWorkValue, deductions, totalDeductions, netPayable } =
     useExtractCalculations(
       rows,
@@ -131,7 +115,6 @@ export default function NewContractorExtractPage() {
       isArabic
     );
 
-  // ✅ إضافة خصم جديد
   const handleAddDeduction = () => {
     const newDeduction: ExtractDeduction = {
       id: `ded-${Date.now()}`,
@@ -143,7 +126,6 @@ export default function NewContractorExtractPage() {
     setManualDeductions([...manualDeductions, newDeduction]);
   };
 
-  // ✅ تحديث خصم
   const handleUpdateDeduction = (
     idx: number,
     field: keyof ExtractDeduction,
@@ -154,43 +136,18 @@ export default function NewContractorExtractPage() {
     setManualDeductions(updated);
   };
 
-  // ✅ حذف خصم
   const handleDeleteDeduction = (idx: number) => {
     setManualDeductions(manualDeductions.filter((_, i) => i !== idx));
     setDeleteDedIdx(null);
   };
 
-  // ✅ دالة للتحقق من تكرار رقم الجاري
-  const isRunningNumberDuplicate = useCallback(
-    (number: number): boolean => {
-      // جلب جميع مستخلصات المقاول من mockData
-      const allExtracts = getContractorExtracts(buildingId, contractorId);
-      return allExtracts.some(
-        (extract: any) => extract.runningNumber === number
-      );
-    },
-    [buildingId, contractorId]
-  );
+  const isRunningNumberDuplicate = (number: number): boolean => {
+    return extracts.some(
+      (e) => e.runningNumber === number
+    );
+  };
 
-  // ✅ دالة لجلب مستخلصات المقاول (لو مش موجودة)
-  const getContractorExtracts = useCallback(
-    (buildingId: string, contractorId: string): any[] => {
-      // جلب من mockData أو من الـ Store
-      // هنستخدم mockSubcontractorStatements
-      const { mockSubcontractorStatements } = require("@/lib/mockData");
-      return mockSubcontractorStatements.filter(
-        (s: any) =>
-          s.buildingId === buildingId &&
-          s.subcontractorId === contractorId &&
-          s.status === "approved"
-      );
-    },
-    []
-  );
-
-  // ✅ Validation لرقم الجاري (مع منع التكرار ومنع الكسر)
   const validateRunningNumber = (value: number): boolean => {
-    // 1. ✅ التحقق من أن الرقم عدد صحيح (ليس كسر)
     if (!Number.isInteger(value)) {
       showToast(
         isArabic
@@ -200,8 +157,6 @@ export default function NewContractorExtractPage() {
       );
       return false;
     }
-
-    // 2. التحقق من أن الرقم أكبر من 0
     if (value < 1) {
       showToast(
         isArabic
@@ -211,8 +166,6 @@ export default function NewContractorExtractPage() {
       );
       return false;
     }
-
-    // 3. التحقق من أن الرقم لا يزيد عن المسموح
     if (maxRunningNumber > 0 && value > maxRunningNumber + 1) {
       showToast(
         isArabic
@@ -222,8 +175,6 @@ export default function NewContractorExtractPage() {
       );
       return false;
     }
-
-    // 4. ✅ التحقق من عدم تكرار الرقم
     if (isRunningNumberDuplicate(value)) {
       showToast(
         isArabic
@@ -233,7 +184,6 @@ export default function NewContractorExtractPage() {
       );
       return false;
     }
-
     return true;
   };
 
@@ -241,8 +191,6 @@ export default function NewContractorExtractPage() {
     e: React.ChangeEvent<HTMLInputElement>
   ) => {
     const value = Number(e.target.value);
-
-    // ✅ منع إدخال أي شيء غير أرقام
     if (e.target.value && isNaN(value)) {
       showToast(
         isArabic ? "يرجى إدخال رقم صحيح" : "Please enter a valid number",
@@ -250,22 +198,52 @@ export default function NewContractorExtractPage() {
       );
       return;
     }
-
-    // ✅ التحقق من الصحة
     if (validateRunningNumber(value)) {
       setRunningNumber(value);
     }
   };
 
-  const handleSave = async () => {
-    // ✅ التحقق من صحة رقم الجاري (بما في ذلك التكرار)
-    if (!validateRunningNumber(runningNumber)) {
-      return;
+  const validations = useCallback(() => {
+    const errors: string[] = [];
+
+    if (!rows.length || rows.every((r) => r.current === 0)) {
+      errors.push(isArabic ? "يجب إدخال بنود منفذة على الأقل" : "At least one item with executed quantity is required");
     }
 
-    const validation = validateExtractItems(buildingId, contractorId, rows);
-    if (!validation.ok) {
-      showToast(validation.error || "خطأ", "error");
+    for (const item of rows) {
+      if (item.current < 0) {
+        errors.push(isArabic ? `الكمية المنفذة للبند ${item.itemCode} لا يمكن أن تكون سالبة` : `Executed quantity for item ${item.itemCode} cannot be negative`);
+      }
+      const contract = boqItems.find((b) => b.itemCode === item.itemCode);
+      if (!contract) continue;
+      if (item.total > contract.assignedQuantity) {
+        errors.push(isArabic ? `الكمية المنفذة للبند ${item.itemCode} تتجاوز الكمية المسندة (${contract.assignedQuantity})` : `Executed quantity for item ${item.itemCode} exceeds assigned quantity (${contract.assignedQuantity})`);
+      }
+    }
+
+    if (!date) {
+      errors.push(isArabic ? "التاريخ مطلوب" : "Date is required");
+    }
+
+    for (const ded of deductions) {
+      if (ded.amount < 0) {
+        errors.push(isArabic ? "الاستقطاعات لا يمكن أن تكون سالبة" : "Deductions cannot be negative");
+      }
+    }
+
+    if (insurancePercent < 0 || insurancePercent > 100) {
+      errors.push(isArabic ? "نسبة التأمين يجب أن تكون بين 0 و 100" : "Insurance percent must be between 0 and 100");
+    }
+
+    return errors;
+  }, [rows, boqItems, date, deductions, insurancePercent, isArabic]);
+
+  const handleSave = async () => {
+    if (!validateRunningNumber(runningNumber)) return;
+
+    const validationErrors = validations();
+    if (validationErrors.length > 0) {
+      validationErrors.forEach((msg) => showToast(msg, "error"));
       return;
     }
 
@@ -280,28 +258,23 @@ export default function NewContractorExtractPage() {
 
     setSaving(true);
     try {
-      await financeApi.saveExtract(
-        {
-          id: Date.now().toString(),
-          buildingId,
-          projectId,
-          contractorId,
-          date,
-          status,
-          runningNumber: status === "running" ? runningNumber : undefined,
-          label,
-          insurancePercent,
-          items: rows,
-          deductions,
-          totalWorkValue,
-          previousPaid,
-          totalDeductions,
-          netPayable,
-          signatures: [],
-        },
-        manualDeductions.filter((d) => d.type === "manual")
-      );
-
+      const manualDeductionsPayload = manualDeductions
+        .filter((d) => d.name.trim() !== "")
+        .map((d) => ({
+          id: d.id,
+          name: d.name,
+          amount: d.amount,
+          type: "manual" as const,
+        }));
+      await extractService.create(buildingId, contractorId, {
+        runningNumber,
+        date,
+        status,
+        insurancePercent,
+        previousPaid,
+        items: rows.map((r) => fromBoqExtractItem(r)),
+        manualDeductions: manualDeductionsPayload,
+      });
       showToast(isArabic ? "تم حفظ المستخلص" : "Extract saved", "success");
       router.push(
         `/${locale}/projects/${projectId}/buildings/${buildingId}/subcontractors/${contractorId}/extracts`
@@ -318,7 +291,6 @@ export default function NewContractorExtractPage() {
 
   const base = `/${locale}/projects/${projectId}/buildings/${buildingId}/subcontractors/${contractorId}/extracts`;
 
-  // ✅ عرض الخصومات مع إمكانية الإضافة والتعديل
   const displayDeductions = [
     ...deductions.filter((d) => d.type !== "manual"),
     ...manualDeductions,
@@ -351,7 +323,7 @@ export default function NewContractorExtractPage() {
 
       <div className="grid md:grid-cols-4 gap-3">
         <Card className="p-3">
-          <label className="text-xs text-gray-500">
+          <label className="text-xs text-text-secondary">
             {isArabic ? "الحالة" : "Status"}
           </label>
           <select
@@ -365,12 +337,12 @@ export default function NewContractorExtractPage() {
         </Card>
         {status === "running" && (
           <Card className="p-3">
-            <label className="text-xs text-gray-500">
+            <label className="text-xs text-text-secondary">
               {isArabic ? "رقم الجاري" : "Running #"}
             </label>
             <input
               type="number"
-              step="1" // ✅ منع الكسر (يسمح بالأعداد الصحيحة فقط)
+              step="1"
               min="1"
               max={maxRunningNumber + 1}
               value={runningNumber}
@@ -378,7 +350,7 @@ export default function NewContractorExtractPage() {
               className="w-full border-b outline-none font-medium"
             />
             {maxRunningNumber > 0 && (
-              <p className="text-xs text-gray-400 mt-1">
+              <p className="text-xs text-text-muted mt-1">
                 {isArabic
                   ? `آخر رقم جاري: ${maxRunningNumber}`
                   : `Last running #: ${maxRunningNumber}`}
@@ -387,7 +359,7 @@ export default function NewContractorExtractPage() {
           </Card>
         )}
         <Card className="p-3">
-          <label className="text-xs text-gray-500">
+          <label className="text-xs text-text-secondary">
             {isArabic ? "التأمين %" : "Insurance %"}
           </label>
           <input
@@ -400,7 +372,7 @@ export default function NewContractorExtractPage() {
           />
         </Card>
         <Card className="p-3">
-          <label className="text-xs text-gray-500">
+          <label className="text-xs text-text-secondary">
             {isArabic ? "التاريخ" : "Date"}
           </label>
           <input
@@ -413,8 +385,8 @@ export default function NewContractorExtractPage() {
       </div>
 
       {previousPaid > 0 && (
-        <Card className="p-3 bg-blue-50 border border-blue-200 text-sm">
-          <span className="text-blue-800 font-medium">
+        <Card className="p-3 bg-info-light border border-blue-200 text-sm">
+          <span className="text-info-dark font-medium">
             {isArabic
               ? "ماسبق صرفة (من المستخلصات السابقة):"
               : "Previously paid:"}{" "}
@@ -430,7 +402,6 @@ export default function NewContractorExtractPage() {
         onUpdateRow={updateRow}
       />
 
-      {/* ✅ قسم الخصومات مع زر الإضافة */}
       <div className="space-y-2">
         <div className="flex justify-between items-center">
           <h4 className="font-bold text-primary">
@@ -445,10 +416,10 @@ export default function NewContractorExtractPage() {
           </button>
         </div>
 
-        <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+        <div className="bg-surface rounded-lg shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50">
+              <thead className="bg-surface-secondary">
                 <tr>
                   <th className="p-2 text-right">
                     {isArabic ? "البيان" : "Description"}
@@ -467,7 +438,7 @@ export default function NewContractorExtractPage() {
               <tbody>
                 {displayDeductions.length === 0 ? (
                   <tr>
-                    <td colSpan={4} className="p-4 text-center text-gray-400">
+                    <td colSpan={4} className="p-4 text-center text-text-muted">
                       {isArabic ? "لا توجد استقطاعات" : "No deductions"}
                     </td>
                   </tr>
@@ -481,7 +452,7 @@ export default function NewContractorExtractPage() {
                     return (
                       <tr
                         key={ded.id || idx}
-                        className="border-t hover:bg-gray-50"
+                        className="border-t hover:bg-surface-secondary"
                       >
                         <td className="p-2">
                           {isManual ? (
@@ -510,7 +481,7 @@ export default function NewContractorExtractPage() {
                           {isManual ? (
                             <input
                               type="number"
-                              value={ded.percent || ""}
+                              value={ded.percent ?? ""}
                               onChange={(e) => {
                                 if (manualIdx !== -1) {
                                   handleUpdateDeduction(
@@ -528,7 +499,7 @@ export default function NewContractorExtractPage() {
                             <span>{ded.percent || 0}%</span>
                           )}
                         </td>
-                        <td className="p-2 text-center font-bold text-red-500">
+                        <td className="p-2 text-center font-bold text-danger">
                           {ded.amount?.toLocaleString() || 0} ج.م
                         </td>
                         <td className="p-2 text-center">
@@ -538,12 +509,12 @@ export default function NewContractorExtractPage() {
                                 if (manualIdx !== -1)
                                   setDeleteDedIdx(manualIdx);
                               }}
-                              className="text-red-500 hover:text-red-700 transition p-1"
+                              className="text-danger hover:text-danger-dark transition p-1"
                             >
                               <Trash2 size={16} />
                             </button>
                           ) : (
-                            <span className="text-xs text-gray-400">
+                            <span className="text-xs text-text-muted">
                               {isArabic ? "تلقائي" : "Auto"}
                             </span>
                           )}

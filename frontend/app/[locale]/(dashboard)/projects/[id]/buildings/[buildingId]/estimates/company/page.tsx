@@ -2,24 +2,19 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Plus, Edit2, Trash2, X, Search } from "lucide-react";
 import BoqPageHeader from "@/components/boq/BoqPageHeader";
 import SignaturesSection from "@/components/boq/SignaturesSection";
 import DeleteConfirmModal from "@/components/boq/DeleteConfirmModal";
 import { useToast } from "@/components/ui/Toast";
 import { exportToCsv, printHtml } from "@/lib/documentUtils";
-import {
-  getAnalyticalItems,
-  getEmployerItems,
-  getDocSignatures,
-  importAnalyticalFromEmployer,
-  removeAnalyticalItem,
-  setAnalyticalItems,
-  setDocSignatures,
-  updateAnalyticalItem,
-} from "@/lib/boqStore";
+import { getDocSignatures, setDocSignatures } from "@/lib/boqStore";
+import type { EmployerBoqItem } from "@/types/boq";
+import { employerBoqService } from "@/services/employerBoq.service";
+import { analyticalBoqService } from "@/services/analyticalBoq.service";
 import type { AnalyticalBoqItem } from "@/types/boq";
+import { Can } from "@/components/Can";
 
 export default function AnalyticalBoqPage() {
   const params = useParams();
@@ -30,24 +25,47 @@ export default function AnalyticalBoqPage() {
   const docKey = `analytical:${buildingId}`;
   const back = `/${locale}/projects/${projectId}/buildings/${buildingId}/estimates`;
   const { showToast, ToastComponent } = useToast();
-  const [, refresh] = useState(0);
 
-  // ✅ منع Hydration Error
   const [mounted, setMounted] = useState(false);
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  const employerItems = getEmployerItems(buildingId);
-  const items = getAnalyticalItems(buildingId);
+  const [items, setItems] = useState<AnalyticalBoqItem[]>([]);
+  const [employerItems, setEmployerItems] = useState<EmployerBoqItem[]>([]);
   const [sigs, setSigs] = useState(getDocSignatures(docKey));
   const [editItem, setEditItem] = useState<AnalyticalBoqItem | null>(null);
   const [deleteCode, setDeleteCode] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const [loading, setLoading] = useState(true);
 
-  const bump = () => refresh((n) => n + 1);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
-  // ✅ فلترة البنود حسب البحث
+  const loadItems = useCallback(async () => {
+    try {
+      const data = await analyticalBoqService.list(buildingId);
+      setItems(data);
+    } catch (e) {
+      console.error(e);
+      showToast(
+        isArabic ? "فشل تحميل المقايسة التحليلية" : "Failed to load analytical BOQ",
+        "error"
+      );
+    }
+  }, [buildingId, isArabic, showToast]);
+
+  useEffect(() => {
+    setLoading(true);
+    Promise.all([
+      analyticalBoqService.list(buildingId).then(setItems).catch((e) => {
+        console.error(e);
+        showToast(isArabic ? "فشل تحميل المقايسة التحليلية" : "Failed to load analytical BOQ", "error");
+      }),
+      employerBoqService.list(buildingId).then(setEmployerItems).catch((e) => {
+        console.error(e);
+        showToast(isArabic ? "فشل تحميل بنود جهة الإسناد" : "Failed to load employer items", "error");
+      }),
+    ]).finally(() => setLoading(false));
+  }, [buildingId, isArabic, showToast]);
+
   const filteredItems = items.filter(
     (item) =>
       item.itemCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -56,56 +74,75 @@ export default function AnalyticalBoqPage() {
 
   const total = filteredItems.reduce((s, i) => s + i.totalValue, 0);
 
-  const saveEdit = (e: React.FormEvent) => {
+  const saveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editItem) return;
 
-    const result = updateAnalyticalItem(buildingId, editItem.itemCode, {
-      quantity: editItem.quantity,
-      unitPrice: editItem.unitPrice,
-      description: editItem.description,
-    });
-
-    if (result) {
+    try {
+      await analyticalBoqService.update(buildingId, editItem.itemCode, {
+        quantity: editItem.quantity,
+        unitPrice: editItem.unitPrice,
+        description: editItem.description,
+      });
       setEditItem(null);
-      bump();
+      await loadItems();
       showToast(isArabic ? "تم التحديث" : "Updated", "success");
-    } else {
+    } catch {
       showToast(isArabic ? "فشل التحديث" : "Update failed", "error");
     }
   };
 
-  // ✅ لو مش mounted، ارجع loading
   if (!mounted) {
     return (
       <div className="min-h-screen bg-gray-light -m-6 flex items-center justify-center">
-        <div className="animate-pulse text-gray-400">
+        <div className="animate-pulse text-text-muted">
           {isArabic ? "جاري التحميل..." : "Loading..."}
         </div>
       </div>
     );
   }
 
-  // ✅ دالة الاستيراد مع منع التكرار
-  const handleImport = (itemCode: string) => {
-    const result = importAnalyticalFromEmployer(buildingId, itemCode);
-    if (result) {
-      bump();
+  const handleImport = async (itemCode: string) => {
+    try {
+      await analyticalBoqService.importFromEmployer(buildingId, itemCode);
+      await loadItems();
       showToast(
         isArabic
           ? `تم استيراد البند ${itemCode}`
           : `Imported item ${itemCode}`,
         "success"
       );
-    } else {
-      // ✅ البند موجود بالفعل
-      const existingItem = employerItems.find((e) => e.itemCode === itemCode);
-      showToast(
-        isArabic
-          ? `البند "${existingItem?.description}" موجود بالفعل في التحليلية`
-          : `Item "${existingItem?.description}" already exists in analytical`,
-        "error"
-      );
+    } catch (err: any) {
+      if (err?.status === 409) {
+        const existingItem = employerItems.find((e) => e.itemCode === itemCode);
+        showToast(
+          isArabic
+            ? `البند "${existingItem?.description}" موجود بالفعل في التحليلية`
+            : `Item "${existingItem?.description}" already exists in analytical`,
+          "error"
+        );
+      } else {
+        showToast(
+          isArabic ? "فشل الاستيراد" : "Import failed",
+          "error"
+        );
+      }
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteCode) return;
+    try {
+      await analyticalBoqService.remove(buildingId, deleteCode);
+      setDeleteCode(null);
+      await loadItems();
+      showToast(isArabic ? "تم الحذف" : "Deleted", "success");
+    } catch (err: any) {
+      if (err?.status === 404) {
+        showToast(isArabic ? "البند غير موجود" : "Item not found", "error");
+      } else {
+        showToast(isArabic ? "فشل الحذف" : "Delete failed", "error");
+      }
     }
   };
 
@@ -152,7 +189,7 @@ export default function AnalyticalBoqPage() {
         {/* ✅ Search Bar */}
         <div className="mb-4">
           <div className="relative max-w-md">
-            <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+            <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 text-text-muted w-4 h-4" />
             <input
               type="text"
               placeholder={
@@ -162,19 +199,19 @@ export default function AnalyticalBoqPage() {
               }
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pr-10 pl-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-gold"
+              className="w-full pr-10 pl-4 py-2 border border-border rounded-lg text-sm focus:outline-none focus:border-gold"
             />
           </div>
         </div>
 
         {/* ✅ استيراد من جهة الإسناد */}
-        <div className="bg-white rounded-xl p-4 mb-4 shadow-sm">
-          <p className="text-sm text-gray-500 mb-2">
+        <div className="bg-surface rounded-xl p-4 mb-4 shadow-sm">
+          <p className="text-sm text-text-secondary mb-2">
             {isArabic ? "استيراد من جهة الإسناد" : "Import from employer"}
           </p>
           <div className="flex flex-wrap gap-2">
             {employerItems.length === 0 ? (
-              <span className="text-sm text-gray-400">
+              <span className="text-sm text-text-muted">
                 {isArabic
                   ? "لا توجد بنود في جهة الإسناد"
                   : "No items in employer BOQ"}
@@ -189,18 +226,19 @@ export default function AnalyticalBoqPage() {
                     )
                 )
                 .map((e) => (
-                  <button
-                    key={e.itemCode}
-                    onClick={() => handleImport(e.itemCode)}
-                    className="flex items-center gap-1 px-3 py-1.5 border border-gold text-gold rounded-lg text-sm hover:bg-gold hover:text-white transition"
-                  >
-                    <Plus size={14} /> {e.itemCode}
-                  </button>
+                  <Can key={e.itemCode} permission="analytical-boq.create">
+                    <button
+                      onClick={() => handleImport(e.itemCode)}
+                      className="flex items-center gap-1 px-3 py-1.5 border border-gold text-gold rounded-lg text-sm hover:bg-gold hover:text-white transition"
+                    >
+                      <Plus size={14} /> {e.itemCode}
+                    </button>
+                  </Can>
                 ))
             )}
           </div>
           {/* ✅ عرض البنود المستوردة والغير مستوردة */}
-          <div className="mt-2 flex flex-wrap gap-3 text-xs text-gray-400">
+          <div className="mt-2 flex flex-wrap gap-3 text-xs text-text-muted">
             {items.length > 0 && (
               <span>
                 {isArabic
@@ -226,9 +264,9 @@ export default function AnalyticalBoqPage() {
         </div>
 
         {/* ✅ جدول البنود */}
-        <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+        <div className="bg-surface rounded-xl shadow-sm overflow-hidden">
           <table className="w-full text-sm">
-            <thead className="bg-gray-50">
+            <thead className="bg-surface-secondary">
               <tr>
                 <th className="p-3">#</th>
                 <th className="p-3">كود</th>
@@ -243,7 +281,7 @@ export default function AnalyticalBoqPage() {
             <tbody>
               {filteredItems.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="p-8 text-center text-gray-500">
+                  <td colSpan={8} className="p-8 text-center text-text-secondary">
                     {isArabic
                       ? searchTerm
                         ? "لا توجد نتائج للبحث"
@@ -255,7 +293,7 @@ export default function AnalyticalBoqPage() {
                 </tr>
               ) : (
                 filteredItems.map((item, idx) => (
-                  <tr key={item.itemCode} className="border-t hover:bg-gray-50">
+                  <tr key={item.itemCode} className="border-t hover:bg-surface-secondary">
                     <td className="p-3 text-center">{idx + 1}</td>
                     <td className="p-3 font-mono">{item.itemCode}</td>
                     <td className="p-3">{item.description}</td>
@@ -269,20 +307,24 @@ export default function AnalyticalBoqPage() {
                     </td>
                     <td className="p-3 text-center">
                       <div className="flex justify-center gap-2">
-                        <button
-                          onClick={() => setEditItem({ ...item })}
-                          className="text-blue-500 hover:text-blue-700"
-                          title={isArabic ? "تعديل" : "Edit"}
-                        >
-                          <Edit2 size={18} />
-                        </button>
-                        <button
-                          onClick={() => setDeleteCode(item.itemCode)}
-                          className="text-red-500 hover:text-red-700"
-                          title={isArabic ? "حذف" : "Delete"}
-                        >
-                          <Trash2 size={18} />
-                        </button>
+                        <Can permission="analytical-boq.update">
+                          <button
+                            onClick={() => setEditItem({ ...item })}
+                            className="text-info hover:text-info-dark"
+                            title={isArabic ? "تعديل" : "Edit"}
+                          >
+                            <Edit2 size={18} />
+                          </button>
+                        </Can>
+                        <Can permission="analytical-boq.delete">
+                          <button
+                            onClick={() => setDeleteCode(item.itemCode)}
+                            className="text-danger hover:text-danger-dark"
+                            title={isArabic ? "حذف" : "Delete"}
+                          >
+                            <Trash2 size={18} />
+                          </button>
+                        </Can>
                       </div>
                     </td>
                   </tr>
@@ -290,7 +332,7 @@ export default function AnalyticalBoqPage() {
               )}
             </tbody>
             {filteredItems.length > 0 && (
-              <tfoot className="bg-gray-50">
+              <tfoot className="bg-surface-secondary">
                 <tr className="border-t-2 border-primary">
                   <td colSpan={6} className="p-3 font-bold text-primary">
                     {isArabic ? "الإجمالي" : "Total"}
@@ -320,21 +362,21 @@ export default function AnalyticalBoqPage() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <form
             onSubmit={saveEdit}
-            className="bg-white rounded-2xl w-full max-w-md p-5 space-y-3"
+            className="bg-surface rounded-2xl w-full max-w-md p-5 space-y-3"
           >
             <div className="flex justify-between items-center">
               <h2 className="font-bold text-primary">{editItem.itemCode}</h2>
               <button
                 type="button"
                 onClick={() => setEditItem(null)}
-                className="text-gray-400 hover:text-gray-600"
+                className="text-text-muted hover:text-text-secondary"
               >
                 <X size={24} />
               </button>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-text-primary mb-1">
                 {isArabic ? "البيان" : "Description"}
               </label>
               <input
@@ -342,13 +384,13 @@ export default function AnalyticalBoqPage() {
                 onChange={(e) =>
                   setEditItem({ ...editItem, description: e.target.value })
                 }
-                className="w-full p-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-gold"
+                className="w-full p-3 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-gold"
               />
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-text-primary mb-1">
                   {isArabic ? "الكمية" : "Quantity"}
                 </label>
                 <input
@@ -360,13 +402,13 @@ export default function AnalyticalBoqPage() {
                       quantity: Number(e.target.value),
                     })
                   }
-                  className="w-full p-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-gold"
+                  className="w-full p-3 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-gold"
                   min={0}
                   step="any"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-text-primary mb-1">
                   {isArabic ? "السعر" : "Unit Price"}
                 </label>
                 <input
@@ -378,15 +420,15 @@ export default function AnalyticalBoqPage() {
                       unitPrice: Number(e.target.value),
                     })
                   }
-                  className="w-full p-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-gold"
+                  className="w-full p-3 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-gold"
                   min={0}
                   step="any"
                 />
               </div>
             </div>
 
-            <div className="bg-gray-50 p-3 rounded-lg">
-              <p className="text-sm text-gray-600">
+            <div className="bg-surface-secondary p-3 rounded-lg">
+              <p className="text-sm text-text-secondary">
                 {isArabic ? "القيمة الإجمالية:" : "Total Value:"}{" "}
                 <span className="font-bold text-gold">
                   {(editItem.quantity * editItem.unitPrice).toLocaleString()}{" "}
@@ -410,11 +452,7 @@ export default function AnalyticalBoqPage() {
           isArabic={isArabic}
           message={isArabic ? "حذف البند؟" : "Delete item?"}
           onCancel={() => setDeleteCode(null)}
-          onConfirm={() => {
-            removeAnalyticalItem(buildingId, deleteCode);
-            setDeleteCode(null);
-            bump();
-          }}
+          onConfirm={handleDelete}
         />
       )}
     </div>

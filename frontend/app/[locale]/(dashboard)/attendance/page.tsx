@@ -1,548 +1,1240 @@
-/* eslint-disable */
 "use client";
 
 import { useParams } from "next/navigation";
-import { useState, useMemo, useCallback } from "react";
-import { Card } from "@/components/ui";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Card, Dialog } from "@/components/ui";
 import {
-  Calendar,
+  MapPin,
+  Camera,
+  LogIn,
+  LogOut,
+  Target,
   Clock,
-  CheckCircle,
+  CheckCircle2,
   XCircle,
-  AlertCircle,
-  Search,
-  Filter,
-  Download,
-  Save,
-  User,
-  Clock3,
+  AlertTriangle,
+  Smartphone,
+  Building2,
+  Briefcase,
+  Navigation,
+  RefreshCw,
+  History,
+  WifiOff,
+  ChevronDown,
+  Layers,
 } from "lucide-react";
-import { mockEmployees, mockAttendance } from "@/lib/mockData";
+import { useAuth } from "@/hooks/useAuth";
+import { attendanceService, type Attendance, type CheckOutData } from "@/services/attendance.service";
+import { employeeService, type Employee } from "@/services/employee.service";
+import { projectService } from "@/services/project.service";
+import type { Project } from "@/services/project.service";
+import { buildingService, type Building } from "@/services/building.service";
+import { shiftService, type Shift } from "@/services/shift.service";
 import { useToast } from "@/components/ui/Toast";
 
-type AttendanceStatus = "present" | "absent" | "late" | "vacation";
+const GPS_ACCURACY_WARNING = 30;
+
+function compressImage(dataUrl: string, maxWidth: number, quality: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxWidth / img.width);
+      const w = Math.round(img.width * scale);
+      const h = Math.round(img.height * scale);
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) { reject(new Error('Canvas context not available')); return; }
+      ctx.drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL('image/jpeg', quality));
+    };
+    img.onerror = () => reject(new Error('Image load failed'));
+    img.src = dataUrl;
+  });
+}
+
+function haversine(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371000;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function formatDuration(minutes: number): string {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return `${h}h ${m.toString().padStart(2, '0')}m`;
+}
+
+function getDeviceInfo(): string {
+  try {
+    return JSON.stringify({
+      browser: navigator.userAgent.match(/(Chrome|Firefox|Safari|Edge|Opera)/)?.[0] ?? 'Unknown',
+      os: navigator.platform,
+      language: navigator.language,
+      screen: `${screen.width}x${screen.height}`,
+      timestamp: new Date().toISOString(),
+    });
+  } catch {
+    return '{}';
+  }
+}
+
+function getTodayStr(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+interface GpsState {
+  latitude: number;
+  longitude: number;
+  accuracy: number;
+  address: string;
+}
+
+interface QueueItem {
+  type: 'checkIn' | 'checkOut';
+  data: any;
+  timestamp: string;
+}
+
+interface TamperWarning {
+  clockSkew: boolean;
+  vpnDetected: boolean;
+}
+
+type StepState = 'detect' | 'selfie' | 'checkin' | 'checkout' | 'complete';
 
 export default function AttendancePage() {
   const params = useParams();
   const locale = (params.locale as string) ?? "ar";
   const isArabic = locale === "ar";
+  const { user } = useAuth();
   const { showToast, ToastComponent } = useToast();
 
-  const [selectedDate, setSelectedDate] = useState(
-    new Date().toISOString().split("T")[0]
-  );
-  const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState<AttendanceStatus | "all">(
-    "all"
-  );
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  const [attendanceRecords, setAttendanceRecords] = useState(() => {
-    const existing = mockAttendance.filter((a) => a.date === selectedDate);
-    const records: Record<string, any> = {};
-    mockEmployees.forEach((emp) => {
-      const existingRecord = existing.find((e) => e.employeeId === emp.id);
-      if (existingRecord) {
-        records[emp.id] = existingRecord;
-      } else {
-        records[emp.id] = {
-          id: "",
-          employeeId: emp.id,
-          employeeName: emp.name,
-          date: selectedDate,
-          checkIn: "",
-          checkOut: "",
-          status: "absent" as AttendanceStatus,
-          hoursWorked: 0,
-          notes: "",
-        };
+  const [employee, setEmployee] = useState<Employee | null>(null);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [buildings, setBuildings] = useState<Building[]>([]);
+  const [shifts, setShifts] = useState<Shift[]>([]);
+  const [todayRecord, setTodayRecord] = useState<Attendance | null>(null);
+  const [attendanceHistory, setAttendanceHistory] = useState<Attendance[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const [gps, setGps] = useState<GpsState | null>(null);
+  const [gettingGps, setGettingGps] = useState(false);
+
+  const [selfieData, setSelfieData] = useState<string | null>(null);
+  const [showCamera, setShowCamera] = useState(false);
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
+
+  const [distance, setDistance] = useState<number | null>(null);
+  const [insideSite, setInsideSite] = useState<boolean | null>(null);
+  const [geoFenceAvailable, setGeoFenceAvailable] = useState<boolean>(true);
+
+  const [actionLoading, setActionLoading] = useState(false);
+  const [queuedItems, setQueuedItems] = useState<QueueItem[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
+  const [selectedProjectId, setSelectedProjectId] = useState<string>("");
+  const [selectedBuildingId, setSelectedBuildingId] = useState<string>("");
+  const [selectedShiftId, setSelectedShiftId] = useState<string>("");
+
+  const [step, setStep] = useState<StepState>('detect');
+  const [showOverrideDialog, setShowOverrideDialog] = useState(false);
+  const [overrideReason, setOverrideReason] = useState("");
+  const [pendingCheckInPayload, setPendingCheckInPayload] = useState<any>(null);
+  const [pendingCheckOutPayload, setPendingCheckOutPayload] = useState<{ id: string; body: CheckOutData } | null>(null);
+  const [tamperWarnings, setTamperWarnings] = useState<TamperWarning>({ clockSkew: false, vpnDetected: false });
+
+  const [showManualLocation, setShowManualLocation] = useState(false);
+  const [manualLat, setManualLat] = useState("");
+  const [manualLng, setManualLng] = useState("");
+
+  const isOnline = useMemo(() => typeof navigator !== 'undefined' ? navigator.onLine : true, []);
+
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        setLoading(true);
+        const [employees, projs, records, blds, shfs] = await Promise.all([
+          employeeService.list(),
+          projectService.getProjects(),
+          attendanceService.list(),
+          buildingService.list(),
+          shiftService.list(),
+        ]);
+
+        const emp = employees.find((e) => e.userId === user?.id) ?? employees[0] ?? null;
+        setEmployee(emp);
+        setProjects(projs);
+        setBuildings(blds);
+        setShifts(shfs);
+
+        if (emp) {
+          const todayStr = getTodayStr();
+          const todays = records.filter(
+            (r) => r.date.startsWith(todayStr) && r.employeeId === emp.id
+          );
+          setTodayRecord(todays[todays.length - 1] ?? null);
+          setAttendanceHistory(records.filter((r) => r.employeeId === emp.id).slice(0, 10));
+        } else {
+          setAttendanceHistory(records.slice(0, 10));
+        }
+
+        const stored = localStorage.getItem('attendanceQueue');
+        if (stored) {
+          try {
+            setQueuedItems(JSON.parse(stored));
+          } catch { /* ignore */ }
+        }
+
+        // Anti-tampering checks
+        const warnings: TamperWarning = { clockSkew: false, vpnDetected: false };
+        if (typeof performance !== 'undefined' && performance.timeOrigin) {
+          const originAgo = Date.now() - performance.timeOrigin;
+          if (Math.abs(originAgo - performance.now()) > 5000) {
+            warnings.clockSkew = true;
+          }
+        }
+        try {
+          const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+          const vpnZones = ['Asia/Kabul', 'Asia/Yerevan', 'Europe/Minsk', 'Asia/Rangoon', 'Asia/Colombo'];
+          if (!navigator.onLine && vpnZones.includes(tz)) {
+            warnings.vpnDetected = true;
+          }
+        } catch { /* ignore */ }
+        setTamperWarnings(warnings);
+      } catch {
+        showToast(isArabic ? "خطأ في تحميل البيانات" : "Error loading data", "error");
+      } finally {
+        setLoading(false);
       }
-    });
-    return records;
-  });
-
-  const handleDateChange = (date: string) => {
-    setSelectedDate(date);
-    const existing = mockAttendance.filter((a) => a.date === date);
-    const newRecords: Record<string, any> = {};
-    mockEmployees.forEach((emp) => {
-      const existingRecord = existing.find((e) => e.employeeId === emp.id);
-      if (existingRecord) {
-        newRecords[emp.id] = existingRecord;
-      } else {
-        newRecords[emp.id] = {
-          id: "",
-          employeeId: emp.id,
-          employeeName: emp.name,
-          date: date,
-          checkIn: "",
-          checkOut: "",
-          status: "absent" as AttendanceStatus,
-          hoursWorked: 0,
-          notes: "",
-        };
-      }
-    });
-    setAttendanceRecords(newRecords);
-  };
-
-  const updateAttendance = useCallback(
-    (employeeId: string, field: string, value: any) => {
-      setAttendanceRecords((prev) => ({
-        ...prev,
-        [employeeId]: { ...prev[employeeId], [field]: value },
-      }));
-    },
-    []
-  );
-
-  const calculateHours = useCallback((checkIn: string, checkOut: string) => {
-    if (!checkIn || !checkOut) return 0;
-    const [inHour, inMin] = checkIn.split(":").map(Number);
-    const [outHour, outMin] = checkOut.split(":").map(Number);
-    let hours = outHour - inHour;
-    let mins = outMin - inMin;
-    if (mins < 0) {
-      hours -= 1;
-      mins += 60;
-    }
-    return Number((hours + mins / 60).toFixed(1));
+    };
+    loadData();
   }, []);
 
-  const handleSave = useCallback(() => {
-    showToast(
-      isArabic ? "تم حفظ الحضور بنجاح" : "Attendance saved successfully",
-      "success"
-    );
+  const assignedProject = useMemo(() => {
+    if (!employee || !projects.length) return null;
+    const empProjectIds = user?.projectIds ?? [];
+    if (selectedProjectId) return projects.find((p) => p.id === selectedProjectId) ?? null;
+    if (empProjectIds.length > 0) return projects.find((p) => empProjectIds.includes(p.id)) ?? null;
+    return projects[0] ?? null;
+  }, [employee, projects, selectedProjectId, user]);
+
+  const selectedBuilding = useMemo(() => {
+    if (!selectedBuildingId || !buildings.length) return null;
+    return buildings.find((b) => b.id === selectedBuildingId) ?? null;
+  }, [buildings, selectedBuildingId]);
+
+  const openManualLocation = useCallback(() => {
+    const bld = selectedBuilding;
+    if (bld?.latitude != null && bld?.longitude != null) {
+      setManualLat(String(bld.latitude));
+      setManualLng(String(bld.longitude));
+    } else {
+      setManualLat("");
+      setManualLng("");
+    }
+    setGettingGps(false);
+    setShowManualLocation(true);
+  }, [selectedBuilding]);
+
+  const applyManualLocation = useCallback(() => {
+    const lat = parseFloat(manualLat);
+    const lng = parseFloat(manualLng);
+    if (isNaN(lat) || isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+      showToast(isArabic ? "إحداثيات غير صالحة" : "Invalid coordinates", "error");
+      return;
+    }
+    const gpsVal: GpsState = {
+      latitude: lat,
+      longitude: lng,
+      accuracy: 0,
+      address: `${lat.toFixed(6)}, ${lng.toFixed(6)}`,
+    };
+    setGps(gpsVal);
+
+    const bld = selectedBuilding;
+    if (bld?.latitude != null && bld?.longitude != null && bld?.allowedRadius != null) {
+      const dist = haversine(lat, lng, bld.latitude, bld.longitude);
+      setDistance(Math.round(dist));
+      setInsideSite(dist <= bld.allowedRadius);
+      setGeoFenceAvailable(true);
+    } else {
+      setDistance(null);
+      setInsideSite(null);
+      setGeoFenceAvailable(false);
+    }
+
+    setShowManualLocation(false);
+    setStep('selfie');
+    showToast(isArabic ? "تم تحديد الموقع يدوياً" : "Location set manually", "success");
+  }, [manualLat, manualLng, selectedBuilding, isArabic]);
+
+  const getGps = useCallback((retryWithLowAccuracy = false) => {
+    if (typeof window !== "undefined" && !window.isSecureContext && window.location.hostname !== "localhost") {
+      showToast(isArabic ? "تحديد الموقع يتطلب اتصالاً آمناً (HTTPS)، يمكنك إدخال الموقع يدوياً" : "Geolocation requires a secure (HTTPS) connection. You can enter your location manually.", "warning");
+      openManualLocation();
+      return;
+    }
+    if (!navigator.geolocation) {
+      showToast(isArabic ? "خدمة تحديد المواقع غير متاحة، يمكنك إدخال الموقع يدوياً" : "Geolocation not available. You can enter your location manually.", "warning");
+      openManualLocation();
+      return;
+    }
+    setGettingGps(true);
+    const attempt = (lowAccuracy: boolean) => {
+      navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+          const { latitude, longitude, accuracy } = pos.coords;
+          let address = "";
+          const controller = new AbortController();
+          const timer = setTimeout(() => controller.abort(), 8000);
+          try {
+            const res = await fetch(
+              `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&accept-language=${locale}`,
+              { signal: controller.signal }
+            );
+            const data = await res.json();
+            address = data.display_name ?? "";
+          } catch {
+            address = `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
+          } finally {
+            clearTimeout(timer);
+          }
+          setGps({ latitude, longitude, accuracy, address });
+
+          const bld = selectedBuilding;
+          if (bld?.latitude != null && bld?.longitude != null && bld?.allowedRadius != null) {
+            const dist = haversine(latitude, longitude, bld.latitude, bld.longitude);
+            setDistance(Math.round(dist));
+            setInsideSite(dist <= bld.allowedRadius);
+            setGeoFenceAvailable(true);
+          } else {
+            setDistance(null);
+            setInsideSite(null);
+            setGeoFenceAvailable(false);
+          }
+
+          setStep('selfie');
+          setGettingGps(false);
+          showToast(isArabic ? "تم تحديد الموقع" : "Location detected", "success");
+        },
+        () => {
+          if (!lowAccuracy) {
+            attempt(true);
+            return;
+          }
+          setGettingGps(false);
+          showToast(isArabic ? "فشل تحديد الموقع. يمكنك إدخال الموقع يدوياً أو المحاولة في مكان مفتوح" : "Failed to get location. You can enter it manually or move to an open area", "warning");
+          openManualLocation();
+        },
+        lowAccuracy
+          ? { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 }
+          : { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 },
+      );
+    };
+    attempt(retryWithLowAccuracy);
+  }, [isArabic, selectedBuilding, openManualLocation]);
+
+  const startCamera = useCallback(async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } } });
+      setCameraStream(stream);
+      setShowCamera(true);
+      setTimeout(() => {
+        if (videoRef.current) videoRef.current.srcObject = stream;
+      }, 100);
+    } catch {
+      showToast(isArabic ? "صلاحية الكاميرا مطلوبة" : "Camera permission required", "error");
+    }
   }, [isArabic]);
 
-  const exportToExcel = useCallback(() => {
-    const records = Object.values(attendanceRecords);
-    const headers = [
-      "الموظف",
-      "القسم",
-      "الحالة",
-      "وقت الدخول",
-      "وقت الخروج",
-      "عدد الساعات",
-      "ملاحظات",
-    ];
-    const rows = records.map((r: any) => {
-      const employee = mockEmployees.find((e) => e.id === r.employeeId);
-      const statusText =
-        r.status === "present"
-          ? "حاضر"
-          : r.status === "absent"
-          ? "غائب"
-          : r.status === "late"
-          ? "متأخر"
-          : "إجازة";
-      return [
-        r.employeeName,
-        employee?.role || "",
-        statusText,
-        r.checkIn || "—",
-        r.checkOut || "—",
-        r.hoursWorked || 0,
-        r.notes || "—",
-      ];
-    });
-    const csvContent = [headers, ...rows]
-      .map((row) => row.join(","))
-      .join("\n");
-    const blob = new Blob(["\uFEFF" + csvContent], {
-      type: "text/csv;charset=utf-8;",
-    });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.setAttribute("download", `attendance_${selectedDate}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    showToast(isArabic ? "تم تصدير التقرير" : "Report exported", "success");
-  }, [attendanceRecords, selectedDate, isArabic]);
-
-  const stats = useMemo(() => {
-    const records = Object.values(attendanceRecords);
-    const present = records.filter((r: any) => r.status === "present").length;
-    const absent = records.filter((r: any) => r.status === "absent").length;
-    const late = records.filter((r: any) => r.status === "late").length;
-    const vacation = records.filter((r: any) => r.status === "vacation").length;
-    return { present, absent, late, vacation, total: records.length };
-  }, [attendanceRecords]);
-
-  const filteredRecords = useMemo(() => {
-    let records = Object.values(attendanceRecords);
-    if (searchTerm) {
-      const term = searchTerm.toLowerCase();
-      records = records.filter((r: any) =>
-        r.employeeName.toLowerCase().includes(term)
-      );
+  const captureSelfie = useCallback(async () => {
+    if (!videoRef.current || !canvasRef.current) return;
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.drawImage(video, 0, 0);
+    const raw = canvas.toDataURL('image/jpeg', 0.7);
+    try {
+      const compressed = await compressImage(raw, 320, 0.6);
+      setSelfieData(compressed);
+    } catch {
+      setSelfieData(raw);
     }
-    if (statusFilter !== "all") {
-      records = records.filter((r: any) => r.status === statusFilter);
+    if (cameraStream) {
+      cameraStream.getTracks().forEach((t) => t.stop());
+      setCameraStream(null);
     }
-    return records;
-  }, [attendanceRecords, searchTerm, statusFilter]);
+    setShowCamera(false);
+    setStep('checkin');
+    showToast(isArabic ? "تم التقاط الصورة" : "Selfie captured", "success");
+  }, [cameraStream, isArabic]);
 
-  const getStatusColor = (status: AttendanceStatus) => {
-    switch (status) {
-      case "present":
-        return "bg-green-100 text-green-800 border-green-200";
-      case "absent":
-        return "bg-red-100 text-red-800 border-red-200";
-      case "late":
-        return "bg-yellow-100 text-yellow-800 border-yellow-200";
-      case "vacation":
-        return "bg-blue-100 text-blue-800 border-blue-200";
-      default:
-        return "bg-gray-100 text-gray-500";
+  const stopCamera = useCallback(() => {
+    if (cameraStream) {
+      cameraStream.getTracks().forEach((t) => t.stop());
+      setCameraStream(null);
     }
-  };
+    setShowCamera(false);
+  }, [cameraStream]);
 
-  // دالة مساعدة لإضافة suppressHydrationWarning للعناصر الديناميكية
-  const suppressProps = { suppressHydrationWarning: true };
+  const queueForSync = useCallback((type: 'checkIn' | 'checkOut', data: any) => {
+    const item: QueueItem = { type, data, timestamp: new Date().toISOString() };
+    const updated = [...queuedItems, item];
+    setQueuedItems(updated);
+    localStorage.setItem('attendanceQueue', JSON.stringify(updated));
+    showToast(isArabic ? "تم حفظ العملية محلياً، سيتم المزامنة لاحقاً" : "Saved offline, will sync later", "info");
+  }, [queuedItems, isArabic]);
+
+  const syncQueuedItems = useCallback(async () => {
+    if (!queuedItems.length) return;
+    const remaining: QueueItem[] = [];
+    for (const item of queuedItems) {
+      try {
+        if (item.type === 'checkIn') {
+          await attendanceService.checkIn(item.data);
+        } else if (item.type === 'checkOut') {
+          await attendanceService.checkOut(item.data.id, item.data.body);
+        }
+      } catch {
+        remaining.push(item);
+      }
+    }
+    setQueuedItems(remaining);
+    localStorage.setItem('attendanceQueue', JSON.stringify(remaining));
+    if (remaining.length === 0) showToast(isArabic ? "تمت المزامنة" : "Synced", "success");
+  }, [queuedItems, isArabic]);
+
+  useEffect(() => {
+    const handleOnline = () => { if (queuedItems.length) syncQueuedItems(); };
+    window.addEventListener('online', handleOnline);
+    return () => window.removeEventListener('online', handleOnline);
+  }, [queuedItems.length, syncQueuedItems]);
+
+  const handleCheckIn = useCallback(async () => {
+    if (!employee || !gps) {
+      showToast(isArabic ? "يرجى تحديد الموقع أولاً" : "Please detect location first", "error");
+      return;
+    }
+    if (gps.accuracy > GPS_ACCURACY_WARNING) {
+      showToast(isArabic ? "دقة الموقع ضعيفة، يرجى المحاولة في مكان مفتوح" : "Poor GPS accuracy, try in an open area", "warning");
+    }
+    if (insideSite === false) {
+      if (selfieData) {
+        setPendingCheckInPayload({
+          employeeId: employee.id,
+          date: getTodayStr(),
+          checkInTime: new Date().toISOString(),
+          checkInLatitude: gps.latitude,
+          checkInLongitude: gps.longitude,
+          checkInAddress: gps.address,
+          checkInAccuracy: gps.accuracy,
+          checkInSelfie: selfieData,
+          deviceInfo: getDeviceInfo(),
+          distanceFromSite: distance ?? undefined,
+          projectId: assignedProject?.id,
+          buildingId: selectedBuildingId || undefined,
+          shiftId: selectedShiftId || undefined,
+          notes: "",
+        });
+        setPendingCheckOutPayload(null);
+        setOverrideReason("");
+        setShowOverrideDialog(true);
+      } else {
+        showToast(isArabic ? "أنت خارج نطاق الموقع. التقط صورة شخصية لتقديم طلب تجاوز" : "You are outside the site geofence. Take a selfie to request an override", "error");
+      }
+      return;
+    }
+    if (!selfieData) {
+      showToast(isArabic ? "يرجى التقاط صورة شخصية" : "Please take a selfie", "error");
+      return;
+    }
+
+    setActionLoading(true);
+    const payload = {
+      employeeId: employee.id,
+      date: getTodayStr(),
+      checkInTime: new Date().toISOString(),
+      checkInLatitude: gps.latitude,
+      checkInLongitude: gps.longitude,
+      checkInAddress: gps.address,
+      checkInAccuracy: gps.accuracy,
+      checkInSelfie: selfieData,
+      deviceInfo: getDeviceInfo(),
+      distanceFromSite: distance ?? undefined,
+      projectId: assignedProject?.id,
+      buildingId: selectedBuildingId || undefined,
+      shiftId: selectedShiftId || undefined,
+      notes: "",
+    };
+
+    try {
+      if (!navigator.onLine) {
+        queueForSync('checkIn', payload);
+        setActionLoading(false);
+        return;
+      }
+      const result = await attendanceService.checkIn(payload);
+      if (result.requiresApproval && result.override) {
+        setActionLoading(false);
+        setPendingCheckInPayload(payload);
+        setOverrideReason("");
+        setShowOverrideDialog(true);
+        return;
+      }
+      setTodayRecord(result.record ?? null);
+      setStep('checkout');
+      showToast(isArabic ? "تم تسجيل الحضور" : "Check-in successful", "success");
+    } catch (err: any) {
+      const msg = err?.message ?? "";
+      if (msg.includes("already exists")) {
+        showToast(isArabic ? "تم تسجيل الحضور مسبقاً" : "Already checked in", "warning");
+      } else if (!navigator.onLine) {
+        queueForSync('checkIn', payload);
+      } else {
+        showToast(isArabic ? "فشل تسجيل الحضور" : "Check-in failed", "error");
+      }
+    } finally {
+      setActionLoading(false);
+    }
+  }, [employee, gps, insideSite, selfieData, distance, assignedProject, selectedBuildingId, selectedShiftId, isArabic, queueForSync]);
+
+  const submitOverride = useCallback(async () => {
+    if (!overrideReason.trim()) return;
+    setActionLoading(true);
+    try {
+      if (pendingCheckInPayload) {
+        await attendanceService.requestOverride({
+          requestedBy: user?.id ?? '',
+          reason: overrideReason.trim(),
+          type: 'check_in',
+          distance: distance ?? undefined,
+          snapshot: pendingCheckInPayload,
+        });
+        setShowOverrideDialog(false);
+        setOverrideReason("");
+        setPendingCheckInPayload(null);
+        setStep('complete');
+        showToast(isArabic ? "تم تقديم طلب التجاوز للمدير، وسيتم تسجيل الحضور بعد الموافقة" : "Override request submitted. Attendance will be recorded after manager approval", "success");
+      } else if (pendingCheckOutPayload) {
+        await attendanceService.requestOverride({
+          attendanceId: pendingCheckOutPayload.id,
+          requestedBy: user?.id ?? '',
+          reason: overrideReason.trim(),
+          type: 'check_out',
+          distance: distance ?? undefined,
+          snapshot: pendingCheckOutPayload.body,
+        });
+        setShowOverrideDialog(false);
+        setOverrideReason("");
+        setPendingCheckOutPayload(null);
+        showToast(isArabic ? "تم تقديم طلب التجاوز للمدير، وسيتم تسجيل الانصراف بعد الموافقة" : "Override request submitted. Check-out will be recorded after manager approval", "success");
+      }
+    } catch {
+      showToast(isArabic ? "فشل تقديم الطلب" : "Failed to submit request", "error");
+    } finally {
+      setActionLoading(false);
+    }
+  }, [pendingCheckInPayload, pendingCheckOutPayload, overrideReason, distance, isArabic, user]);
+
+  const handleCheckOut = useCallback(async () => {
+    if (!todayRecord || !gps) {
+      showToast(isArabic ? "لم يتم تسجيل الحضور أو تحديد الموقع" : "Not checked in or no location", "error");
+      return;
+    }
+    if (todayRecord.attendanceStatus !== 'checkedIn') {
+      showToast(isArabic ? "لم يتم تسجيل الحضور بعد" : "Not checked in yet", "error");
+      return;
+    }
+    if (todayRecord.checkOutTime) {
+      showToast(isArabic ? "تم تسجيل الانصراف مسبقاً" : "Already checked out", "warning");
+      return;
+    }
+    if (gps.accuracy > GPS_ACCURACY_WARNING) {
+      showToast(isArabic ? "دقة الموقع ضعيفة" : "Poor GPS accuracy", "warning");
+    }
+
+    setActionLoading(true);
+    let selfie = selfieData;
+    if (!selfie) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
+        const video = document.createElement('video');
+        video.srcObject = stream;
+        await video.play();
+        const canvas = document.createElement('canvas');
+        canvas.width = 640;
+        canvas.height = 480;
+        canvas.getContext('2d')!.drawImage(video, 0, 0);
+        const raw = canvas.toDataURL('image/jpeg', 0.7);
+        try {
+          selfie = await compressImage(raw, 320, 0.6);
+        } catch {
+          selfie = raw;
+        }
+        stream.getTracks().forEach((t) => t.stop());
+      } catch {
+        showToast(isArabic ? "يرجى التقاط صورة شخصية" : "Please take a selfie", "error");
+        setActionLoading(false);
+        return;
+      }
+    }
+
+    const payload = {
+      checkOutTime: new Date().toISOString(),
+      checkOutLatitude: gps.latitude,
+      checkOutLongitude: gps.longitude,
+      checkOutAddress: gps.address,
+      checkOutAccuracy: gps.accuracy,
+      checkOutSelfie: selfie,
+      distanceFromSite: distance ?? undefined,
+    };
+
+    try {
+      if (!navigator.onLine) {
+        queueForSync('checkOut', { id: todayRecord.id, body: payload });
+        setActionLoading(false);
+        return;
+      }
+      const result = await attendanceService.checkOut(todayRecord.id, payload);
+      if (result.requiresApproval && result.override) {
+        setPendingCheckOutPayload({ id: todayRecord.id, body: payload });
+        setOverrideReason("");
+        setShowOverrideDialog(true);
+        setActionLoading(false);
+        return;
+      }
+      setTodayRecord(result.record ?? null);
+      showToast(isArabic ? "تم تسجيل الانصراف" : "Check-out successful", "success");
+    } catch {
+      if (!navigator.onLine) {
+        queueForSync('checkOut', { id: todayRecord.id, body: payload });
+      } else {
+        showToast(isArabic ? "فشل تسجيل الانصراف" : "Check-out failed", "error");
+      }
+    } finally {
+      setActionLoading(false);
+    }
+  }, [todayRecord, gps, selfieData, distance, isArabic, queueForSync]);
+
+  const selectedShift = useMemo(() => {
+    if (!selectedShiftId || !shifts.length) return null;
+    return shifts.find((s) => s.id === selectedShiftId) ?? null;
+  }, [shifts, selectedShiftId]);
+
+  const lateMinutes = useMemo(() => {
+    if (!todayRecord?.checkInTime) return 0;
+    const checkIn = new Date(todayRecord.checkInTime);
+    if (selectedShift) {
+      const [sh, sm] = selectedShift.startTime.split(':').map(Number);
+      const startWithGrace = new Date(checkIn);
+      startWithGrace.setHours(sh, sm + (selectedShift.gracePeriod || 0), 0, 0);
+      const diff = Math.round((checkIn.getTime() - startWithGrace.getTime()) / 60000);
+      return diff > 0 ? diff : 0;
+    }
+    const expectedStart = new Date(checkIn);
+    expectedStart.setHours(8, 0, 0, 0);
+    const diff = Math.round((checkIn.getTime() - expectedStart.getTime()) / 60000);
+    return diff > 0 ? diff : 0;
+  }, [todayRecord, selectedShift]);
+
+  const earlyLeave = useMemo(() => {
+    if (!todayRecord?.checkOutTime) return 0;
+    const checkOut = new Date(todayRecord.checkOutTime);
+    if (selectedShift) {
+      const [eh, em] = selectedShift.endTime.split(':').map(Number);
+      const expectedEnd = new Date(checkOut);
+      expectedEnd.setHours(eh, em, 0, 0);
+      const diff = Math.round((expectedEnd.getTime() - checkOut.getTime()) / 60000);
+      return diff > 0 ? diff : 0;
+    }
+    const expectedEnd = new Date(checkOut);
+    expectedEnd.setHours(17, 0, 0, 0);
+    const diff = Math.round((expectedEnd.getTime() - checkOut.getTime()) / 60000);
+    return diff > 0 ? diff : 0;
+  }, [todayRecord, selectedShift]);
+
+  const overtimeMinutes = useMemo(() => {
+    if (!todayRecord?.checkOutTime) return 0;
+    const checkOut = new Date(todayRecord.checkOutTime);
+    if (selectedShift) {
+      const [eh, em] = selectedShift.endTime.split(':').map(Number);
+      const expectedEnd = new Date(checkOut);
+      expectedEnd.setHours(eh, em, 0, 0);
+      const diff = Math.round((checkOut.getTime() - expectedEnd.getTime()) / 60000);
+      return diff > 0 && selectedShift.overtimeEnabled ? diff : 0;
+    }
+    return 0;
+  }, [todayRecord, selectedShift]);
+
+  const projectBuildings = useMemo(() => {
+    if (!assignedProject) return [];
+    return buildings.filter((b) => b.projectId === assignedProject.id);
+  }, [buildings, assignedProject]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-gray-light" {...suppressProps}>
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-4 md:p-6 space-y-6">
       {ToastComponent}
 
-      <div className="bg-white border-b px-6 py-4" {...suppressProps}>
-        <div
-          className="flex justify-between items-center flex-wrap gap-4"
-          {...suppressProps}
+      {/* Offline Banner */}
+      {!isOnline && (
+        <div className="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700 rounded-xl p-3 flex items-center gap-3 text-amber-700 dark:text-amber-300 text-sm">
+          <WifiOff size={18} />
+          <span>{isArabic ? "أنت غير متصل بالإنترنت. سيتم حفظ البيانات محلياً." : "You are offline. Data will be saved locally."}</span>
+          {queuedItems.length > 0 && (
+            <span className="font-bold">{queuedItems.length} {isArabic ? "معلقة" : "pending"}</span>
+          )}
+        </div>
+      )}
+
+      {/* Queued items banner */}
+      {queuedItems.length > 0 && isOnline && (
+        <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-xl p-3 flex items-center gap-3 text-blue-700 dark:text-blue-300 text-sm">
+          <RefreshCw size={18} />
+          <span>{queuedItems.length} {isArabic ? "عملية في انتظار المزامنة" : "items waiting to sync"}</span>
+          <button onClick={syncQueuedItems} className="px-3 py-1 bg-blue-600 text-white rounded-lg text-xs font-medium">
+            {isArabic ? "مزامنة" : "Sync"}
+          </button>
+        </div>
+      )}
+
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+            {isArabic ? "الحضور والانصراف" : "Attendance"}
+          </h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+            {employee?.fullName ?? user?.name ?? ""}
+          </p>
+        </div>
+        <button
+          onClick={() => setShowHistory(!showHistory)}
+          className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition"
         >
-          <div {...suppressProps}>
-            <h1 className="text-2xl font-bold text-primary" {...suppressProps}>
-              {isArabic ? "الحضور والانصراف" : "Attendance"}
-            </h1>
-            <p className="text-sm text-gray-500 mt-1" {...suppressProps}>
-              {isArabic
-                ? "تسجيل حضور وانصراف الموظفين"
-                : "Record employee attendance"}
+          <History size={16} />
+          {isArabic ? "السجل" : "History"}
+          <ChevronDown size={14} className={`transition-transform ${showHistory ? 'rotate-180' : ''}`} />
+        </button>
+      </div>
+
+      {/* Today's active record summary */}
+      {todayRecord && todayRecord.attendanceStatus === 'checkedIn' && (
+        <Card className="p-4 border-l-4 border-amber-500 bg-amber-50/50 dark:bg-amber-900/20">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-amber-100 dark:bg-amber-900/50 rounded-full flex items-center justify-center">
+              <Clock className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+            </div>
+            <div>
+              <p className="text-sm text-amber-700 dark:text-amber-300 font-medium">
+                {isArabic ? "مسجل الحضور" : "Checked In"}
+              </p>
+              <p className="text-xs text-amber-600 dark:text-amber-400">
+                {todayRecord.checkInTime
+                  ? new Date(todayRecord.checkInTime).toLocaleTimeString(locale === 'ar' ? 'ar-EG' : 'en-US', { hour: '2-digit', minute: '2-digit' })
+                  : todayRecord.checkIn}
+              </p>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {/* History Section */}
+      {showHistory && (
+        <Card className="p-4 max-h-60 overflow-y-auto">
+          <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">
+            {isArabic ? "آخر السجلات" : "Recent Records"}
+          </h3>
+          {attendanceHistory.length === 0 ? (
+            <p className="text-sm text-gray-400">{isArabic ? "لا توجد سجلات" : "No records"}</p>
+          ) : (
+            <div className="space-y-2">
+              {attendanceHistory.map((r) => (
+                <div key={r.id} className="flex items-center justify-between text-sm py-2 border-b border-gray-100 dark:border-gray-700 last:border-0">
+                  <div className="flex items-center gap-2">
+                    <Clock size={14} className="text-gray-400" />
+                    <span className="text-gray-600 dark:text-gray-400">{r.date}</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs text-gray-500">{r.checkIn || "—"}</span>
+                    <span className="text-xs text-gray-400">→</span>
+                    <span className="text-xs text-gray-500">{r.checkOut || "—"}</span>
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${
+                      r.attendanceStatus === 'checkedOut' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                      : r.attendanceStatus === 'checkedIn' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+                      : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
+                    }`}>
+                      {r.attendanceStatus === 'checkedOut' ? (isArabic ? 'مغادر' : 'Out')
+                      : r.attendanceStatus === 'checkedIn' ? (isArabic ? 'حاضر' : 'In')
+                      : (isArabic ? 'معلق' : '—')}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+      )}
+
+      {/* Main Grid: Assignment + Location + Distance + Selfie */}
+      <div className="grid md:grid-cols-2 gap-6">
+        {/* 1. Today's Assignment */}
+        <Card className="p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <Briefcase className="w-5 h-5 text-primary" />
+            <h2 className="text-lg font-bold text-gray-900 dark:text-white">
+              {isArabic ? "مهمة اليوم" : "Today's Assignment"}
+            </h2>
+          </div>
+          {assignedProject ? (
+            <div className="space-y-3">
+              <div className="flex items-center gap-3">
+                <Building2 size={18} className="text-gray-400" />
+                <div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    {isArabic ? "المشروع" : "Project"}
+                  </p>
+                  <p className="text-sm font-medium text-gray-800 dark:text-gray-200">
+                    {assignedProject.name}
+                  </p>
+                </div>
+              </div>
+              {assignedProject.location && (
+                <div className="flex items-center gap-3">
+                  <MapPin size={18} className="text-gray-400" />
+                  <div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      {isArabic ? "موقع العمل" : "Work Location"}
+                    </p>
+                    <p className="text-sm text-gray-800 dark:text-gray-200">
+                      {assignedProject.location}
+                    </p>
+                  </div>
+                </div>
+              )}
+              {projects.length > 1 && (
+                <select
+                  value={selectedProjectId}
+                  onChange={(e) => setSelectedProjectId(e.target.value)}
+                  className="w-full mt-2 p-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300"
+                >
+                  <option value="">{isArabic ? "اختر مشروعاً" : "Select project"}</option>
+                  {projects.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+              )}
+              <div className="flex items-center gap-3">
+                <Clock size={18} className="text-gray-400" />
+                <div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    {isArabic ? "موعد الدوام" : "Shift"}
+                  </p>
+                  <p className="text-sm font-medium text-gray-800 dark:text-gray-200">
+                    08:00 - 17:00
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-gray-400">
+              {isArabic ? "لا توجد مشاريع مخصصة" : "No assigned projects"}
             </p>
+          )}
+        </Card>
+
+        {/* 2. Current Location */}
+        <Card className="p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <MapPin className="w-5 h-5 text-primary" />
+            <h2 className="text-lg font-bold text-gray-900 dark:text-white">
+              {isArabic ? "الموقع الحالي" : "Current Location"}
+            </h2>
           </div>
-          <div className="flex gap-2" {...suppressProps}>
-            <button
-              onClick={exportToExcel}
-              className="flex items-center gap-2 px-4 py-2 border border-gold text-gold rounded-lg hover:bg-gold hover:text-white transition"
-              suppressHydrationWarning
-            >
-              <Download size={18} />{" "}
-              {isArabic ? "تصدير تقرير" : "Export Report"}
-            </button>
-            <button
-              onClick={handleSave}
-              className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition"
-              suppressHydrationWarning
-            >
-              <Save size={18} /> {isArabic ? "حفظ الحضور" : "Save Attendance"}
-            </button>
-          </div>
+          <button
+            onClick={() => getGps()}
+            disabled={gettingGps}
+            className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-primary text-white rounded-xl hover:bg-primary-dark transition disabled:opacity-50 font-medium"
+          >
+            <Navigation size={20} />
+            {gettingGps ? (isArabic ? "جاري التحديد..." : "Detecting...") : (isArabic ? "تحديد موقعي" : "Detect My Location")}
+          </button>
+          {gps && (
+            <div className="mt-4 space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-gray-500 dark:text-gray-400">{isArabic ? "خط العرض" : "Latitude"}</span>
+                <span className="font-mono text-gray-800 dark:text-gray-200">{gps.latitude.toFixed(6)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500 dark:text-gray-400">{isArabic ? "خط الطول" : "Longitude"}</span>
+                <span className="font-mono text-gray-800 dark:text-gray-200">{gps.longitude.toFixed(6)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500 dark:text-gray-400">{isArabic ? "الدقة" : "Accuracy"}</span>
+                <span className={`font-mono ${gps.accuracy > GPS_ACCURACY_WARNING ? 'text-amber-600 dark:text-amber-400' : 'text-green-600 dark:text-green-400'}`}>
+                  {gps.accuracy.toFixed(1)} {isArabic ? "متر" : "m"}
+                </span>
+              </div>
+              {gps.address && (
+                <div className="pt-2 border-t border-gray-100 dark:border-gray-700">
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">
+                    {isArabic ? "العنوان" : "Address"}
+                  </p>
+                  <p className="text-xs text-gray-700 dark:text-gray-300 line-clamp-2">{gps.address}</p>
+                </div>
+              )}
+            </div>
+          )}
+        </Card>
+      </div>
+
+      {/* 3. Distance Verification */}
+      <Card className="p-5">
+        <div className="flex items-center gap-2 mb-4">
+          <Target className="w-5 h-5 text-primary" />
+          <h2 className="text-lg font-bold text-gray-900 dark:text-white">
+            {isArabic ? "التحقق من المسافة" : "Distance Verification"}
+          </h2>
         </div>
-      </div>
-
-      {/* Stats Cards */}
-      <div
-        className="grid grid-cols-2 md:grid-cols-4 gap-4 p-6"
-        {...suppressProps}
-      >
-        <Card className="p-4 text-center" {...suppressProps}>
-          <div
-            className="flex items-center justify-center gap-2 text-green-600"
-            {...suppressProps}
-          >
-            <CheckCircle size={20} />
-            <span className="text-sm">{isArabic ? "حاضر" : "Present"}</span>
-          </div>
-          <p className="text-2xl font-bold text-primary">{stats.present}</p>
-        </Card>
-        <Card className="p-4 text-center" {...suppressProps}>
-          <div
-            className="flex items-center justify-center gap-2 text-red-600"
-            {...suppressProps}
-          >
-            <XCircle size={20} />
-            <span className="text-sm">{isArabic ? "غائب" : "Absent"}</span>
-          </div>
-          <p className="text-2xl font-bold text-primary">{stats.absent}</p>
-        </Card>
-        <Card className="p-4 text-center" {...suppressProps}>
-          <div
-            className="flex items-center justify-center gap-2 text-yellow-600"
-            {...suppressProps}
-          >
-            <AlertCircle size={20} />
-            <span className="text-sm">{isArabic ? "متأخر" : "Late"}</span>
-          </div>
-          <p className="text-2xl font-bold text-primary">{stats.late}</p>
-        </Card>
-        <Card className="p-4 text-center" {...suppressProps}>
-          <div
-            className="flex items-center justify-center gap-2 text-blue-600"
-            {...suppressProps}
-          >
-            <Calendar size={20} />
-            <span className="text-sm">{isArabic ? "إجازة" : "Vacation"}</span>
-          </div>
-          <p className="text-2xl font-bold text-primary">{stats.vacation}</p>
-        </Card>
-      </div>
-
-      {/* Filters */}
-      <div className="bg-white border-b px-6 py-4" {...suppressProps}>
-        <div
-          className="flex flex-wrap gap-4 items-center justify-between"
-          {...suppressProps}
-        >
-          <div className="flex flex-wrap gap-3 items-center" {...suppressProps}>
-            <div className="relative" {...suppressProps}>
-              <Calendar className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-              <input
-                type="date"
-                value={selectedDate}
-                onChange={(e) => handleDateChange(e.target.value)}
-                className="pr-10 pl-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-gold"
-                suppressHydrationWarning
-              />
+        {distance !== null ? (
+          <div className="grid grid-cols-3 gap-4">
+            <div className="text-center p-3 bg-gray-50 dark:bg-gray-800 rounded-xl">
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                {isArabic ? "المسافة" : "Distance"}
+              </p>
+              <p className="text-xl font-bold text-gray-800 dark:text-gray-200">{distance} <span className="text-sm font-normal">{isArabic ? "م" : "m"}</span></p>
             </div>
-            <div className="relative" {...suppressProps}>
-              <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-              <input
-                type="text"
-                placeholder={isArabic ? "بحث عن موظف..." : "Search employee..."}
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pr-10 pl-4 py-2 border border-gray-200 rounded-lg w-64 focus:outline-none focus:border-gold"
-                suppressHydrationWarning
-              />
+            <div className="text-center p-3 bg-gray-50 dark:bg-gray-800 rounded-xl">
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                {isArabic ? "النطاق المسموح" : "Allowed Radius"}
+              </p>
+              <p className="text-xl font-bold text-gray-800 dark:text-gray-200">{selectedBuilding?.allowedRadius ?? 100} <span className="text-sm font-normal">{isArabic ? "م" : "m"}</span></p>
             </div>
-            <div className="relative" {...suppressProps}>
-              <Filter className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-              <select
-                value={statusFilter}
-                onChange={(e) =>
-                  setStatusFilter(e.target.value as AttendanceStatus | "all")
-                }
-                className="pr-10 pl-4 py-2 border border-gray-200 rounded-lg appearance-none focus:outline-none focus:border-gold"
-                suppressHydrationWarning
-              >
-                <option value="all">
-                  {isArabic ? "كل الحالات" : "All Status"}
-                </option>
-                <option value="present">{isArabic ? "حاضر" : "Present"}</option>
-                <option value="absent">{isArabic ? "غائب" : "Absent"}</option>
-                <option value="late">{isArabic ? "متأخر" : "Late"}</option>
-                <option value="vacation">
-                  {isArabic ? "إجازة" : "Vacation"}
-                </option>
-              </select>
-            </div>
-          </div>
-          <div className="text-sm text-gray-500" {...suppressProps}>
-            {isArabic
-              ? `إجمالي الموظفين: ${stats.total}`
-              : `Total Employees: ${stats.total}`}
-          </div>
-        </div>
-      </div>
-
-      {/* Table */}
-      <div className="p-6" {...suppressProps}>
-        <Card className="overflow-hidden" {...suppressProps}>
-          <div className="overflow-x-auto" {...suppressProps}>
-            <table className="w-full" {...suppressProps}>
-              <thead className="bg-gray-50" {...suppressProps}>
-                <tr {...suppressProps}>
-                  <th className="p-3 text-right" {...suppressProps}>
-                    #
-                  </th>
-                  <th className="p-3 text-right" {...suppressProps}>
-                    {isArabic ? "الموظف" : "Employee"}
-                  </th>
-                  <th className="p-3 text-center" {...suppressProps}>
-                    {isArabic ? "الحالة" : "Status"}
-                  </th>
-                  <th className="p-3 text-center" {...suppressProps}>
-                    {isArabic ? "وقت الدخول" : "Check In"}
-                  </th>
-                  <th className="p-3 text-center" {...suppressProps}>
-                    {isArabic ? "وقت الخروج" : "Check Out"}
-                  </th>
-                  <th className="p-3 text-center" {...suppressProps}>
-                    {isArabic ? "عدد الساعات" : "Hours"}
-                  </th>
-                  <th className="p-3 text-right" {...suppressProps}>
-                    {isArabic ? "ملاحظات" : "Notes"}
-                  </th>
-                </tr>
-              </thead>
-              <tbody {...suppressProps}>
-                {filteredRecords.length === 0 ? (
-                  <tr {...suppressProps}>
-                    <td
-                      colSpan={7}
-                      className="p-8 text-center text-gray-500"
-                      {...suppressProps}
-                    >
-                      {isArabic ? "لا توجد بيانات" : "No data found"}
-                    </td>
-                  </tr>
+            <div className={`text-center p-3 rounded-xl ${insideSite ? 'bg-green-50 dark:bg-green-900/20' : 'bg-red-50 dark:bg-red-900/20'}`}>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                {isArabic ? "الحالة" : "Status"}
+              </p>
+              <div className="flex items-center justify-center gap-1 mt-1">
+                {insideSite ? (
+                  <><CheckCircle2 className="w-5 h-5 text-green-600 dark:text-green-400" /><span className="text-sm font-bold text-green-600 dark:text-green-400">{isArabic ? "داخل الموقع" : "Inside Site"}</span></>
                 ) : (
-                  (filteredRecords as any[]).map((record, idx) => (
-                    <tr
-                      key={record.employeeId}
-                      className="border-t hover:bg-gray-50"
-                      {...suppressProps}
-                    >
-                      <td className="p-3" {...suppressProps}>
-                        {idx + 1}
-                      </td>
-                      <td className="p-3" {...suppressProps}>
-                        <div
-                          className="flex items-center gap-2"
-                          {...suppressProps}
-                        >
-                          <User size={16} className="text-gold" />
-                          <span className="font-medium">
-                            {record.employeeName}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="p-3 text-center" {...suppressProps}>
-                        <select
-                          value={record.status}
-                          onChange={(e) => {
-                            const newStatus = e.target
-                              .value as AttendanceStatus;
-                            updateAttendance(
-                              record.employeeId,
-                              "status",
-                              newStatus
-                            );
-                            if (newStatus === "absent") {
-                              updateAttendance(
-                                record.employeeId,
-                                "checkIn",
-                                ""
-                              );
-                              updateAttendance(
-                                record.employeeId,
-                                "checkOut",
-                                ""
-                              );
-                              updateAttendance(
-                                record.employeeId,
-                                "hoursWorked",
-                                0
-                              );
-                            }
-                          }}
-                          className={`px-2 py-1 rounded-full text-xs font-medium border ${getStatusColor(
-                            record.status
-                          )} focus:outline-none`}
-                          suppressHydrationWarning
-                        >
-                          <option value="present">
-                            {isArabic ? "حاضر" : "Present"}
-                          </option>
-                          <option value="absent">
-                            {isArabic ? "غائب" : "Absent"}
-                          </option>
-                          <option value="late">
-                            {isArabic ? "متأخر" : "Late"}
-                          </option>
-                          <option value="vacation">
-                            {isArabic ? "إجازة" : "Vacation"}
-                          </option>
-                        </select>
-                      </td>
-                      <td className="p-3 text-center" {...suppressProps}>
-                        <input
-                          type="time"
-                          value={record.checkIn}
-                          onChange={(e) => {
-                            const newCheckIn = e.target.value;
-                            updateAttendance(
-                              record.employeeId,
-                              "checkIn",
-                              newCheckIn
-                            );
-                            const hours = calculateHours(
-                              newCheckIn,
-                              record.checkOut
-                            );
-                            updateAttendance(
-                              record.employeeId,
-                              "hoursWorked",
-                              hours
-                            );
-                          }}
-                          disabled={record.status === "absent"}
-                          className="border border-gray-200 rounded-lg px-2 py-1 text-sm w-28 text-center disabled:bg-gray-100 focus:outline-none focus:border-gold"
-                          suppressHydrationWarning
-                        />
-                      </td>
-                      <td className="p-3 text-center" {...suppressProps}>
-                        <input
-                          type="time"
-                          value={record.checkOut}
-                          onChange={(e) => {
-                            const newCheckOut = e.target.value;
-                            updateAttendance(
-                              record.employeeId,
-                              "checkOut",
-                              newCheckOut
-                            );
-                            const hours = calculateHours(
-                              record.checkIn,
-                              newCheckOut
-                            );
-                            updateAttendance(
-                              record.employeeId,
-                              "hoursWorked",
-                              hours
-                            );
-                          }}
-                          disabled={record.status === "absent"}
-                          className="border border-gray-200 rounded-lg px-2 py-1 text-sm w-28 text-center disabled:bg-gray-100 focus:outline-none focus:border-gold"
-                          suppressHydrationWarning
-                        />
-                      </td>
-                      <td className="p-3 text-center" {...suppressProps}>
-                        <div
-                          className="flex items-center justify-center gap-1"
-                          {...suppressProps}
-                        >
-                          <Clock3 size={14} className="text-gold" />
-                          <span className="font-medium">
-                            {record.hoursWorked || 0}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="p-3" {...suppressProps}>
-                        <input
-                          type="text"
-                          placeholder={isArabic ? "ملاحظات..." : "Notes..."}
-                          value={record.notes}
-                          onChange={(e) =>
-                            updateAttendance(
-                              record.employeeId,
-                              "notes",
-                              e.target.value
-                            )
-                          }
-                          className="w-full border border-gray-200 rounded-lg px-2 py-1 text-sm focus:outline-none focus:border-gold"
-                          suppressHydrationWarning
-                        />
-                      </td>
-                    </tr>
-                  ))
+                  <><XCircle className="w-5 h-5 text-red-600 dark:text-red-400" /><span className="text-sm font-bold text-red-600 dark:text-red-400">{isArabic ? "خارج الموقع" : "Outside Site"}</span></>
                 )}
-              </tbody>
-            </table>
+              </div>
+            </div>
           </div>
+        ) : gps ? (
+          <p className="text-sm text-gray-400 text-center py-4">
+            {isArabic ? "لم يتم تحديد نطاق جغرافي لهذا المبنى" : "No geofence configured for this building"}
+          </p>
+        ) : (
+          <p className="text-sm text-gray-400 text-center py-4">
+            {isArabic ? "يرجى تحديد الموقع أولاً" : "Please detect location first"}
+          </p>
+        )}
+        {gps && gps.accuracy > GPS_ACCURACY_WARNING && (
+          <div className="mt-3 flex items-center gap-2 text-amber-600 dark:text-amber-400 text-xs bg-amber-50 dark:bg-amber-900/20 p-2 rounded-lg">
+            <AlertTriangle size={14} />
+            {isArabic ? "دقة GPS منخفضة (>30م)، قد تؤثر على دقة التحقق" : "Low GPS accuracy (>30m), may affect verification"}
+          </div>
+        )}
+      </Card>
+
+      {/* 4. Selfie */}
+      <Card className="p-5">
+        <div className="flex items-center gap-2 mb-4">
+          <Camera className="w-5 h-5 text-primary" />
+          <h2 className="text-lg font-bold text-gray-900 dark:text-white">
+            {isArabic ? "الصورة الشخصية" : "Selfie"}
+          </h2>
+        </div>
+        {showCamera ? (
+          <div className="space-y-3">
+            <div className="relative bg-black rounded-xl overflow-hidden">
+              <video ref={videoRef} autoPlay playsInline className="w-full h-64 object-cover" />
+              <canvas ref={canvasRef} className="hidden" />
+              {gps && (
+                <div className="absolute bottom-2 left-2 bg-black/60 text-white text-[10px] px-2 py-1 rounded">
+                  {gps.latitude.toFixed(4)}, {gps.longitude.toFixed(4)}
+                </div>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <button onClick={captureSelfie} className="flex-1 px-4 py-2 bg-primary text-white rounded-xl hover:bg-primary-dark transition font-medium">
+                {isArabic ? "التقاط" : "Capture"}
+              </button>
+              <button onClick={stopCamera} className="px-4 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition">
+                {isArabic ? "إلغاء" : "Cancel"}
+              </button>
+            </div>
+          </div>
+        ) : selfieData ? (
+          <div className="space-y-3">
+            <div className="relative w-48 h-48 mx-auto rounded-xl overflow-hidden border-2 border-green-400">
+              <img src={selfieData} alt="Selfie" className="w-full h-full object-cover" />
+              <div className="absolute bottom-1 left-1 bg-black/60 text-white text-[10px] px-2 py-0.5 rounded">
+                {new Date().toLocaleTimeString()}
+              </div>
+            </div>
+            <div className="flex gap-2 justify-center">
+              <button onClick={() => { setSelfieData(null); startCamera(); }} className="px-4 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition">
+                {isArabic ? "إعادة" : "Retake"}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button onClick={startCamera} className="w-full flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl text-gray-500 dark:text-gray-400 hover:border-primary hover:text-primary transition">
+            <Camera size={24} />
+            <span>{isArabic ? "التقاط صورة شخصية" : "Take a Selfie"}</span>
+          </button>
+        )}
+      </Card>
+
+      {/* 5. Attendance Summary */}
+      {todayRecord && (
+        <Card className="p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <Clock className="w-5 h-5 text-primary" />
+            <h2 className="text-lg font-bold text-gray-900 dark:text-white">
+              {isArabic ? "ملخص الحضور" : "Attendance Summary"}
+            </h2>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="text-center p-3 bg-gray-50 dark:bg-gray-800 rounded-xl">
+              <p className="text-[10px] text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                {isArabic ? "الحضور" : "Check In"}
+              </p>
+              <p className="text-lg font-bold text-gray-800 dark:text-gray-200">
+                {todayRecord.checkInTime
+                  ? new Date(todayRecord.checkInTime).toLocaleTimeString(locale === 'ar' ? 'ar-EG' : 'en-US', { hour: '2-digit', minute: '2-digit' })
+                  : todayRecord.checkIn || "—"}
+              </p>
+            </div>
+            <div className="text-center p-3 bg-gray-50 dark:bg-gray-800 rounded-xl">
+              <p className="text-[10px] text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                {isArabic ? "الانصراف" : "Check Out"}
+              </p>
+              <p className="text-lg font-bold text-gray-800 dark:text-gray-200">
+                {todayRecord.checkOutTime
+                  ? new Date(todayRecord.checkOutTime).toLocaleTimeString(locale === 'ar' ? 'ar-EG' : 'en-US', { hour: '2-digit', minute: '2-digit' })
+                  : todayRecord.checkOut || "—"}
+              </p>
+            </div>
+            <div className="text-center p-3 bg-gray-50 dark:bg-gray-800 rounded-xl">
+              <p className="text-[10px] text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                {isArabic ? "ساعات العمل" : "Worked"}
+              </p>
+              <p className="text-lg font-bold text-gray-800 dark:text-gray-200">
+                {todayRecord.workedMinutes ? formatDuration(todayRecord.workedMinutes) : (todayRecord.hoursWorked ? `${todayRecord.hoursWorked}h` : "—")}
+              </p>
+            </div>
+            <div className="text-center p-3 bg-gray-50 dark:bg-gray-800 rounded-xl">
+              <p className="text-[10px] text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                {isArabic ? "الحالة" : "Status"}
+              </p>
+              <span className={`inline-flex items-center gap-1 text-xs font-bold px-3 py-1 rounded-full mt-1 ${
+                todayRecord.attendanceStatus === 'checkedOut' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                : todayRecord.attendanceStatus === 'checkedIn' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+                : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
+              }`}>
+                {todayRecord.attendanceStatus === 'checkedOut' ? <CheckCircle2 size={12} /> : todayRecord.attendanceStatus === 'checkedIn' ? <Clock size={12} /> : null}
+                {todayRecord.attendanceStatus === 'checkedOut' ? (isArabic ? 'مكتمل' : 'Completed')
+                : todayRecord.attendanceStatus === 'checkedIn' ? (isArabic ? 'حاضر' : 'Active')
+                : (isArabic ? 'معلق' : 'Pending')}
+              </span>
+            </div>
+          </div>
+          {(lateMinutes > 0 || earlyLeave > 0) && (
+            <div className="mt-3 flex gap-4 text-xs text-gray-500 dark:text-gray-400">
+              {lateMinutes > 0 && (
+                <span className="flex items-center gap-1">
+                  <AlertTriangle size={12} className="text-amber-500" />
+                  {isArabic ? `تأخر ${lateMinutes} دقيقة` : `${lateMinutes} min late`}
+                </span>
+              )}
+              {earlyLeave > 0 && (
+                <span className="flex items-center gap-1">
+                  <AlertTriangle size={12} className="text-amber-500" />
+                  {isArabic ? `خروج مبكر ${earlyLeave} دقيقة` : `${earlyLeave} min early leave`}
+                </span>
+              )}
+            </div>
+          )}
         </Card>
+      )}
+
+      {/* 6. Check-In / Check-Out Buttons */}
+      <div className="grid grid-cols-2 gap-4">
+        <button
+          onClick={handleCheckIn}
+          disabled={actionLoading || !!todayRecord?.checkInTime || !gps || gettingGps}
+          className="flex flex-col items-center justify-center gap-2 px-6 py-6 bg-gradient-to-br from-green-500 to-green-600 text-white rounded-2xl hover:from-green-600 hover:to-green-700 transition disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-green-500/20"
+        >
+          <LogIn size={32} />
+          <span className="text-lg font-bold">{isArabic ? "تسجيل الحضور" : "Check In"}</span>
+          {todayRecord?.checkInTime && (
+            <span className="text-xs text-green-100">
+              {new Date(todayRecord.checkInTime).toLocaleTimeString(locale === 'ar' ? 'ar-EG' : 'en-US', { hour: '2-digit', minute: '2-digit' })}
+            </span>
+          )}
+        </button>
+        <button
+          onClick={handleCheckOut}
+          disabled={actionLoading || !todayRecord || todayRecord.attendanceStatus !== 'checkedIn' || !!todayRecord.checkOutTime || !gps || gettingGps}
+          className="flex flex-col items-center justify-center gap-2 px-6 py-6 bg-gradient-to-br from-amber-500 to-orange-600 text-white rounded-2xl hover:from-amber-600 hover:to-orange-700 transition disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-amber-500/20"
+        >
+          <LogOut size={32} />
+          <span className="text-lg font-bold">{isArabic ? "تسجيل الانصراف" : "Check Out"}</span>
+          {todayRecord?.checkOutTime && (
+            <span className="text-xs text-amber-100">
+              {new Date(todayRecord.checkOutTime).toLocaleTimeString(locale === 'ar' ? 'ar-EG' : 'en-US', { hour: '2-digit', minute: '2-digit' })}
+            </span>
+          )}
+        </button>
       </div>
+
+      {/* Device Info */}
+      <Card className="p-4">
+        <div className="flex items-center gap-2 mb-2">
+          <Smartphone className="w-4 h-4 text-gray-400" />
+          <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+            {isArabic ? "معلومات الجهاز" : "Device Info"}
+          </h3>
+        </div>
+        <p className="text-[10px] text-gray-400 dark:text-gray-500 font-mono truncate">
+          {navigator.userAgent}
+        </p>
+      </Card>
+
+      {/* Manual Location Dialog */}
+      {showManualLocation && (
+        <Dialog
+          open={showManualLocation}
+          onClose={() => setShowManualLocation(false)}
+          title={isArabic ? "إدخال الموقع يدوياً" : "Enter Location Manually"}
+          size="sm"
+        >
+          <div className="space-y-4">
+            {selectedBuilding && selectedBuilding.latitude != null && selectedBuilding.longitude != null && (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-700">
+                <AlertTriangle size={14} className="inline mr-1" />
+                {isArabic
+                  ? "تم تعبئة إحداثيات المبنى المحدد. تأكد من أنك داخل موقع العمل قبل الاعتماد."
+                  : "Prefilled with the selected building coordinates. Verify you are at the site before confirming."}
+              </div>
+            )}
+            <div>
+              <label className="block text-xs text-text-muted mb-1">
+                {isArabic ? "خط العرض" : "Latitude"}
+              </label>
+              <input
+                type="number"
+                step="any"
+                value={manualLat}
+                onChange={(e) => setManualLat(e.target.value)}
+                className="w-full p-3 border border-border rounded-xl text-sm bg-surface-secondary focus:outline-none focus:ring-2 focus:ring-gold"
+                placeholder="29.9652"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-text-muted mb-1">
+                {isArabic ? "خط الطول" : "Longitude"}
+              </label>
+              <input
+                type="number"
+                step="any"
+                value={manualLng}
+                onChange={(e) => setManualLng(e.target.value)}
+                className="w-full p-3 border border-border rounded-xl text-sm bg-surface-secondary focus:outline-none focus:ring-2 focus:ring-gold"
+                placeholder="32.5498"
+              />
+            </div>
+            <div className="flex gap-3 pt-3 border-t">
+              <button
+                onClick={() => setShowManualLocation(false)}
+                className="flex-1 px-4 py-2 border border-border rounded-lg text-sm text-text-secondary hover:bg-surface-secondary"
+              >
+                {isArabic ? "إلغاء" : "Cancel"}
+              </button>
+              <button
+                onClick={applyManualLocation}
+                className="flex-1 px-4 py-2 bg-gold text-white rounded-lg hover:bg-gold-dark"
+              >
+                {isArabic ? "تأكيد" : "Confirm"}
+              </button>
+            </div>
+          </div>
+        </Dialog>
+      )}
+
+      {/* Override Request Dialog */}
+      {showOverrideDialog && (
+        <Dialog
+          open={showOverrideDialog}
+          onClose={() => setShowOverrideDialog(false)}
+          title={isArabic ? "طلب تجاوز خارج الموقع" : "Outside Site Override Request"}
+          size="sm"
+        >
+          <div className="space-y-4">
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-700 flex items-start gap-2">
+              <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+              <span>
+                {isArabic
+                  ? "أنت خارج نطاق الموقع المسموح. سيتم إرسال طلب تجاوز للمدير للموافقة على تسجيل الحضور."
+                  : "You are outside the allowed site radius. An override request will be sent to a manager for approval."}
+              </span>
+            </div>
+            <div>
+              <label className="block text-xs text-text-muted mb-1">
+                {isArabic ? "سبب التجاوز" : "Override Reason"}
+              </label>
+              <textarea
+                value={overrideReason}
+                onChange={(e) => setOverrideReason(e.target.value)}
+                rows={3}
+                className="w-full p-3 border border-border rounded-xl text-sm bg-surface-secondary focus:outline-none focus:ring-2 focus:ring-gold"
+                placeholder={isArabic ? "اكتب سبب التواجد خارج الموقع..." : "Describe why you are outside the site..."}
+              />
+            </div>
+            <div className="flex gap-3 pt-3 border-t">
+              <button
+                onClick={() => setShowOverrideDialog(false)}
+                className="flex-1 px-4 py-2 border border-border rounded-lg text-sm text-text-secondary hover:bg-surface-secondary"
+              >
+                {isArabic ? "إلغاء" : "Cancel"}
+              </button>
+              <button
+                onClick={submitOverride}
+                disabled={!overrideReason.trim() || actionLoading}
+                className="flex-1 px-4 py-2 bg-gold text-white rounded-lg hover:bg-gold-dark disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {isArabic ? "إرسال الطلب" : "Submit Request"}
+              </button>
+            </div>
+          </div>
+        </Dialog>
+      )}
     </div>
   );
 }

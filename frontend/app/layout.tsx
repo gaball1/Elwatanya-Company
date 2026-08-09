@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { getLocale } from "next-intl/server";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -7,13 +8,28 @@ export const metadata: Metadata = {
     "نظام متكامل لإدارة المشاريع والمقاولين الباطنين والمخازن والمستخلصات",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const locale = await getLocale();
+  const dir = locale === "ar" ? "rtl" : "ltr";
   return (
-    <html lang="ar" dir="rtl" suppressHydrationWarning>
+    <html lang={locale} dir={dir} suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              try {
+                const t = localStorage.getItem('theme');
+                const s = t || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+                if (s === 'dark') document.documentElement.classList.add('dark');
+              } catch(e) {}
+            `,
+          }}
+        />
+      </head>
       <body suppressHydrationWarning>{children}</body>
     </html>
   );

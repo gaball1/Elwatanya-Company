@@ -8,9 +8,14 @@ import {
   ProjectApplicationError,
   ProjectErrorCode,
 } from '../errors/project-application.error';
+import { EventBusImpl } from '@/modules/domain-events/event-bus.impl';
+import { ProjectCreatedEvent } from '@/modules/domain-events/events';
 
 export class CreateProjectUseCase {
-  constructor(private readonly projects: IProjectRepository) {}
+  constructor(
+    private readonly projects: IProjectRepository,
+    private readonly eventBus: EventBusImpl,
+  ) {}
 
   async execute(input: CreateProjectInput): Promise<Result<ProjectResult>> {
     const codeResult = ProjectCode.create(input.code);
@@ -33,7 +38,16 @@ export class CreateProjectUseCase {
       );
     }
 
-    const projectResult = Project.create({ code, name: input.name });
+    const projectResult = Project.create({
+      code,
+      name: input.name,
+      location: input.location,
+      description: input.description,
+      client: input.client,
+      startDate: input.startDate,
+      status: input.status,
+      progress: input.progress,
+    });
     if (projectResult.isFailure) {
       return Result.fail(
         new ProjectApplicationError(
@@ -46,6 +60,22 @@ export class CreateProjectUseCase {
     const project = projectResult.getValue();
     await this.projects.save(project);
 
+    await this.eventBus.publish(
+      new ProjectCreatedEvent(
+        project.id.toValue(),
+        'project',
+        {
+          id: project.id.toValue(),
+          name: project.name,
+          code: project.code.value,
+          client: project.client ?? '',
+          status: project.status,
+          createdBy: undefined,
+          notifyAll: true,
+        },
+      ),
+    );
+
     return Result.ok(toProjectResult(project));
   }
 }
@@ -55,6 +85,12 @@ export function toProjectResult(project: Project): ProjectResult {
     id: project.id.toValue(),
     code: project.code.value,
     name: project.name,
+    location: project.location,
+    description: project.description,
+    client: project.client,
+    startDate: project.startDate,
+    status: project.status,
+    progress: project.progress,
     createdAt: project.createdAt,
     updatedAt: project.updatedAt,
   };

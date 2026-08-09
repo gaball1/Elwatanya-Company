@@ -3,12 +3,13 @@
 
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Card } from "@/components/ui";
 import { Plus, Edit2, Trash2, X, Printer, Send, Download } from "lucide-react";
-import { mockCompanyEstimates } from "@/lib/mockData";
+import { analyticalBoqService } from "@/services/analyticalBoq.service";
 import BackButton from "@/components/shared/BackButton";
 import { useToast } from "@/components/ui/Toast";
+import { printHtmlDocument } from "@/lib/printUtils";
 
 // تعريف نوع البند
 interface EstimateItem {
@@ -29,10 +30,18 @@ export default function CompanyEstimateDetailsPage() {
   const estimateId = params.estimateId as string;
   const { showToast, ToastComponent } = useToast();
 
-  const [estimate, setEstimate] = useState(
-    mockCompanyEstimates.find((e) => e.id === estimateId)
-  );
-  const [items, setItems] = useState<EstimateItem[]>(estimate?.items || []);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [estimate, setEstimate] = useState<{
+    id: string;
+    name: string;
+    number: string;
+    clientName: string;
+    contractNumber: string;
+    date: string;
+    status: string;
+  } | null>(null);
+  const [items, setItems] = useState<EstimateItem[]>([]);
   const [showItemModal, setShowItemModal] = useState(false);
   const [editingItem, setEditingItem] = useState<{
     item: EstimateItem;
@@ -46,10 +55,63 @@ export default function CompanyEstimateDetailsPage() {
   });
   const printRef = useRef<HTMLDivElement>(null);
 
+  useEffect(() => {
+    const fetchItems = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const boqItems = await analyticalBoqService.list(buildingId);
+        const mappedItems: EstimateItem[] = boqItems.map((item) => ({
+          id: item.itemCode,
+          name: item.description,
+          quantity: item.quantity,
+          unit: item.unit,
+          unitPrice: item.unitPrice,
+          total: item.totalValue,
+        }));
+        setItems(mappedItems);
+        setEstimate({
+          id: estimateId,
+          name: isArabic ? "مقايسة تحليلية" : "Analytical Estimate",
+          number: estimateId,
+          clientName: "—",
+          contractNumber: "—",
+          date: new Date().toISOString().split("T")[0],
+          status: "pending",
+        });
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load estimate");
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchItems();
+  }, [buildingId, estimateId, isArabic]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-light flex items-center justify-center">
+        <div className="animate-pulse text-text-muted">
+          {isArabic ? "جاري التحميل..." : "Loading..."}
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <p className="text-danger">
+          {isArabic ? "حدث خطأ في تحميل المقايسة" : "Error loading estimate"}
+        </p>
+      </div>
+    );
+  }
+
   if (!estimate) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <p className="text-gray-500">
+        <p className="text-text-secondary">
           {isArabic ? "المقايسة غير موجودة" : "Estimate not found"}
         </p>
       </div>
@@ -58,15 +120,6 @@ export default function CompanyEstimateDetailsPage() {
 
   // ✅ طباعة PDF
   const handlePrint = () => {
-    const iframe = document.createElement("iframe");
-    iframe.style.position = "fixed";
-    iframe.style.right = "0";
-    iframe.style.bottom = "0";
-    iframe.style.width = "0";
-    iframe.style.height = "0";
-    iframe.style.border = "0";
-    document.body.appendChild(iframe);
-
     const itemsHtml = items
       .map(
         (item, idx) => `
@@ -181,15 +234,11 @@ export default function CompanyEstimateDetailsPage() {
   </html>
   `;
 
-    iframe.srcdoc = htmlContent;
-    iframe.onload = () => {
-      setTimeout(() => {
-        iframe.contentWindow?.print();
-        setTimeout(() => {
-          document.body.removeChild(iframe);
-        }, 1000);
-      }, 500);
-    };
+    printHtmlDocument(
+      isArabic ? "عرض سعر شركة" : "Company Estimate",
+      htmlContent,
+      `${estimate.number}.pdf`
+    );
   };
 
   // ✅ تصدير Excel
@@ -307,7 +356,7 @@ export default function CompanyEstimateDetailsPage() {
     <div className="min-h-screen bg-gray-light">
       {ToastComponent}
 
-      <div className="bg-white border-b px-6 py-4">
+      <div className="bg-surface border-b px-6 py-4">
         <div className="flex justify-between items-center flex-wrap gap-2">
           <div className="flex items-center gap-4">
             <BackButton
@@ -317,7 +366,7 @@ export default function CompanyEstimateDetailsPage() {
               <h1 className="text-2xl font-bold text-primary">
                 {estimate.name}
               </h1>
-              <p className="text-sm text-gray-500">{estimate.number}</p>
+              <p className="text-sm text-text-secondary">{estimate.number}</p>
             </div>
           </div>
           <div className="flex gap-2 flex-wrap">
@@ -332,7 +381,7 @@ export default function CompanyEstimateDetailsPage() {
             )}
             <button
               onClick={exportToExcel}
-              className="flex items-center gap-2 px-4 py-2 border border-green-600 text-green-600 rounded-lg hover:bg-green-600 hover:text-white transition text-sm font-medium"
+              className="flex items-center gap-2 px-4 py-2 border border-success-dark text-success-dark rounded-lg hover:bg-success-dark hover:text-white transition text-sm font-medium"
             >
               <Download size={18} /> {isArabic ? "تصدير Excel" : "Export Excel"}
             </button>
@@ -348,41 +397,41 @@ export default function CompanyEstimateDetailsPage() {
 
       <div ref={printRef} className="p-6">
         {/* معلومات المقايسة */}
-        <div className="bg-white rounded-xl p-6 mb-6 shadow-sm">
+        <div className="bg-surface rounded-xl p-6 mb-6 shadow-sm">
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
             <div>
-              <p className="text-sm text-gray-500">
+              <p className="text-sm text-text-secondary">
                 {isArabic ? "رقم المقايسة" : "Estimate Number"}
               </p>
               <p className="font-bold">{estimate.number}</p>
             </div>
             <div>
-              <p className="text-sm text-gray-500">
+              <p className="text-sm text-text-secondary">
                 {isArabic ? "جهة الإسناد" : "Client"}
               </p>
               <p className="font-bold">{estimate.clientName}</p>
             </div>
             <div>
-              <p className="text-sm text-gray-500">
+              <p className="text-sm text-text-secondary">
                 {isArabic ? "رقم العقد" : "Contract Number"}
               </p>
               <p className="font-bold">{estimate.contractNumber || "—"}</p>
             </div>
             <div>
-              <p className="text-sm text-gray-500">
+              <p className="text-sm text-text-secondary">
                 {isArabic ? "التاريخ" : "Date"}
               </p>
               <p className="font-bold">{estimate.date}</p>
             </div>
             <div>
-              <p className="text-sm text-gray-500">
+              <p className="text-sm text-text-secondary">
                 {isArabic ? "الحالة" : "Status"}
               </p>
               <p
                 className={`font-bold ${
                   estimate.status === "approved"
-                    ? "text-green-600"
-                    : "text-yellow-600"
+                    ? "text-success-dark"
+                    : "text-warning-dark"
                 }`}
               >
                 {estimate.status === "approved"
@@ -398,7 +447,7 @@ export default function CompanyEstimateDetailsPage() {
         </div>
 
         {/* جدول البنود */}
-        <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+        <div className="bg-surface rounded-xl shadow-sm overflow-hidden">
           <div className="flex justify-between items-center p-4 border-b">
             <h2 className="text-lg font-bold text-primary">
               {isArabic ? "بنود المقايسة" : "Estimate Items"}
@@ -413,7 +462,7 @@ export default function CompanyEstimateDetailsPage() {
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50">
+              <thead className="bg-surface-secondary">
                 <tr>
                   <th className="p-3 text-center">#</th>
                   <th className="p-3 text-right">
@@ -439,13 +488,13 @@ export default function CompanyEstimateDetailsPage() {
               <tbody>
                 {items.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="p-8 text-center text-gray-500">
+                    <td colSpan={7} className="p-8 text-center text-text-secondary">
                       {isArabic ? "لا توجد بنود" : "No items"}
                     </td>
                   </tr>
                 ) : (
                   items.map((item, idx) => (
-                    <tr key={item.id} className="border-t hover:bg-gray-50">
+                    <tr key={item.id} className="border-t hover:bg-surface-secondary">
                       <td className="p-3 text-center">{idx + 1}</td>
                       <td className="p-3">{item.name}</td>
                       <td className="p-3 text-center">{item.quantity}</td>
@@ -460,14 +509,14 @@ export default function CompanyEstimateDetailsPage() {
                         <div className="flex justify-center gap-2">
                           <button
                             onClick={() => openEditItemModal(item, idx)}
-                            className="text-blue-500 hover:text-blue-700 transition p-1"
+                            className="text-info hover:text-info-dark transition p-1"
                             title={isArabic ? "تعديل" : "Edit"}
                           >
                             <Edit2 size={18} />
                           </button>
                           <button
                             onClick={() => deleteItem(idx)}
-                            className="text-red-500 hover:text-red-700 transition p-1"
+                            className="text-danger hover:text-danger-dark transition p-1"
                             title={isArabic ? "حذف" : "Delete"}
                           >
                             <Trash2 size={18} />
@@ -479,7 +528,7 @@ export default function CompanyEstimateDetailsPage() {
                 )}
               </tbody>
               {items.length > 0 && (
-                <tfoot className="bg-gray-50">
+                <tfoot className="bg-surface-secondary">
                   <tr className="border-t-2 border-primary">
                     <td
                       colSpan={5}
@@ -502,7 +551,7 @@ export default function CompanyEstimateDetailsPage() {
       {/* Add/Edit Item Modal */}
       {showItemModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-md">
+          <div className="bg-surface rounded-2xl w-full max-w-md">
             <div className="flex justify-between items-center p-5 border-b">
               <h2 className="text-xl font-bold text-primary">
                 {editingItem
@@ -515,14 +564,14 @@ export default function CompanyEstimateDetailsPage() {
               </h2>
               <button
                 onClick={() => setShowItemModal(false)}
-                className="text-gray-400 hover:text-gray-600 transition"
+                className="text-text-muted hover:text-text-secondary transition"
               >
                 <X size={24} />
               </button>
             </div>
             <form onSubmit={handleItemSubmit} className="p-5 space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-text-primary mb-1">
                   {isArabic ? "اسم البند" : "Item Name"}
                 </label>
                 <input
@@ -531,26 +580,26 @@ export default function CompanyEstimateDetailsPage() {
                   onChange={(e) =>
                     setItemForm({ ...itemForm, name: e.target.value })
                   }
-                  className="w-full p-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-gold"
+                  className="w-full p-3 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-gold"
                   placeholder={isArabic ? "أدخل اسم البند" : "Enter item name"}
                   required
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-sm font-medium text-text-primary mb-1">
                     {isArabic ? "الكمية" : "Quantity"}
                   </label>
                   <input
                     type="number"
-                    value={itemForm.quantity || ""}
+                    value={itemForm.quantity ?? ""}
                     onChange={(e) =>
                       setItemForm({
                         ...itemForm,
                         quantity: Number(e.target.value),
                       })
                     }
-                    className="w-full p-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-gold"
+                    className="w-full p-3 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-gold"
                     placeholder="0"
                     required
                     min="0"
@@ -558,7 +607,7 @@ export default function CompanyEstimateDetailsPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-sm font-medium text-text-primary mb-1">
                     {isArabic ? "الوحدة" : "Unit"}
                   </label>
                   <input
@@ -567,26 +616,26 @@ export default function CompanyEstimateDetailsPage() {
                     onChange={(e) =>
                       setItemForm({ ...itemForm, unit: e.target.value })
                     }
-                    className="w-full p-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-gold"
+                    className="w-full p-3 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-gold"
                     placeholder={isArabic ? "م³، م²، عدد" : "m³, m², pc"}
                     required
                   />
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-text-primary mb-1">
                   {isArabic ? "السعر (ج.م)" : "Unit Price (EGP)"}
                 </label>
                 <input
                   type="number"
-                  value={itemForm.unitPrice || ""}
+                  value={itemForm.unitPrice ?? ""}
                   onChange={(e) =>
                     setItemForm({
                       ...itemForm,
                       unitPrice: Number(e.target.value),
                     })
                   }
-                  className="w-full p-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-gold"
+                  className="w-full p-3 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-gold"
                   placeholder="0"
                   required
                   min="0"
@@ -597,7 +646,7 @@ export default function CompanyEstimateDetailsPage() {
                 <button
                   type="button"
                   onClick={() => setShowItemModal(false)}
-                  className="flex-1 px-4 py-2 border border-gray-300 rounded-xl hover:bg-gray-50 transition text-sm font-medium"
+                  className="flex-1 px-4 py-2 border border-border-dark rounded-xl hover:bg-surface-secondary transition text-sm font-medium"
                 >
                   {isArabic ? "إلغاء" : "Cancel"}
                 </button>

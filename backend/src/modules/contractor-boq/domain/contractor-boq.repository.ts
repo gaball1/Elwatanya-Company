@@ -5,7 +5,7 @@ import { AllocationRef } from '@/modules/final-boq/domain/final-boq-rules';
 export const CONTRACTOR_BOQ_REPOSITORY = Symbol('CONTRACTOR_BOQ_REPOSITORY');
 
 export interface IContractorBoqRepository {
-  save(contractorBoq: ContractorBoq): Promise<void>;
+  save(contractorBoq: ContractorBoq, tx?: any): Promise<void>;
   findByBuildingAndSubcontractor(
     buildingId: UniqueEntityId,
     subcontractorId: UniqueEntityId,

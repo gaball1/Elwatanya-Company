@@ -18,7 +18,7 @@ export default function ExtractWorkItemsTable({
   const totalWork = rows.reduce((s, r) => s + r.workValue, 0);
 
   return (
-    <div className="overflow-hidden rounded-xl border border-gray-200 shadow-sm">
+    <div className="overflow-hidden rounded-xl border border-border shadow-sm">
       <div className="overflow-x-auto">
         <table className="w-full text-xs md:text-sm border-collapse min-w-[900px]">
           <thead>
@@ -45,7 +45,7 @@ export default function ExtractWorkItemsTable({
               const uniqueKey = `${r.itemCode}-${idx}`;
 
               return (
-                <tr key={uniqueKey} className="border-t hover:bg-gray-50">
+                <tr key={uniqueKey} className="border-t hover:bg-surface-secondary">
                   <td className="p-2 border text-center">{idx + 1}</td>
                   <td className="p-2 border font-mono text-xs">{r.itemCode}</td>
                   <td className="p-2 border">{r.description}</td>
@@ -53,14 +53,14 @@ export default function ExtractWorkItemsTable({
                   <td className="p-2 border text-center">
                     {r.contractQuantity}
                   </td>
-                  <td className="p-2 border text-center bg-blue-50 font-medium">
+                  <td className="p-2 border text-center bg-info-light font-medium">
                     {r.previous}
                   </td>
                   <td className="p-2 border text-center">
                     {editable && onUpdateRow ? (
                       <input
                         type="number"
-                        value={r.current || ""}
+                        value={r.current ?? ""}
                         onChange={(e) =>
                           onUpdateRow(idx, "current", Number(e.target.value))
                         }
@@ -77,7 +77,7 @@ export default function ExtractWorkItemsTable({
                     {editable && onUpdateRow ? (
                       <input
                         type="number"
-                        value={r.executionPercent || ""}
+                        value={r.executionPercent ?? ""}
                         onChange={(e) =>
                           onUpdateRow(
                             idx,
@@ -105,7 +105,7 @@ export default function ExtractWorkItemsTable({
             })}
           </tbody>
           <tfoot>
-            <tr className="bg-gray-100 font-bold border-t-2">
+            <tr className="bg-surface-tertiary font-bold border-t-2">
               <td colSpan={11} className="p-2.5 border text-left">
                 {isArabic ? "إجمالي قيمة الأعمال" : "Total Work Value"}
               </td>

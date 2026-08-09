@@ -16,7 +16,8 @@ import {
   PieChart,
   Coffee,
 } from "lucide-react";
-import { mockProjects } from "@/lib/mockData";
+import { useEffect, useState } from "react";
+import { projectService } from '@/services/project.service';
 
 export default function ProjectTabsLayout({
   children,
@@ -29,10 +30,11 @@ export default function ProjectTabsLayout({
   const isArabic = locale === "ar";
   const projectId = params.id as string;
 
-  const project = useMemo(
-    () => mockProjects.find((p) => p.id === projectId),
-    [projectId]
-  );
+  const [projects, setProjects] = useState<any[]>([]);
+  useEffect(() => {
+    projectService.getProjects().then(setProjects).catch(console.error);
+  }, []);
+  const project = useMemo(() => projects.find((p) => p.id === projectId), [projectId, projects]);
 
   const tabs = useMemo(
     () => [
@@ -91,7 +93,7 @@ export default function ProjectTabsLayout({
   if (!project) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <p className="text-gray-500">
+        <p className="text-text-secondary">
           {isArabic ? "المشروع غير موجود" : "Project not found"}
         </p>
       </div>
@@ -99,18 +101,18 @@ export default function ProjectTabsLayout({
   }
 
   return (
-    <div className="min-h-screen bg-gray-light">
-      <div className="bg-white border-b px-6 py-4">
+    <div className="min-h-screen bg-background">
+      <div className="bg-surface border-b border-border px-6 py-4">
         <div className="flex items-center gap-4">
           <Link
             href={`/${locale}/projects`}
-            className="text-gray-500 hover:text-primary transition"
+            className="text-text-muted hover:text-gold transition"
           >
             <ChevronLeft className="w-5 h-5" />
           </Link>
           <div>
             <h1 className="text-2xl font-bold text-primary">{project.name}</h1>
-            <div className="flex items-center gap-4 mt-1 text-sm text-gray-500">
+            <div className="flex items-center gap-4 mt-1 text-sm text-text-secondary">
               <div className="flex items-center gap-1">
                 <MapPin size={14} className="text-gold" />
                 <span>{project.location}</span>
@@ -118,7 +120,10 @@ export default function ProjectTabsLayout({
               <div className="flex items-center gap-1">
                 <Calendar size={14} className="text-gold" />
                 <span>
-                  {isArabic ? "بداية:" : "Start:"} {project.startDate}
+                  {isArabic ? "بداية:" : "Start:"}{" "}
+                  {project.startDate
+                    ? new Date(project.startDate).toLocaleDateString()
+                    : "—"}
                 </span>
               </div>
               <div className="flex items-center gap-1">
@@ -132,13 +137,13 @@ export default function ProjectTabsLayout({
         </div>
       </div>
 
-      <div className="bg-white px-6 py-3 border-b">
+      <div className="bg-surface px-6 py-3 border-b border-border">
         <div className="flex items-center gap-3">
-          <span className="text-sm text-gray-500">
+          <span className="text-sm text-text-secondary">
             {isArabic ? "نسبة الإنجاز" : "Progress"}
           </span>
           <div className="flex-1 max-w-md">
-            <div className="w-full bg-gray-200 rounded-full h-2">
+            <div className="w-full bg-surface-tertiary rounded-full h-2">
               <div
                 className="bg-gold rounded-full h-2"
                 style={{ width: `${project.progress}%` }}
@@ -151,7 +156,7 @@ export default function ProjectTabsLayout({
         </div>
       </div>
 
-      <div className="bg-white border-b px-6">
+      <div className="bg-surface border-b border-border px-6">
         <div className="flex gap-6 overflow-x-auto">
           {tabs.map((tab) => (
             <Link
@@ -160,7 +165,7 @@ export default function ProjectTabsLayout({
               className={`flex items-center gap-2 py-3 border-b-2 transition-colors whitespace-nowrap ${
                 isActive(tab.href, tab.exact)
                   ? "border-gold text-gold"
-                  : "border-transparent text-gray-500 hover:text-primary"
+                  : "border-transparent text-text-muted hover:text-gold"
               }`}
             >
               {tab.icon}

@@ -10,6 +10,9 @@ import { syncFinalItemState } from '@/modules/final-boq/domain/final-boq-rules';
 import { toItemStateInput } from '@/modules/final-boq/application/use-cases/final-boq-mappers';
 import { getOrCreateFinalBoq } from '@/modules/final-boq/application/use-cases/final-boq-mappers';
 import { ISubcontractorRepository } from '@/modules/subcontractor/domain/subcontractor.repository';
+import { OwnershipService } from '@/common/services/ownership.service';
+import { AuditService } from '@/modules/audit/audit.service';
+import { NotificationService } from '@/common/services/notification.service';
 import { ContractorBoq } from '../../domain/contractor-boq.entity';
 import { IContractorBoqRepository } from '../../domain/contractor-boq.repository';
 import {
@@ -95,12 +98,15 @@ export class ListContractorBoqItemsUseCase {
   constructor(
     private readonly contractorBoq: IContractorBoqRepository,
     private readonly buildings: IBuildingRepository,
+    private readonly ownership: OwnershipService,
   ) {}
 
   async execute(
     buildingId: string,
     contractorId: string,
+    userProjectId?: string | null,
   ): Promise<Result<ContractorBoqItemResult[]>> {
+    await this.ownership.verifyBuildingAccess(userProjectId, buildingId);
     const building = await this.buildings.findById(new UniqueEntityId(buildingId));
     if (!building) {
       return Result.fail(
@@ -122,9 +128,12 @@ export class SetContractorMetaUseCase {
     private readonly contractorBoq: IContractorBoqRepository,
     private readonly buildings: IBuildingRepository,
     private readonly subcontractors: ISubcontractorRepository,
+    private readonly ownership: OwnershipService,
+    private readonly audit: AuditService,
   ) {}
 
-  async execute(input: SetContractorMetaInput): Promise<Result<ContractorBoqMetaResult>> {
+  async execute(input: SetContractorMetaInput, userProjectId?: string | null, userId?: string): Promise<Result<ContractorBoqMetaResult>> {
+    await this.ownership.verifyBuildingAccess(userProjectId, input.buildingId);
     const buildingId = new UniqueEntityId(input.buildingId);
     const contractorId = new UniqueEntityId(input.contractorId);
 
@@ -149,6 +158,10 @@ export class SetContractorMetaUseCase {
     boq.setMeta(input.workType);
     await this.contractorBoq.save(boq);
 
+    if (userId) {
+      this.audit.log({ userId, entity: 'contractor_boq', entityId: boq.id.toValue(), action: 'UPDATE_META', before: null, after: { buildingId: input.buildingId, contractorId: input.contractorId, workType: input.workType } });
+    }
+
     return Result.ok({
       buildingId: input.buildingId,
       contractorId: input.contractorId,
@@ -159,12 +172,17 @@ export class SetContractorMetaUseCase {
 }
 
 export class GetContractorMetaUseCase {
-  constructor(private readonly contractorBoq: IContractorBoqRepository) {}
+  constructor(
+    private readonly contractorBoq: IContractorBoqRepository,
+    private readonly ownership: OwnershipService,
+  ) {}
 
   async execute(
     buildingId: string,
     contractorId: string,
+    userProjectId?: string | null,
   ): Promise<Result<ContractorBoqMetaResult | null>> {
+    await this.ownership.verifyBuildingAccess(userProjectId, buildingId);
     const boq = await this.contractorBoq.findByBuildingAndSubcontractor(
       new UniqueEntityId(buildingId),
       new UniqueEntityId(contractorId),
@@ -185,11 +203,17 @@ export class AllocateContractorItemUseCase {
     private readonly contractorBoq: IContractorBoqRepository,
     private readonly finalBoq: IFinalBoqRepository,
     private readonly buildings: IBuildingRepository,
+    private readonly ownership: OwnershipService,
+    private readonly audit: AuditService,
+    private readonly notifications: NotificationService,
   ) {}
 
   async execute(
     input: AllocateContractorItemInput,
+    userProjectId?: string | null,
+    userId?: string,
   ): Promise<Result<ContractorBoqItemResult[]>> {
+    await this.ownership.verifyBuildingAccess(userProjectId, input.buildingId);
     const buildingId = new UniqueEntityId(input.buildingId);
     const contractorId = new UniqueEntityId(input.contractorId);
 
@@ -233,6 +257,20 @@ export class AllocateContractorItemUseCase {
 
     boq.replaceItemsFromState(result.nextItems);
     await this.contractorBoq.save(boq);
+    if (userId) {
+      this.audit.log({ userId, entity: 'contractor_boq', entityId: boq.id.toValue(), action: 'ALLOCATE', before: null, after: { itemCodeOrComponent: input.itemCodeOrComponent, quantity: input.quantity } });
+    }
+    await this.notifications.createForProjectMembers(building.projectId.toValue(), {
+      title: 'تم توزيع بنود على مقاول',
+      titleEn: 'Contractor BOQ Assigned',
+      message: `تم توزيع ${input.quantity} من ${input.itemCodeOrComponent} على مقاول البند`,
+      messageEn: `Assigned ${input.quantity} of ${input.itemCodeOrComponent} to contractor`,
+      type: 'info',
+      entityType: 'contractor_boq',
+      entityId: boq.id.toValue(),
+      link: `/projects/${building.projectId.toValue()}/buildings/${input.buildingId}/subcontractors/${input.contractorId}/estimate`,
+      createdBy: userId,
+    });
     return Result.ok(toResult(boq.items));
   }
 }
@@ -243,11 +281,16 @@ export class UpdateContractorItemQuantityUseCase {
     private readonly contractorBoq: IContractorBoqRepository,
     private readonly finalBoq: IFinalBoqRepository,
     private readonly buildings: IBuildingRepository,
+    private readonly ownership: OwnershipService,
+    private readonly audit: AuditService,
   ) {}
 
   async execute(
     input: UpdateContractorItemQuantityInput,
+    userProjectId?: string | null,
+    userId?: string,
   ): Promise<Result<ContractorBoqItemResult[]>> {
+    await this.ownership.verifyBuildingAccess(userProjectId, input.buildingId);
     const buildingId = new UniqueEntityId(input.buildingId);
     const contractorId = new UniqueEntityId(input.contractorId);
 
@@ -312,6 +355,9 @@ export class UpdateContractorItemQuantityUseCase {
 
     boq.replaceItemsFromState(result.nextItems);
     await this.contractorBoq.save(boq);
+    if (userId) {
+      this.audit.log({ userId, entity: 'contractor_boq', entityId: boq.id.toValue(), action: 'UPDATE_QUANTITY', before: null, after: { itemCode: input.itemCode, quantity: input.quantity } });
+    }
     return Result.ok(toResult(boq.items));
   }
 }
@@ -321,6 +367,8 @@ export class RemoveContractorItemUseCase {
   constructor(
     private readonly contractorBoq: IContractorBoqRepository,
     private readonly buildings: IBuildingRepository,
+    private readonly ownership: OwnershipService,
+    private readonly audit: AuditService,
   ) {}
 
   async execute(
@@ -328,7 +376,10 @@ export class RemoveContractorItemUseCase {
     contractorId: string,
     itemCode: string,
     componentId?: string,
+    userProjectId?: string | null,
+    userId?: string,
   ): Promise<Result<void>> {
+    await this.ownership.verifyBuildingAccess(userProjectId, buildingId);
     const building = await this.buildings.findById(new UniqueEntityId(buildingId));
     if (!building) {
       return Result.fail(
@@ -344,6 +395,9 @@ export class RemoveContractorItemUseCase {
 
     boq.removeItem(itemCode, componentId);
     await this.contractorBoq.save(boq);
+    if (userId) {
+      this.audit.log({ userId, entity: 'contractor_boq', entityId: boq.id.toValue(), action: 'DELETE', before: { itemCode, componentId }, after: null });
+    }
     return Result.ok();
   }
 }
@@ -354,6 +408,7 @@ export class GetAvailableContractorQtyUseCase {
     private readonly contractorBoq: IContractorBoqRepository,
     private readonly finalBoq: IFinalBoqRepository,
     private readonly buildings: IBuildingRepository,
+    private readonly ownership: OwnershipService,
   ) {}
 
   async execute(input: {
@@ -361,7 +416,8 @@ export class GetAvailableContractorQtyUseCase {
     contractorId: string;
     itemCode: string;
     componentId?: string;
-  }): Promise<Result<number>> {
+  }, userProjectId?: string | null): Promise<Result<number>> {
+    await this.ownership.verifyBuildingAccess(userProjectId, input.buildingId);
     const buildingId = new UniqueEntityId(input.buildingId);
     const finalItem = await toFinalItemForAllocation(
       buildingId,

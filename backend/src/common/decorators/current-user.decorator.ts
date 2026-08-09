@@ -4,8 +4,12 @@ import { Request } from 'express';
 export interface JwtPayload {
   sub: string;
   email: string;
+  name?: string;
   role: string;
   projectId?: string | null;
+  permissions?: string[];
+  roleNames?: string[];
+  projectIds?: string[];
 }
 
 export interface AuthenticatedRequest extends Request {

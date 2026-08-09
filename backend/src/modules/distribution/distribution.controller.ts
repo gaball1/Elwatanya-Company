@@ -10,6 +10,9 @@ import {
   Post,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { RequirePermission } from '../../common/decorators/permissions.decorator';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { Permissions } from '../../common/constants/permissions.constant';
 import {
   BuildingApplicationError,
   BuildingErrorCode,
@@ -30,18 +33,21 @@ export class DistributionController {
   @Post('buildings/:buildingId/boq/final/items/:itemCode/components/:componentId/distribute')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Distribute component to contractors (mirrors distributeComponent)' })
+  @RequirePermission(Permissions.Distribution.Write)
   async distribute(
     @Param('buildingId', ParseUUIDPipe) buildingId: string,
     @Param('itemCode') itemCode: string,
     @Param('componentId', ParseUUIDPipe) componentId: string,
     @Body() dto: DistributeComponentDto,
+    @CurrentUser('projectId') projectId?: string,
+    @CurrentUser('sub') userId?: string,
   ) {
     const result = await this.distributeComponent.execute({
       buildingId,
       itemCode,
       componentId,
       distribution: dto.distribution,
-    });
+    }, projectId, userId);
     if (result.isFailure) throw this.mapError(result.error);
     return { item: result.getValue() };
   }

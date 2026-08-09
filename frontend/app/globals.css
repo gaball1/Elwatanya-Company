@@ -1,67 +1,290 @@
 @import "tailwindcss";
 
-@theme {
-  --color-primary: #1e3a5f;
-  --color-primary-dark: #0f2a40;
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ─── Premium Color System ─── */
+:root {
+  /* Primary — Deep Navy */
+  --color-primary-50: #eef2f7;
+  --color-primary-100: #d9e2ef;
+  --color-primary-200: #b3c8df;
+  --color-primary-300: #8dafcf;
+  --color-primary-400: #6795bf;
+  --color-primary-500: #1a365d;
+  --color-primary-600: #142b4a;
+  --color-primary-700: #0f1f37;
+  --color-primary-800: #0a1423;
+  --color-primary-900: #050a12;
+  --color-primary: #1a365d;
+  --color-primary-dark: #0f1f37;
   --color-primary-light: #3b82f6;
+
+  /* Gold — Premium Accent */
+  --color-gold-50: #fdf8ed;
+  --color-gold-100: #f9edcc;
+  --color-gold-200: #f2db99;
+  --color-gold-300: #e8c566;
+  --color-gold-400: #d9ad3d;
+  --color-gold-500: #c9a03d;
+  --color-gold-600: #a8832e;
+  --color-gold-700: #876620;
+  --color-gold-800: #664a15;
+  --color-gold-900: #442f0b;
   --color-gold: #c9a03d;
-  --color-gold-light: #e2c28b;
-  --color-gray-light: #f3f4f6;
-  --color-gray: #6b7280;
-  --color-dark: #1f2937;
+  --color-gold-light: #f2db99;
+  --color-gold-dark: #a8832e;
+
+  /* Semantic Colors */
+  --color-success: #059669;
+  --color-success-light: #d1fae5;
+  --color-success-dark: #047857;
+  --color-warning: #d97706;
+  --color-warning-light: #fef3c7;
+  --color-warning-dark: #b45309;
+  --color-danger: #dc2626;
+  --color-danger-light: #fee2e2;
+  --color-danger-dark: #b91c1c;
+  --color-info: #2563eb;
+  --color-info-light: #dbeafe;
+  --color-info-dark: #1d4ed8;
+
+  /* Surfaces */
+  --color-surface: #ffffff;
+  --color-surface-secondary: #f8fafc;
+  --color-surface-tertiary: #f1f5f9;
+  --color-background: #f1f5f9;
+  --color-background-dark: #e2e8f0;
+
+  /* Text */
+  --color-text-primary: #0f172a;
+  --color-text-secondary: #475569;
+  --color-text-muted: #94a3b8;
+  --color-text-inverse: #ffffff;
+
+  /* Borders */
+  --color-border: #e2e8f0;
+  --color-border-light: #f1f5f9;
+  --color-border-dark: #cbd5e1;
+
+  /* Shadows — Premium depth */
+  --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.03);
+  --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.05);
+  --shadow-card: 0 1px 3px 0 rgb(0 0 0 / 0.06), 0 1px 2px -1px rgb(0 0 0 / 0.04);
+  --shadow-card-hover: 0 10px 20px -4px rgb(0 0 0 / 0.08), 0 4px 8px -4px rgb(0 0 0 / 0.04);
+  --shadow-dropdown: 0 12px 24px -6px rgb(0 0 0 / 0.10), 0 4px 8px -4px rgb(0 0 0 / 0.04);
+  --shadow-modal: 0 25px 50px -8px rgb(0 0 0 / 0.18);
+  --shadow-sidebar: 4px 0 12px -4px rgb(0 0 0 / 0.06);
+
+  /* Radius */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 20px;
+  --radius-full: 9999px;
+
+  /* Layout */
+  --sidebar-width: 260px;
+  --sidebar-collapsed-width: 72px;
+  --topbar-height: 64px;
 }
 
-/* تحسين وضوح النصوص */
+.dark {
+  --color-primary-50: #172554;
+  --color-primary-100: #1e3a5f;
+  --color-primary-200: #1e40af;
+  --color-primary-300: #2563eb;
+  --color-primary-400: #3b82f6;
+  --color-primary-500: #3b82f6;
+  --color-primary-600: #60a5fa;
+  --color-primary-700: #93bbfd;
+  --color-primary-800: #bfdbfe;
+  --color-primary-900: #dbeafe;
+  --color-primary: #3b82f6;
+  --color-primary-dark: #2563eb;
+  --color-primary-light: #60a5fa;
+
+  --color-gold-50: #2a2410;
+  --color-gold-100: #3a3015;
+  --color-gold-200: #5a4a20;
+  --color-gold-300: #7a6328;
+  --color-gold-400: #a8832e;
+  --color-gold-500: #c9a03d;
+  --color-gold-600: #d9ad3d;
+  --color-gold-700: #e8c566;
+  --color-gold-800: #f2db99;
+  --color-gold-900: #f9edcc;
+
+  --color-surface: #0f172a;
+  --color-surface-secondary: #1e293b;
+  --color-surface-tertiary: #334155;
+  --color-background: #020617;
+  --color-background-dark: #0f172a;
+
+  --color-text-primary: #f1f5f9;
+  --color-text-secondary: #94a3b8;
+  --color-text-muted: #64748b;
+  --color-text-inverse: #0f172a;
+
+  --color-border: #334155;
+  --color-border-light: #1e293b;
+  --color-border-dark: #475569;
+
+  --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.2);
+  --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.25);
+  --shadow-card: 0 1px 3px 0 rgb(0 0 0 / 0.3), 0 1px 2px -1px rgb(0 0 0 / 0.25);
+  --shadow-card-hover: 0 10px 20px -4px rgb(0 0 0 / 0.4), 0 4px 8px -4px rgb(0 0 0 / 0.25);
+  --shadow-dropdown: 0 12px 24px -6px rgb(0 0 0 / 0.5), 0 4px 8px -4px rgb(0 0 0 / 0.3);
+  --shadow-modal: 0 25px 50px -8px rgb(0 0 0 / 0.6);
+  --shadow-sidebar: 4px 0 12px -4px rgb(0 0 0 / 0.3);
+}
+
+@theme {
+  --color-primary-50: var(--color-primary-50);
+  --color-primary-100: var(--color-primary-100);
+  --color-primary-200: var(--color-primary-200);
+  --color-primary-300: var(--color-primary-300);
+  --color-primary-400: var(--color-primary-400);
+  --color-primary-500: var(--color-primary-500);
+  --color-primary-600: var(--color-primary-600);
+  --color-primary-700: var(--color-primary-700);
+  --color-primary-800: var(--color-primary-800);
+  --color-primary-900: var(--color-primary-900);
+  --color-primary: var(--color-primary);
+  --color-primary-dark: var(--color-primary-dark);
+  --color-primary-light: var(--color-primary-light);
+  --color-gold-50: var(--color-gold-50);
+  --color-gold-100: var(--color-gold-100);
+  --color-gold-200: var(--color-gold-200);
+  --color-gold-300: var(--color-gold-300);
+  --color-gold-400: var(--color-gold-400);
+  --color-gold-500: var(--color-gold-500);
+  --color-gold-600: var(--color-gold-600);
+  --color-gold-700: var(--color-gold-700);
+  --color-gold-800: var(--color-gold-800);
+  --color-gold-900: var(--color-gold-900);
+  --color-gold: var(--color-gold);
+  --color-gold-light: var(--color-gold-light);
+  --color-gold-dark: var(--color-gold-dark);
+  --color-success: var(--color-success);
+  --color-success-light: var(--color-success-light);
+  --color-success-dark: var(--color-success-dark);
+  --color-warning: var(--color-warning);
+  --color-warning-light: var(--color-warning-light);
+  --color-warning-dark: var(--color-warning-dark);
+  --color-danger: var(--color-danger);
+  --color-danger-light: var(--color-danger-light);
+  --color-danger-dark: var(--color-danger-dark);
+  --color-info: var(--color-info);
+  --color-info-light: var(--color-info-light);
+  --color-info-dark: var(--color-info-dark);
+  --color-surface: var(--color-surface);
+  --color-surface-secondary: var(--color-surface-secondary);
+  --color-surface-tertiary: var(--color-surface-tertiary);
+  --color-background: var(--color-background);
+  --color-background-dark: var(--color-background-dark);
+  --color-text-primary: var(--color-text-primary);
+  --color-text-secondary: var(--color-text-secondary);
+  --color-text-muted: var(--color-text-muted);
+  --color-text-inverse: var(--color-text-inverse);
+  --color-border: var(--color-border);
+  --color-border-light: var(--color-border-light);
+  --color-border-dark: var(--color-border-dark);
+  --shadow-xs: var(--shadow-xs);
+  --shadow-sm: var(--shadow-sm);
+  --shadow-card: var(--shadow-card);
+  --shadow-card-hover: var(--shadow-card-hover);
+  --shadow-dropdown: var(--shadow-dropdown);
+  --shadow-modal: var(--shadow-modal);
+  --shadow-sidebar: var(--shadow-sidebar);
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 20px;
+  --radius-full: 9999px;
+}
+
+/* ─── Base Styles ─── */
+* { scrollbar-width: thin; scrollbar-color: var(--color-gold) transparent; }
+
 body {
   font-family: "Cairo", sans-serif;
-  color: #1f2937;
+  color: var(--color-text-primary);
+  background-color: var(--color-background);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* تخصيص شريط التمرير */
-::-webkit-scrollbar {
-  width: 8px;
-}
-::-webkit-scrollbar-track {
-  background: #f1f1f1;
-}
-::-webkit-scrollbar-thumb {
-  background: #c9a03d;
-  border-radius: 10px;
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--color-gold-300); border-radius: var(--radius-full); }
+::-webkit-scrollbar-thumb:hover { background: var(--color-gold); }
+.dark ::-webkit-scrollbar-thumb { background: var(--color-gold-600); }
+.dark ::-webkit-scrollbar-thumb:hover { background: var(--color-gold-500); }
+
+/* ─── Motion-safe transitions ─── */
+@media (prefers-reduced-motion: no-preference) {
+  *, *::before, *::after {
+    transition: background-color 0.2s ease, border-color 0.2s ease, color 0.15s ease, box-shadow 0.2s ease;
+  }
 }
 
-/* كلاسات مساعدة */
-.text-gold {
-  color: #c9a03d;
-}
-.bg-gold {
-  background-color: #c9a03d;
-}
-.border-gold {
-  border-color: #c9a03d;
-}
-/* للحفاظ على أبعاد اللوجو */
-.logo-img {
-  object-fit: contain;
-  background-color: white;
-  border-radius: 12px;
+/* ─── Focus ring ─── */
+:focus-visible {
+  outline: 2px solid var(--color-gold);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
 }
 
-/* New table styling utilities */
-.table-wrapper {
-  @apply overflow-x-auto rounded-lg border border-gray-200;
+/* ─── Print Styles ─── */
+@media print {
+  body { background: white !important; color: black !important; }
+  .no-print { display: none !important; }
+  .print-only { display: block !important; }
+  @page { margin: 12mm 15mm; }
+  @page landscape { size: landscape; }
+  .print-landscape { page: landscape; }
+  
+  /* Force white backgrounds on all elements */
+  * { background: white !important; color: black !important; box-shadow: none !important; text-shadow: none !important; }
+  .bg-surface, .bg-surface-secondary, .bg-surface-tertiary, .bg-background { background: white !important; }
+  .border, .border-border, .border-border-light, .border-border-dark { border-color: #ddd !important; }
+  .text-text-primary, .text-text-secondary, .text-text-muted { color: black !important; }
+  .text-gold, .text-primary { color: #1a365d !important; }
+  
+  /* Table header repeats */
+  thead { display: table-header-group; }
+  tfoot { display: table-footer-group; }
+  tr { page-break-inside: avoid; }
+  
+  /* Company header for print */
+  .print-header { display: flex !important; align-items: center; gap: 16px; padding-bottom: 16px; border-bottom: 2px solid #1a365d; margin-bottom: 16px; }
+  .print-footer { position: fixed; bottom: 0; left: 0; right: 0; text-align: center; font-size: 9px; color: #666; padding: 8px; border-top: 1px solid #ddd; }
+  .print-page-number:after { content: "Page " counter(page); }
+  
+  /* A4 sizing */
+  @page { size: A4; }
+  .print-a4 { width: 210mm; min-height: 297mm; padding: 0; margin: 0 auto; }
 }
-.table-header {
-  @apply bg-gradient-to-r from-primary to-gold text-white sticky top-0 z-10 shadow;
-}
-.status-badge {
-  @apply px-2 py-0.5 rounded-full text-xs font-medium;
-}
-.status-badge.distributed {
-  @apply bg-green-100 text-green-800;
-}
-.status-badge.partial {
-  @apply bg-yellow-100 text-yellow-800;
-}
-.status-badge.pending {
-  @apply bg-gray-100 text-gray-800;
-}
+
+/* ─── Legacy compatibility ─── */
+.text-gold { color: var(--color-gold); }
+.bg-gold { background-color: var(--color-gold); }
+.border-gold { border-color: var(--color-gold); }
+.bg-gray-light { background-color: var(--color-background); }
+
+/* ─── Animate.css-style utilities ─── */
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes fadeInUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes fadeInDown { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes scaleIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+@keyframes slideInRight { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes slideInLeft { from { opacity: 0; transform: translateX(10px); } to { opacity: 1; transform: translateX(0); } }
+
+.animate-fade-in { animation: fadeIn 0.3s ease; }
+.animate-fade-in-up { animation: fadeInUp 0.3s ease; }
+.animate-fade-in-down { animation: fadeInDown 0.3s ease; }
+.animate-scale-in { animation: scaleIn 0.2s ease; }
+.animate-slide-in-right { animation: slideInRight 0.3s ease; }
+.animate-slide-in-left { animation: slideInLeft 0.3s ease; }

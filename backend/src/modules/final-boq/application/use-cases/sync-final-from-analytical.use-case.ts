@@ -14,6 +14,8 @@ import {
 import { syncFinalFromAnalytical } from '../../domain/final-boq-rules';
 import { SyncFinalFromAnalyticalInput, FinalBoqItemResult } from '../dto/final-boq.dto';
 import { getOrCreateFinalBoq, toFinalBoqItemResult, toItemStateInput } from './final-boq-mappers';
+import { OwnershipService } from '@/common/services/ownership.service';
+import { AuditService } from '@/modules/audit/audit.service';
 
 /**
  * Mirrors syncFinalFromAnalytical — called whenever analytical BOQ changes
@@ -25,9 +27,12 @@ export class SyncFinalFromAnalyticalUseCase {
     private readonly analyticalBoq: IAnalyticalBoqRepository,
     private readonly buildings: IBuildingRepository,
     private readonly allocations: IFinalBoqAllocationReader,
+    private readonly ownership: OwnershipService,
+    private readonly audit: AuditService,
   ) {}
 
-  async execute(input: SyncFinalFromAnalyticalInput): Promise<Result<FinalBoqItemResult[]>> {
+  async execute(input: SyncFinalFromAnalyticalInput, userProjectId?: string | null, userId?: string): Promise<Result<FinalBoqItemResult[]>> {
+    await this.ownership.verifyBuildingAccess(userProjectId, input.buildingId);
     const buildingId = new UniqueEntityId(input.buildingId);
     const building = await this.buildings.findById(buildingId);
     if (!building) {
@@ -100,6 +105,10 @@ export class SyncFinalFromAnalyticalUseCase {
     }
 
     await this.finalBoq.save(aggregate);
+
+    if (userId) {
+      this.audit.log({ userId, entity: 'final_boq', entityId: buildingId.toValue(), action: 'SYNC_FROM_ANALYTICAL', before: null, after: { itemCount: next.length } });
+    }
 
     const fresh = await this.finalBoq.findByBuildingId(buildingId);
     const items = (fresh?.items ?? []).map((item) => toFinalBoqItemResult(item, allocationRefs));

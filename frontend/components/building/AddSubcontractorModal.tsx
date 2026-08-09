@@ -51,14 +51,14 @@ export default function AddSubcontractorModal({
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+      <div className="bg-surface rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
         <div className="flex justify-between items-center p-5 border-b">
           <h2 className="text-xl font-bold text-primary">
             {isArabic ? "إضافة مقاول للمبنى" : "Add Subcontractor to Building"}
           </h2>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600"
+            className="text-text-muted hover:text-text-secondary"
           >
             <X size={24} />
           </button>
@@ -66,7 +66,7 @@ export default function AddSubcontractorModal({
 
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-text-primary mb-1">
               {isArabic ? "اختر المقاول" : "Select Subcontractor"} *
             </label>
             <select
@@ -89,7 +89,7 @@ export default function AddSubcontractorModal({
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-text-primary mb-1">
               {isArabic ? "نوع العمل" : "Work Type"}
             </label>
             <input
@@ -102,7 +102,7 @@ export default function AddSubcontractorModal({
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-text-primary mb-1">
               {isArabic ? "السعر المتفق عليه (ج.م)" : "Agreed Price (EGP)"}
             </label>
             <input

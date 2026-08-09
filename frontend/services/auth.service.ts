@@ -12,6 +12,10 @@ export interface AuthUser {
   name: string;
   role: string;
   projectId?: string | null;
+  permissions?: string[];
+  roleNames?: string[];
+  projectIds?: string[];
+  status?: string;
 }
 
 export interface AuthResponse {
@@ -36,7 +40,6 @@ export const authService = {
       skipAuth: true,
       skipAuthRetry: true,
     });
-
     saveAccessToken(data.accessToken);
     saveRefreshToken(data.refreshToken);
     return data;
@@ -44,18 +47,18 @@ export const authService = {
 
   async logout(): Promise<void> {
     const refreshToken = getRefreshToken();
-
-    try {
-      if (refreshToken) {
+    if (refreshToken) {
+      try {
         await apiClient<void>("/auth/logout", {
           method: "POST",
           body: { refreshToken },
           skipAuthRetry: true,
         });
+      } catch {
+        // Ignore logout errors
       }
-    } finally {
-      clearTokens();
     }
+    clearTokens();
   },
 
   async refresh(): Promise<AuthResponse> {
@@ -63,20 +66,19 @@ export const authService = {
     if (!refreshToken) {
       throw new Error("No refresh token available");
     }
-
     const data = await apiClient<AuthResponse>("/auth/refresh", {
       method: "POST",
       body: { refreshToken },
       skipAuth: true,
       skipAuthRetry: true,
     });
-
     saveAccessToken(data.accessToken);
     saveRefreshToken(data.refreshToken);
     return data;
   },
 
   async getCurrentUser(): Promise<CurrentUserResponse> {
-    return apiClient<CurrentUserResponse>("/users/me");
+    const result = await apiClient<CurrentUserResponse>("/auth/me");
+    return result;
   },
 };

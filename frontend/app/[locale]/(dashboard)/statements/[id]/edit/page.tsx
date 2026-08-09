@@ -2,11 +2,11 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { Card } from "@/components/ui";
 import { Plus, Trash2, Save } from "lucide-react";
-import { mockSubcontractorStatements } from "@/lib/mockData";
+import { subcontractorStatementService } from "@/services/subcontractor-statement.service";
 import BackButton from "@/components/shared/BackButton";
 
 interface Item {
@@ -38,68 +38,79 @@ export default function EditStatementPage() {
   const isArabic = locale === "ar";
   const statementId = params.id as string;
 
-  const existingStatement = mockSubcontractorStatements.find(
-    (s) => s.id === statementId
-  );
+  const [existingStatement, setExistingStatement] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    subcontractorStatementService.get(statementId).then((data) => {
+      setExistingStatement(data);
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  }, [statementId]);
+
+  // Basic Info
+  const [statementNumber, setStatementNumber] = useState("");
+  const [statementDate, setStatementDate] = useState("");
+  const [blockNumber, setBlockNumber] = useState("");
+  const [formNumber, setFormNumber] = useState("");
+  const [insurancePercent, setInsurancePercent] = useState(5);
+  const [subcontractorName, setSubcontractorName] = useState("");
+  const [workType, setWorkType] = useState("");
+
+  // Items
+  const [items, setItems] = useState<Item[]>([]);
+  const [deductions, setDeductions] = useState<Deduction[]>([]);
+
+  // Populate form fields when data loads
+  useEffect(() => {
+    if (existingStatement) {
+      setStatementNumber(existingStatement.statementNumber ?? "");
+      setStatementDate(existingStatement.date ?? "");
+      setBlockNumber(existingStatement.blockNumber ?? "");
+      setFormNumber(existingStatement.formNumber ?? "");
+      setInsurancePercent(existingStatement.insurancePercent || 5);
+      setSubcontractorName(existingStatement.subcontractorName ?? "");
+      setWorkType(existingStatement.workType ?? "");
+      setItems(existingStatement.items?.map((item: any, idx: number) => ({
+        id: item.id || Date.now().toString() + idx,
+        itemName: item.itemName ?? "",
+        unit: item.unit ?? "",
+        previous: item.previous || 0,
+        current: item.current || 0,
+        executionPercent: item.executionPercent || 100,
+        count: item.count || 1,
+        quantity: item.quantity || 0,
+        price: item.price || 0,
+        totalAmount: item.totalAmount || item.quantity * item.price || 0,
+        insuranceAmount: item.insuranceAmount || 0,
+        netAmount: item.netAmount || 0,
+      })) || []);
+      setDeductions(existingStatement.deductions?.map((d: any) => ({
+        id: d.id || Date.now().toString(),
+        name: d.name ?? "",
+        amount: d.amount || 0,
+        percent: d.percent || 0,
+      })) || []);
+    }
+  }, [existingStatement]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <p className="text-text-secondary">...</p>
+      </div>
+    );
+  }
 
   if (!existingStatement) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <p className="text-gray-500">
+        <p className="text-text-secondary">
           {isArabic ? "المستخلص غير موجود" : "Statement not found"}
         </p>
       </div>
     );
   }
-
-  // Basic Info
-  const [statementNumber, setStatementNumber] = useState(
-    existingStatement.statementNumber || ""
-  );
-  const [statementDate, setStatementDate] = useState(
-    existingStatement.date || ""
-  );
-  const [blockNumber, setBlockNumber] = useState(
-    existingStatement.blockNumber || ""
-  );
-  const [formNumber, setFormNumber] = useState(
-    existingStatement.formNumber || ""
-  );
-  const [insurancePercent, setInsurancePercent] = useState(
-    existingStatement.insurancePercent || 5
-  );
-  const [subcontractorName, setSubcontractorName] = useState(
-    existingStatement.subcontractorName || ""
-  );
-  const [workType, setWorkType] = useState(existingStatement.workType || "");
-
-  // Items - تحويل البيانات الموجودة إلى الشكل المطلوب
-  const [items, setItems] = useState<Item[]>(
-    existingStatement.items?.map((item: any, idx: number) => ({
-      id: item.id || Date.now().toString() + idx,
-      itemName: item.itemName || "",
-      unit: item.unit || "",
-      previous: item.previous || 0,
-      current: item.current || 0,
-      executionPercent: item.executionPercent || 100,
-      count: item.count || 1,
-      quantity: item.quantity || 0,
-      price: item.price || 0,
-      totalAmount: item.totalAmount || item.quantity * item.price || 0,
-      insuranceAmount: item.insuranceAmount || 0,
-      netAmount: item.netAmount || 0,
-    })) || []
-  );
-
-  // Deductions
-  const [deductions, setDeductions] = useState<Deduction[]>(
-    existingStatement.deductions?.map((d: any) => ({
-      id: d.id || Date.now().toString(),
-      name: d.name || "",
-      amount: d.amount || 0,
-      percent: d.percent || 0,
-    })) || []
-  );
 
   // Delete confirmation modals
   const [showDeleteItemConfirm, setShowDeleteItemConfirm] = useState<
@@ -219,26 +230,28 @@ export default function EditStatementPage() {
         netAmount: i.quantity * i.price * (1 - insurancePercent / 100),
       }));
 
-    existingStatement.statementNumber = statementNumber;
-    existingStatement.date = statementDate;
-    existingStatement.blockNumber = blockNumber;
-    existingStatement.formNumber = formNumber;
-    existingStatement.insurancePercent = insurancePercent;
-    existingStatement.subcontractorName = subcontractorName;
-    existingStatement.workType = workType;
-    existingStatement.items = updatedItems;
-    existingStatement.deductions = deductions.filter(
-      (d) => d.name && d.amount > 0
-    );
-    existingStatement.totalWorkValue = totalWorkValue;
-    existingStatement.totalInsurance = totalInsurance;
-    existingStatement.totalDeductions = totalDeductions;
-    existingStatement.netPayable = netPayable;
+    const body = {
+      statementNumber,
+      date: statementDate,
+      blockNumber,
+      formNumber,
+      insurancePercent,
+      subcontractorName,
+      workType,
+      items: updatedItems,
+      deductions: deductions.filter((d) => d.name && d.amount > 0),
+      totalWorkValue,
+      totalInsurance,
+      totalDeductions,
+      netPayable,
+    };
 
-    alert(
-      isArabic ? "تم تحديث المستخلص بنجاح" : "Statement updated successfully"
-    );
-    router.push(`/${locale}/statements/${statementId}`);
+    subcontractorStatementService.update(statementId, body).then(() => {
+      alert(
+        isArabic ? "تم تحديث المستخلص بنجاح" : "Statement updated successfully"
+      );
+      router.push(`/${locale}/statements/${statementId}`);
+    }).catch(console.error);
   };
 
   return (
@@ -246,11 +259,11 @@ export default function EditStatementPage() {
       {/* Delete Item Confirmation Modal */}
       {showDeleteItemConfirm !== null && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full">
+          <div className="bg-surface rounded-2xl p-6 max-w-md w-full">
             <h3 className="text-xl font-bold text-primary mb-4">
               {isArabic ? "تأكيد الحذف" : "Confirm Delete"}
             </h3>
-            <p className="text-gray-600 mb-6">
+            <p className="text-text-secondary mb-6">
               {isArabic
                 ? "هل أنت متأكد من حذف هذا البند؟"
                 : "Are you sure you want to delete this item?"}
@@ -264,7 +277,7 @@ export default function EditStatementPage() {
               </button>
               <button
                 onClick={() => deleteItem(showDeleteItemConfirm)}
-                className="flex-1 px-4 py-2 bg-red-500 text-white rounded-xl"
+                className="flex-1 px-4 py-2 bg-danger text-white rounded-xl"
               >
                 {isArabic ? "حذف" : "Delete"}
               </button>
@@ -276,11 +289,11 @@ export default function EditStatementPage() {
       {/* Delete Deduction Confirmation Modal */}
       {showDeleteDeductionConfirm !== null && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full">
+          <div className="bg-surface rounded-2xl p-6 max-w-md w-full">
             <h3 className="text-xl font-bold text-primary mb-4">
               {isArabic ? "تأكيد الحذف" : "Confirm Delete"}
             </h3>
-            <p className="text-gray-600 mb-6">
+            <p className="text-text-secondary mb-6">
               {isArabic
                 ? "هل أنت متأكد من حذف هذا الخصم؟"
                 : "Are you sure you want to delete this deduction?"}
@@ -294,7 +307,7 @@ export default function EditStatementPage() {
               </button>
               <button
                 onClick={() => deleteDeduction(showDeleteDeductionConfirm)}
-                className="flex-1 px-4 py-2 bg-red-500 text-white rounded-xl"
+                className="flex-1 px-4 py-2 bg-danger text-white rounded-xl"
               >
                 {isArabic ? "حذف" : "Delete"}
               </button>
@@ -304,7 +317,7 @@ export default function EditStatementPage() {
       )}
 
       {/* Header */}
-      <div className="bg-white border-b px-6 py-4 sticky top-0 z-10">
+      <div className="bg-surface border-b px-6 py-4 sticky top-0 z-10">
         <div className="flex justify-between items-center">
           <div className="flex items-center gap-4">
             <BackButton fallbackHref={`/${locale}/statements/${statementId}`} />
@@ -314,7 +327,7 @@ export default function EditStatementPage() {
                   ? "تعديل مستخلص أعمال جاري"
                   : "Edit Current Work Statement"}
               </h1>
-              <p className="text-sm text-gray-500 mt-1">
+              <p className="text-sm text-text-secondary mt-1">
                 {statementDate} | {isArabic ? "رقم المستخلص" : "Statement No"}:{" "}
                 {statementNumber}
               </p>
@@ -332,62 +345,62 @@ export default function EditStatementPage() {
       <div className="p-6 space-y-6">
         {/* Info Cards */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-          <div className="bg-white p-4 rounded-lg shadow-sm border-r-4 border-gold">
-            <p className="text-gray-500 text-sm">
+          <div className="bg-surface p-4 rounded-lg shadow-sm border-r-4 border-gold">
+            <p className="text-text-secondary text-sm">
               {isArabic ? "رقم المستخلص" : "Statement No"}
             </p>
             <input
               type="text"
               value={statementNumber}
               onChange={(e) => setStatementNumber(e.target.value)}
-              className="w-full font-bold text-primary bg-transparent border-b border-gray-200 focus:border-gold outline-none"
+              className="w-full font-bold text-primary bg-transparent border-b border-border focus:border-gold outline-none"
               placeholder="B-T-B-9"
             />
           </div>
-          <div className="bg-white p-4 rounded-lg shadow-sm">
-            <p className="text-gray-500 text-sm">
+          <div className="bg-surface p-4 rounded-lg shadow-sm">
+            <p className="text-text-secondary text-sm">
               {isArabic ? "رقم القطعة" : "Block No"}
             </p>
             <input
               type="text"
               value={blockNumber}
               onChange={(e) => setBlockNumber(e.target.value)}
-              className="w-full font-bold text-primary bg-transparent border-b border-gray-200 focus:border-gold outline-none"
+              className="w-full font-bold text-primary bg-transparent border-b border-border focus:border-gold outline-none"
               placeholder="B-T-B-9"
             />
           </div>
-          <div className="bg-white p-4 rounded-lg shadow-sm">
-            <p className="text-gray-500 text-sm">
+          <div className="bg-surface p-4 rounded-lg shadow-sm">
+            <p className="text-text-secondary text-sm">
               {isArabic ? "النموذج" : "Form"}
             </p>
             <input
               type="text"
               value={formNumber}
               onChange={(e) => setFormNumber(e.target.value)}
-              className="w-full font-bold text-primary bg-transparent border-b border-gray-200 focus:border-gold outline-none"
+              className="w-full font-bold text-primary bg-transparent border-b border-border focus:border-gold outline-none"
               placeholder="B-T-B-9"
             />
           </div>
-          <div className="bg-white p-4 rounded-lg shadow-sm">
-            <p className="text-gray-500 text-sm">
+          <div className="bg-surface p-4 rounded-lg shadow-sm">
+            <p className="text-text-secondary text-sm">
               {isArabic ? "التاريخ" : "Date"}
             </p>
             <input
               type="date"
               value={statementDate}
               onChange={(e) => setStatementDate(e.target.value)}
-              className="w-full font-bold text-primary bg-transparent border-b border-gray-200 focus:border-gold outline-none"
+              className="w-full font-bold text-primary bg-transparent border-b border-border focus:border-gold outline-none"
             />
           </div>
-          <div className="bg-white p-4 rounded-lg shadow-sm">
-            <p className="text-gray-500 text-sm">
+          <div className="bg-surface p-4 rounded-lg shadow-sm">
+            <p className="text-text-secondary text-sm">
               {isArabic ? "نسبة التأمين" : "Insurance %"}
             </p>
             <input
               type="number"
               value={insurancePercent}
               onChange={(e) => setInsurancePercent(Number(e.target.value))}
-              className="w-full font-bold text-primary bg-transparent border-b border-gray-200 focus:border-gold outline-none"
+              className="w-full font-bold text-primary bg-transparent border-b border-border focus:border-gold outline-none"
               step="any"
             />
           </div>
@@ -395,26 +408,26 @@ export default function EditStatementPage() {
 
         {/* Subcontractor Info */}
         <div className="grid grid-cols-2 md:grid-cols-2 gap-4">
-          <div className="bg-white p-4 rounded-lg shadow-sm">
-            <p className="text-gray-500 text-sm">
+          <div className="bg-surface p-4 rounded-lg shadow-sm">
+            <p className="text-text-secondary text-sm">
               {isArabic ? "اسم المقاول" : "Subcontractor"}
             </p>
             <input
               type="text"
               value={subcontractorName}
               onChange={(e) => setSubcontractorName(e.target.value)}
-              className="w-full font-bold text-primary bg-transparent border-b border-gray-200 focus:border-gold outline-none"
+              className="w-full font-bold text-primary bg-transparent border-b border-border focus:border-gold outline-none"
             />
           </div>
-          <div className="bg-white p-4 rounded-lg shadow-sm">
-            <p className="text-gray-500 text-sm">
+          <div className="bg-surface p-4 rounded-lg shadow-sm">
+            <p className="text-text-secondary text-sm">
               {isArabic ? "البند الأساسي" : "Main Item"}
             </p>
             <input
               type="text"
               value={workType}
               onChange={(e) => setWorkType(e.target.value)}
-              className="w-full font-bold text-primary bg-transparent border-b border-gray-200 focus:border-gold outline-none"
+              className="w-full font-bold text-primary bg-transparent border-b border-border focus:border-gold outline-none"
             />
           </div>
         </div>
@@ -480,7 +493,7 @@ export default function EditStatementPage() {
                     totalAmount * (insurancePercent / 100);
                   const netAmount = totalAmount - insuranceAmount;
                   return (
-                    <tr key={item.id} className="border-t hover:bg-gray-50">
+                    <tr key={item.id} className="border-t hover:bg-surface-secondary">
                       <td className="p-2 border text-center">{idx + 1}</td>
                       <td className="p-2 border">
                         <input
@@ -507,7 +520,7 @@ export default function EditStatementPage() {
                       <td className="p-2 border">
                         <input
                           type="number"
-                          value={item.previous || ""}
+                          value={item.previous ?? ""}
                           onChange={(e) =>
                             updateItem(idx, "previous", Number(e.target.value))
                           }
@@ -517,7 +530,7 @@ export default function EditStatementPage() {
                       <td className="p-2 border">
                         <input
                           type="number"
-                          value={item.current || ""}
+                          value={item.current ?? ""}
                           onChange={(e) =>
                             updateItem(idx, "current", Number(e.target.value))
                           }
@@ -527,7 +540,7 @@ export default function EditStatementPage() {
                       <td className="p-2 border">
                         <input
                           type="number"
-                          value={item.executionPercent || ""}
+                          value={item.executionPercent ?? ""}
                           onChange={(e) =>
                             updateItem(
                               idx,
@@ -542,7 +555,7 @@ export default function EditStatementPage() {
                       <td className="p-2 border">
                         <input
                           type="number"
-                          value={item.count || ""}
+                          value={item.count ?? ""}
                           onChange={(e) =>
                             updateItem(idx, "count", Number(e.target.value))
                           }
@@ -552,7 +565,7 @@ export default function EditStatementPage() {
                       <td className="p-2 border">
                         <input
                           type="number"
-                          value={item.quantity || ""}
+                          value={item.quantity ?? ""}
                           onChange={(e) =>
                             updateItem(idx, "quantity", Number(e.target.value))
                           }
@@ -563,7 +576,7 @@ export default function EditStatementPage() {
                       <td className="p-2 border">
                         <input
                           type="number"
-                          value={item.price || ""}
+                          value={item.price ?? ""}
                           onChange={(e) =>
                             updateItem(idx, "price", Number(e.target.value))
                           }
@@ -577,7 +590,7 @@ export default function EditStatementPage() {
                       <td className="p-2 border text-center">
                         {insurancePercent}%
                       </td>
-                      <td className="p-2 border text-center text-red-500">
+                      <td className="p-2 border text-center text-danger">
                         {insuranceAmount.toLocaleString()}
                       </td>
                       <td className="p-2 border text-center font-bold text-gold">
@@ -586,7 +599,7 @@ export default function EditStatementPage() {
                       <td className="p-2 border text-center">
                         <button
                           onClick={() => confirmDeleteItem(idx)}
-                          className="text-red-500"
+                          className="text-danger"
                         >
                           <Trash2 size={16} />
                         </button>
@@ -595,7 +608,7 @@ export default function EditStatementPage() {
                   );
                 })}
               </tbody>
-              <tfoot className="bg-gray-100 font-bold">
+              <tfoot className="bg-surface-tertiary font-bold">
                 <tr className="border-t">
                   <td colSpan={9} className="p-2 text-left">
                     {isArabic ? "الإجمالي" : "Total"}
@@ -640,11 +653,11 @@ export default function EditStatementPage() {
                   placeholder={isArabic ? "اسم الخصم" : "Name"}
                 />
                 {ded.percent > 0 && (
-                  <span className="text-gray-500">{ded.percent}%</span>
+                  <span className="text-text-secondary">{ded.percent}%</span>
                 )}
                 <input
                   type="number"
-                  value={ded.amount || ""}
+                  value={ded.amount ?? ""}
                   onChange={(e) =>
                     updateDeduction(idx, "amount", Number(e.target.value))
                   }
@@ -654,7 +667,7 @@ export default function EditStatementPage() {
                 />
                 <input
                   type="number"
-                  value={ded.percent || ""}
+                  value={ded.percent ?? ""}
                   onChange={(e) =>
                     updateDeduction(idx, "percent", Number(e.target.value))
                   }
@@ -664,7 +677,7 @@ export default function EditStatementPage() {
                 />
                 <button
                   onClick={() => confirmDeleteDeduction(idx)}
-                  className="text-red-500"
+                  className="text-danger"
                 >
                   <Trash2 size={16} />
                 </button>
@@ -681,9 +694,9 @@ export default function EditStatementPage() {
 
         {/* Summary */}
         <div className="grid md:grid-cols-3 gap-4">
-          <Card className="p-5 bg-green-50">
+          <Card className="p-5 bg-success-light">
             <div className="flex justify-between items-center">
-              <span className="font-bold text-gray-700">
+              <span className="font-bold text-text-primary">
                 {isArabic ? "الإجمالي لقيمة الأعمال" : "Total Work Value"}
               </span>
               <span className="text-2xl font-bold text-primary">
@@ -691,19 +704,19 @@ export default function EditStatementPage() {
               </span>
             </div>
           </Card>
-          <Card className="p-5 bg-red-50">
+          <Card className="p-5 bg-danger-light">
             <div className="flex justify-between items-center">
-              <span className="font-bold text-gray-700">
+              <span className="font-bold text-text-primary">
                 {isArabic ? "خصم الاستقطاعات" : "Deductions"}
               </span>
-              <span className="text-2xl font-bold text-red-500">
+              <span className="text-2xl font-bold text-danger">
                 {totalDeductions.toLocaleString()}
               </span>
             </div>
           </Card>
           <Card className="p-5 bg-gold/10 border-gold">
             <div className="flex justify-between items-center">
-              <span className="font-bold text-gray-700">
+              <span className="font-bold text-text-primary">
                 {isArabic ? "المستحق صرفة" : "Net Payable"}
               </span>
               <span className="text-3xl font-bold text-gold">

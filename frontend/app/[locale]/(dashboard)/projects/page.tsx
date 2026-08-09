@@ -3,18 +3,16 @@
 
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Card } from "@/components/ui";
 import {
-  Building2,
-  MapPin,
-  Calendar,
   Plus,
   X,
   Edit2,
   Trash2,
 } from "lucide-react";
-import { mockProjects, mockBuildings, mockEstimates } from "@/lib/mockData";
+import { Can } from '@/components/Can';
+import { projectService, type Project, type CreateProjectData } from '@/services/project.service';
 import { useToast } from "@/components/ui/Toast";
 
 export default function ProjectsPage() {
@@ -25,100 +23,93 @@ export default function ProjectsPage() {
 
   const [showModal, setShowModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [editingProject, setEditingProject] = useState<any>(null);
+  const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [deletingProjectId, setDeletingProjectId] = useState<string | null>(
     null
   );
-  const [projects, setProjects] = useState([...mockProjects]);
-  const [buildings, setBuildings] = useState([...mockBuildings]);
-  const [estimates, setEstimates] = useState([...mockEstimates]);
+  const [projects, setProjects] = useState<Project[]>([]);
+
+  useEffect(() => {
+    const fetchProjects = async () => {
+      try {
+        const data = await projectService.getProjects();
+        setProjects(data);
+      } catch (error) {
+        console.error('Failed to fetch projects', error);
+      }
+    };
+    fetchProjects();
+  }, []);
+
   const [projectForm, setProjectForm] = useState({
+    code: "",
     name: "",
     location: "",
     description: "",
     client: "",
     startDate: "",
+    status: "active",
+    progress: 0,
   });
 
   const handleInputChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-      setProjectForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+    (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+      const { name, value } = e.target;
+      setProjectForm((prev) => ({
+        ...prev,
+        [name]: name === "progress" ? (Number(value) || 0) : value,
+      }));
     },
     []
   );
 
   const openAddModal = useCallback(() => {
     setEditingProject(null);
-    setProjectForm({
-      name: "",
-      location: "",
-      description: "",
-      client: "",
-      startDate: "",
-    });
+    setProjectForm({ code: "", name: "", location: "", description: "", client: "", startDate: "", status: "active", progress: 0 });
     setShowModal(true);
   }, []);
 
-  const openEditModal = useCallback((project: any) => {
+  const openEditModal = useCallback((project: Project) => {
     setEditingProject(project);
     setProjectForm({
+      code: project.code || "",
       name: project.name,
-      location: project.location,
+      location: project.location || "",
       description: project.description || "",
       client: project.client || "",
-      startDate: project.startDate || "",
+      startDate: project.startDate ? project.startDate.split("T")[0] : "",
+      status: project.status || "active",
+      progress: project.progress ?? 0,
     });
     setShowModal(true);
   }, []);
 
   const handleSubmit = useCallback(
-    (e: React.FormEvent) => {
+    async (e: React.FormEvent) => {
       e.preventDefault();
-      if (editingProject) {
-        const index = mockProjects.findIndex((p) => p.id === editingProject.id);
-        if (index !== -1) {
-          mockProjects[index] = { ...mockProjects[index], ...projectForm };
+      try {
+        const payload: CreateProjectData = {
+          code: projectForm.code,
+          name: projectForm.name,
+          location: projectForm.location,
+          description: projectForm.description,
+          client: projectForm.client,
+          startDate: projectForm.startDate || undefined,
+          status: projectForm.status,
+          progress: projectForm.progress,
+        };
+        if (editingProject) {
+          const { code: _, ...updatePayload } = payload;
+          await projectService.updateProject(editingProject.id, updatePayload);
+          showToast(isArabic ? "تم تحديث المشروع" : "Project updated", "success");
+        } else {
+          await projectService.createProject(payload);
+          showToast(isArabic ? "تم إضافة المشروع" : "Project added", "success");
         }
-        setProjects([...mockProjects]);
-        showToast(isArabic ? "تم تحديث المشروع" : "Project updated", "success");
-      } else {
-        const newId = (mockProjects.length + 1).toString();
-        const newProject = {
-          id: newId,
-          ...projectForm,
-          startDate:
-            projectForm.startDate || new Date().toISOString().split("T")[0],
-          status: "active",
-          progress: 0,
-        };
-        const newBuilding = {
-          id: `b_${newId}_1`,
-          name: "المبنى الرئيسي",
-          code: `B00${newId}`,
-          projectId: newId,
-          type: "قيد الإنشاء",
-          startDate: new Date().toISOString().split("T")[0],
-          description: "مبنى افتراضي",
-          status: "active",
-        };
-        const newEstimate = {
-          id: `e_${newId}_1`,
-          buildingId: newBuilding.id,
-          type: "company",
-          name: "مقايسة تحليلية - مبنى مؤقت",
-          number: `EST-${newId}001`,
-          date: new Date().toISOString().split("T")[0],
-          totalAmount: 0,
-          status: "draft",
-          items: [],
-        };
-        mockProjects.push(newProject);
-        mockBuildings.push(newBuilding);
-        mockEstimates.push(newEstimate);
-        setProjects([...mockProjects]);
-        setBuildings([...mockBuildings]);
-        setEstimates([...mockEstimates]);
-        showToast(isArabic ? "تم إضافة المشروع" : "Project added", "success");
+        const refreshed = await projectService.getProjects();
+        setProjects(refreshed);
+      } catch (error: any) {
+        showToast(error?.message || (isArabic ? "حدث خطأ" : "An error occurred"), "error");
       }
       setShowModal(false);
       setEditingProject(null);
@@ -126,45 +117,20 @@ export default function ProjectsPage() {
     [editingProject, projectForm, isArabic]
   );
 
-  const handleDelete = useCallback(() => {
+  const handleDelete = useCallback(async () => {
     if (deletingProjectId) {
-      const index = mockProjects.findIndex((p) => p.id === deletingProjectId);
-      if (index !== -1) mockProjects.splice(index, 1);
-      const buildingsToDelete = mockBuildings.filter(
-        (b) => b.projectId === deletingProjectId
-      );
-      buildingsToDelete.forEach((b) => {
-        const bIndex = mockBuildings.findIndex((mb) => mb.id === b.id);
-        if (bIndex !== -1) mockBuildings.splice(bIndex, 1);
-      });
-      setProjects([...mockProjects]);
-      setBuildings([...mockBuildings]);
-      showToast(isArabic ? "تم حذف المشروع" : "Project deleted", "success");
+      try {
+        await projectService.deleteProject(deletingProjectId);
+        const refreshed = await projectService.getProjects();
+        setProjects(refreshed);
+        showToast(isArabic ? "تم حذف المشروع" : "Project deleted", "success");
+      } catch (error: any) {
+        showToast(error?.message || "Error", "error");
+      }
       setShowDeleteConfirm(false);
       setDeletingProjectId(null);
     }
   }, [deletingProjectId, isArabic]);
-
-  const getStatusText = (status: string) => {
-    switch (status) {
-      case "active":
-        return isArabic ? "نشط" : "Active";
-      case "completed":
-        return isArabic ? "مكتمل" : "Completed";
-      default:
-        return isArabic ? "تخطيط" : "Planning";
-    }
-  };
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "active":
-        return "bg-green-100 text-green-800";
-      case "completed":
-        return "bg-blue-100 text-blue-800";
-      default:
-        return "bg-yellow-100 text-yellow-800";
-    }
-  };
 
   return (
     <div>
@@ -173,17 +139,19 @@ export default function ProjectsPage() {
         <h1 className="text-2xl font-bold text-primary">
           {isArabic ? "المشاريع" : "Projects"}
         </h1>
-        <button
-          onClick={openAddModal}
-          className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition"
-        >
-          <Plus size={18} />
-          {isArabic ? "إضافة مشروع" : "Add Project"}
-        </button>
+        <Can permission="projects.create">
+          <button
+            onClick={openAddModal}
+            className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition"
+          >
+            <Plus size={18} />
+            {isArabic ? "إضافة مشروع" : "Add Project"}
+          </button>
+        </Can>
       </div>
 
       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {projects.map((project) => (
+        {projects.map((project: Project) => (
           <Card key={project.id} hover className="p-5">
             <div className="flex justify-between items-start mb-3">
               <Link
@@ -195,66 +163,49 @@ export default function ProjectsPage() {
                 </h3>
               </Link>
               <div className="flex items-center gap-2">
-                <span
-                  className={`text-xs px-2 py-1 rounded-full font-medium ${getStatusColor(
-                    project.status
-                  )}`}
-                >
-                  {getStatusText(project.status)}
-                </span>
-                <button
-                  onClick={() => openEditModal(project)}
-                  className="p-1 text-gray-400 hover:text-blue-500"
-                >
-                  <Edit2 size={16} />
-                </button>
-                <button
-                  onClick={() => {
-                    setDeletingProjectId(project.id);
-                    setShowDeleteConfirm(true);
-                  }}
-                  className="p-1 text-gray-400 hover:text-red-500"
-                >
-                  <Trash2 size={16} />
-                </button>
+                {project.code && (
+                  <span className="text-xs px-2 py-1 rounded-full bg-surface-tertiary text-text-secondary font-mono">
+                    {project.code}
+                  </span>
+                )}
+                <Can permission="projects.update">
+                  <button
+                    onClick={() => openEditModal(project)}
+                    className="p-1 text-text-muted hover:text-info"
+                  >
+                    <Edit2 size={16} />
+                  </button>
+                </Can>
+                <Can permission="projects.delete">
+                  <button
+                    onClick={() => {
+                      setDeletingProjectId(project.id);
+                      setShowDeleteConfirm(true);
+                    }}
+                    className="p-1 text-text-muted hover:text-danger"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </Can>
               </div>
             </div>
             <Link href={`/${locale}/projects/${project.id}`}>
-              <p className="text-gray-500 text-sm mb-3 line-clamp-2">
-                {project.description}
-              </p>
-              <div className="space-y-2 text-sm text-gray-500">
-                <div className="flex items-center gap-2">
-                  <MapPin className="w-4 h-4 text-gold" />
-                  <span>{project.location}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Calendar className="w-4 h-4 text-gold" />
-                  <span>
-                    {isArabic ? "تاريخ البدء:" : "Start Date:"}{" "}
-                    {project.startDate}
-                  </span>
-                </div>
+              <div className="space-y-1 text-xs text-text-secondary">
                 {project.client && (
-                  <div className="flex items-center gap-2">
-                    <Building2 className="w-4 h-4 text-gold" />
-                    <span>
-                      {isArabic ? "جهة الإسناد:" : "Client:"} {project.client}
-                    </span>
-                  </div>
+                  <p>{isArabic ? "العميل:" : "Client:"} {project.client}</p>
                 )}
-              </div>
-              <div className="mt-3">
-                <div className="flex justify-between text-xs text-gray-500 mb-1">
-                  <span>{isArabic ? "نسبة الإنجاز" : "Progress"}</span>
-                  <span>{project.progress}%</span>
+                {project.location && (
+                  <p>{isArabic ? "الموقع:" : "Location:"} {project.location}</p>
+                )}
+                <div className="flex items-center gap-2">
+                  <span className={`inline-block w-2 h-2 rounded-full ${project.status === "active" ? "bg-success" : project.status === "completed" ? "bg-info" : "bg-warning"}`} />
+                  <span>{project.status === "active" ? (isArabic ? "نشط" : "Active") : project.status === "completed" ? (isArabic ? "مكتمل" : "Completed") : (isArabic ? "معلق" : "On Hold")}</span>
+                  <span className="text-text-muted">— {project.progress}%</span>
                 </div>
-                <div className="w-full bg-gray-200 rounded-full h-2">
-                  <div
-                    className="bg-gold rounded-full h-2"
-                    style={{ width: `${project.progress}%` }}
-                  />
-                </div>
+                <p className="text-text-muted mt-1">
+                  {isArabic ? "تاريخ الإنشاء:" : "Created:"}{" "}
+                  {project.createdAt ? new Date(project.createdAt).toLocaleDateString() : "—"}
+                </p>
               </div>
             </Link>
           </Card>
@@ -264,22 +215,31 @@ export default function ProjectsPage() {
       {/* Add/Edit Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+          <div className="bg-surface rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center p-5 border-b">
               <h2 className="text-xl font-bold text-primary">
                 {editingProject
-                  ? isArabic
-                    ? "تعديل المشروع"
-                    : "Edit Project"
-                  : isArabic
-                  ? "إضافة مشروع جديد"
-                  : "Add New Project"}
+                  ? isArabic ? "تعديل المشروع" : "Edit Project"
+                  : isArabic ? "إضافة مشروع جديد" : "Add New Project"}
               </h2>
               <button onClick={() => setShowModal(false)}>
-                <X size={24} className="text-gray-400" />
+                <X size={24} className="text-text-muted" />
               </button>
             </div>
             <form onSubmit={handleSubmit} className="p-5 space-y-4">
+              {!editingProject && (
+                <input
+                  type="text"
+                  name="code"
+                  placeholder={isArabic ? "كود المشروع (مثال: PRJ-001)" : "Project Code (e.g. PRJ-001)"}
+                  value={projectForm.code}
+                  onChange={handleInputChange}
+                  className="w-full p-3 border rounded-xl"
+                  required
+                  pattern="^[A-Za-z0-9][A-Za-z0-9_-]*$"
+                  maxLength={50}
+                />
+              )}
               <input
                 type="text"
                 name="name"
@@ -288,39 +248,68 @@ export default function ProjectsPage() {
                 onChange={handleInputChange}
                 className="w-full p-3 border rounded-xl"
                 required
+                maxLength={200}
               />
-              <input
-                type="text"
-                name="location"
-                placeholder={isArabic ? "الموقع" : "Location"}
-                value={projectForm.location}
-                onChange={handleInputChange}
-                className="w-full p-3 border rounded-xl"
-                required
-              />
-              <input
-                type="text"
-                name="client"
-                placeholder={isArabic ? "جهة الإسناد" : "Client"}
-                value={projectForm.client}
-                onChange={handleInputChange}
-                className="w-full p-3 border rounded-xl"
-              />
-              <input
-                type="date"
-                name="startDate"
-                value={projectForm.startDate}
-                onChange={handleInputChange}
-                className="w-full p-3 border rounded-xl"
-              />
+              <div className="grid grid-cols-2 gap-4">
+                <input
+                  type="text"
+                  name="client"
+                  placeholder={isArabic ? "اسم العميل" : "Client Name"}
+                  value={projectForm.client}
+                  onChange={handleInputChange}
+                  className="w-full p-3 border rounded-xl"
+                  maxLength={200}
+                />
+                <input
+                  type="text"
+                  name="location"
+                  placeholder={isArabic ? "الموقع" : "Location"}
+                  value={projectForm.location}
+                  onChange={handleInputChange}
+                  className="w-full p-3 border rounded-xl"
+                  maxLength={300}
+                />
+              </div>
               <textarea
                 name="description"
-                placeholder={isArabic ? "الوصف" : "Description"}
+                placeholder={isArabic ? "وصف المشروع" : "Project Description"}
                 value={projectForm.description}
                 onChange={handleInputChange}
+                className="w-full p-3 border rounded-xl"
                 rows={3}
-                className="w-full p-3 border rounded-xl resize-none"
+                maxLength={1000}
               />
+              <div className="grid grid-cols-3 gap-4">
+                <input
+                  type="date"
+                  name="startDate"
+                  value={projectForm.startDate}
+                  onChange={handleInputChange}
+                  className="w-full p-3 border rounded-xl"
+                />
+                <select
+                  name="status"
+                  value={projectForm.status}
+                  onChange={handleInputChange}
+                  className="w-full p-3 border rounded-xl"
+                >
+                  <option value="active">{isArabic ? "نشط" : "Active"}</option>
+                  <option value="completed">{isArabic ? "مكتمل" : "Completed"}</option>
+                  <option value="on_hold">{isArabic ? "معلق" : "On Hold"}</option>
+                </select>
+                <div>
+                  <input
+                    type="number"
+                    name="progress"
+                    min={0}
+                    max={100}
+                    value={projectForm.progress}
+                    onChange={handleInputChange}
+                    className="w-full p-3 border rounded-xl"
+                  />
+                  <span className="text-xs text-text-muted mt-1">{isArabic ? "نسبة الإنجاز %" : "Progress %"}</span>
+                </div>
+              </div>
               <div className="flex gap-3">
                 <button
                   type="button"
@@ -334,12 +323,8 @@ export default function ProjectsPage() {
                   className="flex-1 px-4 py-2 bg-primary text-white rounded-xl"
                 >
                   {editingProject
-                    ? isArabic
-                      ? "تحديث"
-                      : "Update"
-                    : isArabic
-                    ? "حفظ"
-                    : "Save"}
+                    ? isArabic ? "تحديث" : "Update"
+                    : isArabic ? "حفظ" : "Save"}
                 </button>
               </div>
             </form>
@@ -350,14 +335,14 @@ export default function ProjectsPage() {
       {/* Delete Modal */}
       {showDeleteConfirm && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-md">
+          <div className="bg-surface rounded-2xl w-full max-w-md">
             <div className="p-5 border-b">
               <h2 className="text-xl font-bold text-primary">
                 {isArabic ? "تأكيد الحذف" : "Confirm Delete"}
               </h2>
             </div>
             <div className="p-5">
-              <p className="text-gray-600">
+              <p className="text-text-secondary">
                 {isArabic
                   ? "هل أنت متأكد من حذف هذا المشروع؟"
                   : "Are you sure you want to delete this project?"}
@@ -371,7 +356,7 @@ export default function ProjectsPage() {
                 </button>
                 <button
                   onClick={handleDelete}
-                  className="flex-1 px-4 py-2 bg-red-500 text-white rounded-xl"
+                  className="flex-1 px-4 py-2 bg-danger text-white rounded-xl"
                 >
                   {isArabic ? "حذف" : "Delete"}
                 </button>

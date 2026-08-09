@@ -13,6 +13,14 @@ export class PrismaBuildingRepository implements IBuildingRepository {
     const data = {
       projectId: building.projectId.toValue(),
       name: building.name,
+      code: building.code,
+      type: building.type,
+      startDate: building.startDate,
+      description: building.description,
+      status: building.status,
+      latitude: building.latitude,
+      longitude: building.longitude,
+      allowedRadius: building.allowedRadius,
       deletedAt: building.deletedAt,
       updatedAt: new Date(),
     };
@@ -66,6 +74,14 @@ export class PrismaBuildingRepository implements IBuildingRepository {
     id: string;
     projectId: string;
     name: string;
+    code: string;
+    type: string;
+    startDate: Date | null;
+    description: string;
+    status: string;
+    latitude: number | null;
+    longitude: number | null;
+    allowedRadius: number | null;
     deletedAt: Date | null;
     createdAt: Date;
     updatedAt: Date;
@@ -74,6 +90,14 @@ export class PrismaBuildingRepository implements IBuildingRepository {
       {
         projectId: new UniqueEntityId(record.projectId),
         name: record.name,
+        code: record.code,
+        type: record.type,
+        startDate: record.startDate,
+        description: record.description,
+        status: record.status,
+        latitude: record.latitude,
+        longitude: record.longitude,
+        allowedRadius: record.allowedRadius,
         deletedAt: record.deletedAt,
       },
       new UniqueEntityId(record.id),

@@ -22,9 +22,9 @@ function deductionTypeFromPrisma(type: string): ExtractDeduction['type'] {
 export class PrismaExtractRepository implements IExtractRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  async save(extract: Extract): Promise<void> {
-    await this.prisma.$transaction(async (tx) => {
-      await tx.statement.upsert({
+  async save(extract: Extract, tx?: any): Promise<void> {
+    const run = async (client: any) => {
+      await client.statement.upsert({
         where: { id: extract.id.toValue() },
         create: {
           id: extract.id.toValue(),
@@ -58,9 +58,9 @@ export class PrismaExtractRepository implements IExtractRepository {
         },
       });
 
-      await tx.statementItem.deleteMany({ where: { statementId: extract.id.toValue() } });
+      await client.statementItem.deleteMany({ where: { statementId: extract.id.toValue() } });
       if (extract.items.length > 0) {
-        await tx.statementItem.createMany({
+        await client.statementItem.createMany({
           data: extract.items.map((item) => ({
             statementId: extract.id.toValue(),
             contractorBoqItemId: item.contractorBoqItemId,
@@ -79,10 +79,10 @@ export class PrismaExtractRepository implements IExtractRepository {
         });
       }
 
-      await tx.statementDeduction.deleteMany({ where: { statementId: extract.id.toValue() } });
+      await client.statementDeduction.deleteMany({ where: { statementId: extract.id.toValue() } });
       const deductions = extract.allDeductions();
       if (deductions.length > 0) {
-        await tx.statementDeduction.createMany({
+        await client.statementDeduction.createMany({
           data: deductions.map((d) => ({
             id: new UniqueEntityId(
               d.id.startsWith('insurance') || d.id.startsWith('previous') ? undefined : d.id,
@@ -94,7 +94,13 @@ export class PrismaExtractRepository implements IExtractRepository {
           })),
         });
       }
-    });
+    };
+
+    if (tx) {
+      await run(tx);
+    } else {
+      await this.prisma.$transaction(run);
+    }
   }
 
   async findById(id: UniqueEntityId): Promise<Extract | null> {

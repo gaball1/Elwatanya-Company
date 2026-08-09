@@ -3,12 +3,13 @@
 
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import { Card } from "@/components/ui";
 import { Printer, Download, Edit2, Plus, X } from "lucide-react";
-import { mockClientStatements } from "@/lib/mockData";
+import { clientStatementService, type ClientStatement } from "@/services/client-statement.service";
 import { useToast } from "@/components/ui/Toast";
 import BackButton from "@/components/shared/BackButton";
+import { printHtmlDocument } from "@/lib/printUtils";
 
 export default function ClientStatementDetailsPage() {
   const params = useParams();
@@ -18,9 +19,8 @@ export default function ClientStatementDetailsPage() {
   const printRef = useRef<HTMLDivElement>(null);
   const { showToast, ToastComponent } = useToast();
 
-  const [statement, setStatement] = useState(
-    mockClientStatements.find((s) => s.id === statementId)
-  );
+  const [statement, setStatement] = useState<ClientStatement | null>(null);
+  const [loading, setLoading] = useState(true);
   const [showSignatureModal, setShowSignatureModal] = useState(false);
   const [newSignature, setNewSignature] = useState({
     name: "",
@@ -28,10 +28,25 @@ export default function ClientStatementDetailsPage() {
     date: new Date().toISOString().split("T")[0],
   });
 
+  useEffect(() => {
+    clientStatementService.get(statementId).then((data) => {
+      setStatement(data);
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  }, [statementId]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <p className="text-text-secondary">...</p>
+      </div>
+    );
+  }
+
   if (!statement) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <p className="text-gray-500">
+        <p className="text-text-secondary">
           {isArabic ? "المستخلص غير موجود" : "Statement not found"}
         </p>
       </div>
@@ -40,15 +55,6 @@ export default function ClientStatementDetailsPage() {
   const handlePrint = () => {
     const printContent = printRef.current;
     if (!printContent) return;
-
-    const iframe = document.createElement("iframe");
-    iframe.style.position = "fixed";
-    iframe.style.right = "0";
-    iframe.style.bottom = "0";
-    iframe.style.width = "0";
-    iframe.style.height = "0";
-    iframe.style.border = "0";
-    document.body.appendChild(iframe);
 
     const htmlContent = `
   <!DOCTYPE html>
@@ -220,15 +226,11 @@ export default function ClientStatementDetailsPage() {
   </html>
   `;
 
-    iframe.srcdoc = htmlContent;
-    iframe.onload = () => {
-      setTimeout(() => {
-        iframe.contentWindow?.print();
-        setTimeout(() => {
-          document.body.removeChild(iframe);
-        }, 1000);
-      }, 500);
-    };
+    printHtmlDocument(
+      isArabic ? "كشف حساب عميل" : "Client Statement",
+      htmlContent,
+      `${statement.statementNumber}.pdf`
+    );
   };
 
   const exportToExcel = () => {
@@ -306,7 +308,7 @@ export default function ClientStatementDetailsPage() {
       {ToastComponent}
 
       {/* Header */}
-      <div className="bg-white border-b px-6 py-4">
+      <div className="bg-surface border-b px-6 py-4">
         <div className="flex justify-between items-center flex-wrap gap-4">
           <div className="flex items-center gap-4">
             <BackButton fallbackHref={fallbackHref} />
@@ -314,7 +316,7 @@ export default function ClientStatementDetailsPage() {
               <h1 className="text-3xl font-bold text-primary">
                 {statement.statementNumber}
               </h1>
-              <p className="text-sm text-gray-500">
+              <p className="text-sm text-text-secondary">
                 {statement.date} | {isArabic ? "العميل" : "Client"}:{" "}
                 {statement.clientName}
               </p>
@@ -322,13 +324,13 @@ export default function ClientStatementDetailsPage() {
           </div>
           <div className="flex gap-2">
             <Link href={`/${locale}/client-statements/${statementId}/edit`}>
-              <button className="flex items-center gap-2 px-4 py-2 border border-blue-500 text-blue-500 rounded-lg hover:bg-blue-500 hover:text-white transition">
+              <button className="flex items-center gap-2 px-4 py-2 border border-info text-info rounded-lg hover:bg-info hover:text-white transition">
                 <Edit2 size={18} /> {isArabic ? "تعديل" : "Edit"}
               </button>
             </Link>
             <button
               onClick={exportToExcel}
-              className="flex items-center gap-2 px-4 py-2 border border-green-600 text-green-600 rounded-lg hover:bg-green-600 hover:text-white transition"
+              className="flex items-center gap-2 px-4 py-2 border border-success-dark text-success-dark rounded-lg hover:bg-success-dark hover:text-white transition"
             >
               <Download size={18} /> {isArabic ? "تصدير Excel" : "Export Excel"}
             </button>
@@ -346,35 +348,35 @@ export default function ClientStatementDetailsPage() {
       <div ref={printRef} className="p-6">
         {/* Info Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-          <div className="bg-white p-4 rounded-lg shadow-sm border-r-4 border-gold">
-            <p className="text-gray-500 text-sm">
+          <div className="bg-surface p-4 rounded-lg shadow-sm border-r-4 border-gold">
+            <p className="text-text-secondary text-sm">
               {isArabic ? "العميل" : "Client"}
             </p>
             <p className="font-bold text-primary">{statement.clientName}</p>
           </div>
-          <div className="bg-white p-4 rounded-lg shadow-sm">
-            <p className="text-gray-500 text-sm">
+          <div className="bg-surface p-4 rounded-lg shadow-sm">
+            <p className="text-text-secondary text-sm">
               {isArabic ? "المشروع" : "Project"}
             </p>
             <p className="font-bold text-primary">{statement.projectName}</p>
           </div>
-          <div className="bg-white p-4 rounded-lg shadow-sm">
-            <p className="text-gray-500 text-sm">
+          <div className="bg-surface p-4 rounded-lg shadow-sm">
+            <p className="text-text-secondary text-sm">
               {isArabic ? "المبنى" : "Building"}
             </p>
             <p className="font-bold text-primary">{statement.buildingName}</p>
           </div>
-          <div className="bg-white p-4 rounded-lg shadow-sm">
-            <p className="text-gray-500 text-sm">
+          <div className="bg-surface p-4 rounded-lg shadow-sm">
+            <p className="text-text-secondary text-sm">
               {isArabic ? "الحالة" : "Status"}
             </p>
             <p
               className={`font-bold ${
                 statement.status === "paid"
-                  ? "text-green-600"
+                  ? "text-success-dark"
                   : statement.status === "pending"
-                  ? "text-yellow-600"
-                  : "text-gray-600"
+                  ? "text-warning-dark"
+                  : "text-text-secondary"
               }`}
             >
               {statement.status === "paid"
@@ -446,7 +448,7 @@ export default function ClientStatementDetailsPage() {
               </thead>
               <tbody>
                 {statement.items.map((item, idx) => (
-                  <tr key={item.id} className="border-t hover:bg-gray-50">
+                  <tr key={item.id} className="border-t hover:bg-surface-secondary">
                     <td className="p-1.5 border text-center">{idx + 1}</td>
                     <td className="p-1.5 border">{item.itemName}</td>
                     <td className="p-1.5 border text-center">{item.unit}</td>
@@ -471,7 +473,7 @@ export default function ClientStatementDetailsPage() {
                     <td className="p-1.5 border text-center font-bold">
                       {item.workValue.toLocaleString()}
                     </td>
-                    <td className="p-1.5 border text-center text-red-500">
+                    <td className="p-1.5 border text-center text-danger">
                       {item.deduction.toLocaleString()}
                     </td>
                     <td className="p-1.5 border text-center font-bold text-gold">
@@ -481,7 +483,7 @@ export default function ClientStatementDetailsPage() {
                   </tr>
                 ))}
               </tbody>
-              <tfoot className="bg-gray-100 font-bold">
+              <tfoot className="bg-surface-tertiary font-bold">
                 <tr className="border-t">
                   <td colSpan={9} className="p-2 text-left">
                     {isArabic ? "الإجمالي" : "Total"}
@@ -504,9 +506,9 @@ export default function ClientStatementDetailsPage() {
 
         {/* Summary Cards - بدون جدول الاستقطاعات */}
         <div className="grid md:grid-cols-3 gap-4 mb-6">
-          <Card className="p-5 bg-green-50">
+          <Card className="p-5 bg-success-light">
             <div className="flex justify-between items-center">
-              <span className="font-bold text-gray-700">
+              <span className="font-bold text-text-primary">
                 {isArabic ? "الإجمالي لقيمة الأعمال" : "Total Work Value"}
               </span>
               <span className="text-2xl font-bold text-primary">
@@ -514,19 +516,19 @@ export default function ClientStatementDetailsPage() {
               </span>
             </div>
           </Card>
-          <Card className="p-5 bg-red-50">
+          <Card className="p-5 bg-danger-light">
             <div className="flex justify-between items-center">
-              <span className="font-bold text-gray-700">
+              <span className="font-bold text-text-primary">
                 {isArabic ? "إجمالي الاستقطاعات" : "Total Deductions"}
               </span>
-              <span className="text-2xl font-bold text-red-500">
+              <span className="text-2xl font-bold text-danger">
                 {statement.totalDeductions.toLocaleString()}
               </span>
             </div>
           </Card>
           <Card className="p-5 bg-gold/10 border-gold">
             <div className="flex justify-between items-center">
-              <span className="font-bold text-gray-700">
+              <span className="font-bold text-text-primary">
                 {isArabic ? "المستحق صرفة" : "Net Payable"}
               </span>
               <span className="text-3xl font-bold text-gold">
@@ -553,12 +555,12 @@ export default function ClientStatementDetailsPage() {
             {(statement.signatures || []).map((sig) => (
               <div key={sig.id} className="border rounded-lg p-3 text-center">
                 <p className="font-bold text-primary">{sig.name}</p>
-                <p className="text-xs text-gray-500">{sig.title}</p>
-                <p className="text-xs text-gray-400">{sig.date}</p>
+                <p className="text-xs text-text-secondary">{sig.title}</p>
+                <p className="text-xs text-text-muted">{sig.date}</p>
               </div>
             ))}
             {(statement.signatures || []).length === 0 && (
-              <div className="col-span-full text-center text-gray-400 text-sm py-4">
+              <div className="col-span-full text-center text-text-muted text-sm py-4">
                 {isArabic ? "لا توجد توقيعات" : "No signatures"}
               </div>
             )}
@@ -569,21 +571,21 @@ export default function ClientStatementDetailsPage() {
       {/* Add Signature Modal */}
       {showSignatureModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-md">
+          <div className="bg-surface rounded-2xl w-full max-w-md">
             <div className="flex justify-between items-center p-5 border-b">
               <h2 className="text-xl font-bold text-primary">
                 {isArabic ? "إضافة توقيع" : "Add Signature"}
               </h2>
               <button
                 onClick={() => setShowSignatureModal(false)}
-                className="text-gray-400 hover:text-gray-600"
+                className="text-text-muted hover:text-text-secondary"
               >
                 <X size={24} />
               </button>
             </div>
             <div className="p-5 space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-text-primary mb-1">
                   {isArabic ? "الاسم" : "Name"}
                 </label>
                 <input
@@ -597,7 +599,7 @@ export default function ClientStatementDetailsPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-text-primary mb-1">
                   {isArabic ? "المسمى الوظيفي" : "Title"}
                 </label>
                 <input
@@ -611,7 +613,7 @@ export default function ClientStatementDetailsPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-text-primary mb-1">
                   {isArabic ? "التاريخ" : "Date"}
                 </label>
                 <input

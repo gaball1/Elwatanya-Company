@@ -2,8 +2,9 @@
 "use client";
 
 import { useParams, usePathname } from "next/navigation";
-import Link from "next/link";
 import { useMemo } from "react";
+import Link from "next/link";
+import { useEffect, useState } from "react";
 import {
   Building2,
   ChevronLeft,
@@ -12,7 +13,7 @@ import {
   DollarSign,
   Image as ImageIcon,
 } from "lucide-react";
-import { mockBuildings } from "@/lib/mockData";
+import { buildingService } from "@/services/building.service";
 
 export default function BuildingLayout({
   children,
@@ -26,13 +27,13 @@ export default function BuildingLayout({
   const projectId = params.id as string;
   const buildingId = params.buildingId as string;
 
-  const building = useMemo(
-    () =>
-      mockBuildings.find(
-        (b) => b.id === buildingId && b.projectId === projectId
-      ),
-    [buildingId, projectId]
-  );
+  const [building, setBuilding] = useState<any>(null);
+
+  useEffect(() => {
+    if (buildingId && projectId) {
+      buildingService.getBuilding(buildingId).then(setBuilding).catch(console.error);
+    }
+  }, [buildingId, projectId]);
 
   const tabs = useMemo(
     () => [
@@ -73,7 +74,7 @@ export default function BuildingLayout({
   if (!building) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <p className="text-gray-500">
+        <p className="text-text-secondary">
           {isArabic ? "المبنى غير موجود" : "Building not found"}
         </p>
       </div>
@@ -81,12 +82,12 @@ export default function BuildingLayout({
   }
 
   return (
-    <div className="min-h-screen bg-gray-light">
-      <div className="bg-white border-b px-6 py-4">
+    <div className="min-h-screen bg-background">
+      <div className="bg-surface border-b border-border px-6 py-4">
         <div className="flex items-center gap-4">
           <Link
             href={`/${locale}/projects/${projectId}/buildings`}
-            className="text-gray-500 hover:text-primary transition"
+            className="text-text-muted hover:text-gold transition"
           >
             <ChevronLeft className="w-5 h-5" />
           </Link>
@@ -94,7 +95,7 @@ export default function BuildingLayout({
             <div className="flex items-center gap-3">
               <Building2 size={24} className="text-gold" />
               <h1 className="text-2xl font-bold text-primary">{building.name}</h1>
-              <span className="text-sm bg-gray-100 px-2 py-1 rounded-full">
+              <span className="text-sm bg-surface-tertiary px-2 py-1 rounded-full text-text-secondary">
                 {building.code}
               </span>
             </div>
@@ -102,16 +103,16 @@ export default function BuildingLayout({
         </div>
       </div>
 
-      <div className="bg-white border-b px-6">
+      <div className="bg-surface border-b border-border px-6">
         <div className="flex gap-6 overflow-x-auto">
-          {tabs.map((tab) => (
+          {tabs.map((tab: any) => (
             <Link
               key={tab.id}
               href={tab.href}
               className={`flex items-center gap-2 py-3 border-b-2 transition-colors whitespace-nowrap ${
                 isActive(tab.href, tab.id === "subcontractors")
                   ? "border-gold text-gold"
-                  : "border-transparent text-gray-500 hover:text-primary"
+                  : "border-transparent text-text-muted hover:text-gold"
               }`}
             >
               {tab.icon}

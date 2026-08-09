@@ -41,10 +41,11 @@ export class EmployerBoqItemDto {
   @Min(0)
   unitPrice!: number;
 
-  @ApiProperty({ example: 150000 })
+  @ApiPropertyOptional({ example: 150000 })
+  @IsOptional()
   @IsNumber()
   @Min(0)
-  totalValue!: number;
+  totalValue?: number;
 }
 
 export class UpsertEmployerBoqItemDto {

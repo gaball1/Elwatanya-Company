@@ -2,693 +2,491 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { Card } from "@/components/ui";
+import { Can } from '@/components/Can';
 import {
   Package,
   Plus,
-  Search,
-  Filter,
-  Printer,
-  Download,
   Edit2,
   Trash2,
   X,
+  Search,
+  Filter,
+  Download,
+  ArrowUpDown,
+  Printer,
+  AlertTriangle,
+  ClipboardCheck,
 } from "lucide-react";
+import { inventoryItemService, type InventoryItem } from "@/services/inventory-item.service";
+import { approvalService } from "@/services/approval.service";
 import { useToast } from "@/components/ui/Toast";
-import {
-  sanitizeInput,
-  isDuplicateName,
-  isDuplicateCode,
-} from "@/lib/security";
-import React from "react";
-import { useDebounce } from "@/hooks/useDebounce";
-import { usePagination } from "@/hooks/usePagination";
-import Pagination from "@/components/ui/Pagination";
+import { printAsPDF } from "@/lib/printUtils";
 
-interface InventoryItem {
-  id: string;
-  code: string;
-  name: string;
-  category: string;
-  quantity: number;
-  unit: string;
-  price: number;
-  location: string;
-  minQuantity: number;
-}
-
-// ✅ بيانات وهمية
-const MOCK_ITEMS: InventoryItem[] = [
-  {
-    id: "1",
-    code: "A104",
-    name: "حديد",
-    category: "حديد",
-    quantity: 2054,
-    unit: "كجم",
-    price: 45,
-    location: "مخزن 1",
-    minQuantity: 500,
-  },
-  {
-    id: "2",
-    code: "B201",
-    name: "سيراميك",
-    category: "سيراميك",
-    quantity: 46,
-    unit: "م²",
-    price: 120,
-    location: "مخزن 2",
-    minQuantity: 100,
-  },
-  {
-    id: "3",
-    code: "C301",
-    name: "أسمنت",
-    category: "أسمنت",
-    quantity: 850,
-    unit: "شيكارة",
-    price: 180,
-    location: "مخزن 1",
-    minQuantity: 200,
-  },
-  {
-    id: "4",
-    code: "D401",
-    name: "دهانات",
-    category: "دهانات",
-    quantity: 32,
-    unit: "جالون",
-    price: 350,
-    location: "مخزن 3",
-    minQuantity: 50,
-  },
-];
-
-export default function ProjectInventoryPage() {
+export default function InventoryPage() {
   const params = useParams();
   const locale = (params.locale as string) ?? "ar";
   const isArabic = locale === "ar";
   const { showToast, ToastComponent } = useToast();
 
-  // ✅ State
-  const [items, setItems] = useState<InventoryItem[]>(MOCK_ITEMS);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState("all");
-  const [showAddModal, setShowAddModal] = useState(false);
+  const [items, setItems] = useState<InventoryItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showModal, setShowModal] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
-  const [formData, setFormData] = useState({
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [showApprovalModal, setShowApprovalModal] = useState(false);
+  const [approvalItem, setApprovalItem] = useState<InventoryItem | null>(null);
+  const [approvalComment, setApprovalComment] = useState("");
+  const [approvalStatus, setApprovalStatus] = useState<"draft" | "pending">("pending");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [sortBy, setSortBy] = useState<"name" | "quantity" | "price">("name");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
+
+  const fetchItems = useCallback(async () => {
+    try {
+      setLoading(true);
+      const data = await inventoryItemService.list();
+      setItems(data);
+    } catch (error) {
+      showToast(isArabic ? "حدث خطأ في تحميل البيانات" : "Failed to load data", "error");
+    } finally {
+      setLoading(false);
+    }
+  }, [isArabic]);
+
+  useEffect(() => { fetchItems(); }, [fetchItems]);
+
+  const [form, setForm] = useState({
     code: "",
     name: "",
-    category: "",
-    quantity: 0,
+    description: "",
     unit: "",
-    price: 0,
-    location: "",
-    minQuantity: 0,
+    quantity: "0",
+    minQuantity: "0",
+    price: "0",
+    status: "active",
   });
 
-  const debouncedSearch = useDebounce(searchTerm, 300);
+  const statusOptions = [
+    { value: "all", label: isArabic ? "الكل" : "All" },
+    { value: "active", label: isArabic ? "نشط" : "Active" },
+    { value: "inactive", label: isArabic ? "غير نشط" : "Inactive" },
+  ];
 
-  // ✅ الحصول على التصنيفات الفريدة
-  const categories = useMemo(() => {
-    const cats = new Set(items.map((item) => item.category));
-    return Array.from(cats);
-  }, [items]);
-
-  // ✅ فلترة الأصناف
-  const filteredItems = useMemo(() => {
+  const filteredAndSortedItems = useMemo(() => {
     let filtered = [...items];
-    if (categoryFilter !== "all") {
-      filtered = filtered.filter((item) => item.category === categoryFilter);
+    if (statusFilter !== "all") {
+      filtered = filtered.filter((i) => i.status === statusFilter);
     }
-    if (debouncedSearch) {
-      const term = debouncedSearch.toLowerCase();
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase();
       filtered = filtered.filter(
-        (item) =>
-          item.name.toLowerCase().includes(term) ||
-          item.code.toLowerCase().includes(term)
+        (i) =>
+          i.name.toLowerCase().includes(term) ||
+          i.code.toLowerCase().includes(term)
       );
     }
+    filtered.sort((a, b) => {
+      let comparison = 0;
+      if (sortBy === "name") comparison = a.name.localeCompare(b.name);
+      else if (sortBy === "quantity") comparison = a.quantity - b.quantity;
+      else if (sortBy === "price") comparison = a.price - b.price;
+      return sortOrder === "asc" ? comparison : -comparison;
+    });
     return filtered;
-  }, [items, debouncedSearch, categoryFilter]);
+  }, [items, searchTerm, statusFilter, sortBy, sortOrder]);
 
-  // ✅ Pagination
-  const { currentItems, currentPage, totalPages, goToPage } = usePagination(
-    filteredItems,
-    10
-  );
-
-  // ✅ إحصائيات
-  const stats = useMemo(() => {
-    const totalItems = items.length;
-    const totalQuantity = items.reduce((sum, item) => sum + item.quantity, 0);
-    const lowStockItems = items.filter(
-      (item) => item.quantity < item.minQuantity
-    ).length;
-    return { totalItems, totalQuantity, lowStockItems };
-  }, [items]);
-
-  // ✅ فتح مودال الإضافة
-  const openAddModal = useCallback(() => {
-    setEditingItem(null);
-    setFormData({
-      code: "",
-      name: "",
-      category: "",
-      quantity: 0,
-      unit: "",
-      price: 0,
-      location: "",
-      minQuantity: 0,
-    });
-    setShowAddModal(true);
-  }, []);
-
-  // ✅ فتح مودال التعديل
-  const openEditModal = useCallback((item: InventoryItem) => {
-    setEditingItem(item);
-    setFormData({
-      code: item.code,
-      name: item.name,
-      category: item.category,
-      quantity: item.quantity,
-      unit: item.unit,
-      price: item.price,
-      location: item.location,
-      minQuantity: item.minQuantity,
-    });
-    setShowAddModal(true);
-  }, []);
-
-  // ✅ حفظ الصنف (إضافة أو تعديل)
-  const handleSubmit = useCallback(
-    (e: React.FormEvent) => {
-      e.preventDefault();
-
-      const {
-        code,
-        name,
-        category,
-        quantity,
-        unit,
-        price,
-        location,
-        minQuantity,
-      } = formData;
-
-      // ✅ التحقق من عدم تكرار الاسم (مع استثناء العنصر الحالي في حالة التعديل)
-      const nameExists = items.some(
-        (item) =>
-          item.name.toLowerCase() === name.toLowerCase() &&
-          item.id !== (editingItem?.id || "")
-      );
-
-      if (nameExists) {
-        showToast(
-          isArabic ? "هذا الاسم موجود بالفعل" : "This name already exists",
-          "error"
-        );
-        return;
-      }
-
-      // ✅ التحقق من عدم تكرار الكود (مع استثناء العنصر الحالي في حالة التعديل)
-      const codeExists = items.some(
-        (item) =>
-          item.code.toLowerCase() === code.toLowerCase() &&
-          item.id !== (editingItem?.id || "")
-      );
-
-      if (codeExists) {
-        showToast(
-          isArabic ? "هذا الكود موجود بالفعل" : "This code already exists",
-          "error"
-        );
-        return;
-      }
-
-      if (editingItem) {
-        // ✅ تعديل - تحديث العنصر الموجود
-        const updatedItems = items.map((item) =>
-          item.id === editingItem.id
-            ? {
-                ...item,
-                code,
-                name,
-                category,
-                quantity,
-                unit,
-                price,
-                location,
-                minQuantity,
-              }
-            : item
-        );
-        setItems(updatedItems);
-        showToast(
-          isArabic ? "تم تعديل الصنف بنجاح" : "Item updated successfully",
-          "success"
-        );
-      } else {
-        // ✅ إضافة جديدة
-        const newItem: InventoryItem = {
-          id: Date.now().toString(),
-          code,
-          name,
-          category,
-          quantity,
-          unit,
-          price,
-          location,
-          minQuantity,
-        };
-        setItems([newItem, ...items]);
-        showToast(
-          isArabic ? "تم إضافة الصنف بنجاح" : "Item added successfully",
-          "success"
-        );
-      }
-      setShowAddModal(false);
-      setEditingItem(null);
-    },
-    [items, editingItem, formData, showToast, isArabic]
-  );
-
-  // ✅ حذف صنف
-  const handleDelete = useCallback(
-    (id: string) => {
-      if (
-        confirm(
-          isArabic
-            ? "هل أنت متأكد من حذف هذا الصنف؟"
-            : "Are you sure you want to delete this item?"
-        )
-      ) {
-        setItems(items.filter((item) => item.id !== id));
-        showToast(
-          isArabic ? "تم حذف الصنف بنجاح" : "Item deleted successfully",
-          "success"
-        );
-      }
-    },
-    [items, showToast, isArabic]
-  );
-
-  // ✅ تحديث الفورم
-  const updateForm = useCallback(
-    (field: keyof typeof formData, value: string | number) => {
-      setFormData((prev) => ({ ...prev, [field]: value }));
+  const handleInputChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+      setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
     },
     []
   );
 
+  const openAddModal = useCallback(() => {
+    setEditingItem(null);
+    setForm({
+      code: "",
+      name: "",
+      description: "",
+      unit: "",
+      quantity: "0",
+      minQuantity: "0",
+      price: "0",
+      status: "active",
+    });
+    setShowModal(true);
+  }, []);
+
+  const openEditModal = useCallback((item: InventoryItem) => {
+    setEditingItem(item);
+    setForm({
+      code: item.code,
+      name: item.name,
+      description: item.description || "",
+      unit: item.unit || "",
+      quantity: String(item.quantity),
+      minQuantity: String(item.minQuantity),
+      price: String(item.price),
+      status: item.status,
+    });
+    setShowModal(true);
+  }, []);
+
+  const handleSubmit = useCallback(
+    async (e: React.FormEvent) => {
+      e.preventDefault();
+      try {
+        const payload = {
+          code: form.code,
+          name: form.name,
+          description: form.description || undefined,
+          unit: form.unit || undefined,
+          quantity: Number(form.quantity),
+          minQuantity: Number(form.minQuantity),
+          price: Number(form.price),
+          status: form.status,
+        };
+        if (editingItem) {
+          await inventoryItemService.update(editingItem.id, payload);
+          showToast(isArabic ? "تم تحديث الصنف" : "Item updated", "success");
+        } else {
+          await inventoryItemService.create(payload);
+          showToast(isArabic ? "تم إضافة الصنف بنجاح" : "Item added", "success");
+        }
+        await fetchItems();
+      } catch (error: any) {
+        showToast(error?.message || (isArabic ? "حدث خطأ" : "An error occurred"), "error");
+      }
+      setShowModal(false);
+      setEditingItem(null);
+    },
+    [form, editingItem, isArabic, fetchItems]
+  );
+
+  const handleDelete = useCallback(async () => {
+    if (deletingId) {
+      try {
+        await inventoryItemService.remove(deletingId);
+        await fetchItems();
+        showToast(isArabic ? "تم حذف الصنف" : "Item deleted", "success");
+      } catch (error: any) {
+        showToast(error?.message || "Error", "error");
+      }
+      setShowDeleteConfirm(false);
+      setDeletingId(null);
+    }
+  }, [deletingId, isArabic, fetchItems]);
+
+  const openApprovalModal = useCallback((item: InventoryItem) => {
+    setApprovalItem(item);
+    setApprovalComment("");
+    setApprovalStatus("pending");
+    setShowApprovalModal(true);
+  }, []);
+
+  const handleApprovalSubmit = useCallback(async () => {
+    if (!approvalItem) return;
+    try {
+      await approvalService.request({
+        entityType: "inventory",
+        entityId: approvalItem.id,
+        comment: approvalComment || undefined,
+        status: approvalStatus,
+      });
+      showToast(
+        approvalStatus === "draft"
+          ? isArabic
+            ? "تم حفظ الطلب كمسودة"
+            : "Request saved as draft"
+          : isArabic
+          ? "تم إرسال طلب الموافقة"
+          : "Approval request submitted",
+        "success"
+      );
+      setShowApprovalModal(false);
+      setApprovalItem(null);
+    } catch (error: any) {
+      showToast(
+        error?.message || (isArabic ? "فشل إرسال الطلب" : "Failed to submit request"),
+        "error"
+      );
+    }
+  }, [approvalItem, approvalComment, approvalStatus, showToast, isArabic]);
+
+  const handlePrintPDF = useCallback(() => {
+    const headers = [
+      isArabic ? "الكود" : "Code",
+      isArabic ? "الاسم" : "Name",
+      isArabic ? "الوصف" : "Description",
+      isArabic ? "الوحدة" : "Unit",
+      isArabic ? "الكمية" : "Quantity",
+      isArabic ? "الحد الأدنى" : "Min Qty",
+      isArabic ? "السعر" : "Price",
+      isArabic ? "الحالة" : "Status",
+    ];
+    const rows = filteredAndSortedItems.map((i) => [
+      i.code,
+      i.name,
+      i.description || "—",
+      i.unit || "—",
+      String(i.quantity),
+      String(i.minQuantity),
+      String(i.price),
+      i.status === "active" ? (isArabic ? "نشط" : "Active") : (isArabic ? "غير نشط" : "Inactive"),
+    ]);
+    printAsPDF(rows, headers, isArabic ? "تقرير المخزون" : "Inventory Report", isArabic);
+  }, [filteredAndSortedItems, isArabic]);
+
+  const exportToExcel = useCallback(() => {
+    const headers = ["الكود", "الاسم", "الوصف", "الوحدة", "الكمية", "الحد الأدنى", "السعر", "الحالة"];
+    const rows = filteredAndSortedItems.map((i) => [
+      i.code, i.name, i.description || "", i.unit || "",
+      String(i.quantity), String(i.minQuantity), String(i.price),
+      i.status === "active" ? "نشط" : "غير نشط",
+    ]);
+    const csvContent = [headers, ...rows].map((row) => row.join(",")).join("\n");
+    const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.setAttribute("download", `inventory_${new Date().toISOString().split("T")[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    showToast(isArabic ? "تم تصدير البيانات" : "Data exported", "success");
+  }, [filteredAndSortedItems, isArabic]);
+
+  const toggleSort = useCallback(
+    (field: "name" | "quantity" | "price") => {
+      if (sortBy === field) setSortOrder(sortOrder === "asc" ? "desc" : "asc");
+      else { setSortBy(field); setSortOrder("asc"); }
+    },
+    [sortBy, sortOrder]
+  );
+
+  const getStatusBadge = (status: string) => {
+    if (status === "active") return { text: isArabic ? "نشط" : "Active", className: "bg-success-light text-success-dark" };
+    return { text: isArabic ? "غير نشط" : "Inactive", className: "bg-surface-tertiary text-text-secondary" };
+  };
+
+  const isLowStock = (item: InventoryItem) => item.quantity < item.minQuantity;
+
   return (
-    <div className="space-y-6" suppressHydrationWarning>
+    <div className="min-h-screen bg-gray-light">
       {ToastComponent}
-
-      {/* Stats Cards */}
-      <div className="grid md:grid-cols-3 gap-4">
-        <Card className="p-4 border-r-4 border-blue-500">
-          <p className="text-gray-500 text-sm">
-            {isArabic ? "إجمالي الأصناف" : "Total Items"}
-          </p>
-          <p className="text-2xl font-bold text-blue-500">{stats.totalItems}</p>
-        </Card>
-        <Card className="p-4 border-r-4 border-gold">
-          <p className="text-gray-500 text-sm">
-            {isArabic ? "إجمالي الكميات" : "Total Quantity"}
-          </p>
-          <p className="text-2xl font-bold text-gold">
-            {stats.totalQuantity.toLocaleString()}
-          </p>
-        </Card>
-        <Card className="p-4 border-r-4 border-red-500">
-          <p className="text-gray-500 text-sm">
-            {isArabic ? "أصناف منخفضة" : "Low Stock"}
-          </p>
-          <p className="text-2xl font-bold text-red-500">
-            {stats.lowStockItems}
-          </p>
-        </Card>
-      </div>
-
-      {/* Actions */}
-      <div className="flex flex-wrap gap-3">
-        <button
-          onClick={openAddModal}
-          className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition text-sm font-medium"
-        >
-          <Plus size={18} />
-          {isArabic ? "إضافة صنف" : "Add Item"}
-        </button>
-        <button
-          onClick={() => {
-            // تصدير Excel بسيط
-            const headers = [
-              "الكود",
-              "الاسم",
-              "التصنيف",
-              "الكمية",
-              "الوحدة",
-              "الموقع",
-            ];
-            const rows = filteredItems.map((item) => [
-              item.code,
-              item.name,
-              item.category,
-              item.quantity,
-              item.unit,
-              item.location,
-            ]);
-            const csvContent = [headers, ...rows]
-              .map((row) => row.join(","))
-              .join("\n");
-            const blob = new Blob(["\uFEFF" + csvContent], {
-              type: "text/csv;charset=utf-8;",
-            });
-            const link = document.createElement("a");
-            link.href = URL.createObjectURL(blob);
-            link.setAttribute(
-              "download",
-              `inventory_${new Date().toISOString().split("T")[0]}.csv`
-            );
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            showToast(
-              isArabic ? "تم تصدير البيانات" : "Data exported",
-              "success"
-            );
-          }}
-          className="flex items-center gap-2 px-4 py-2 border border-green-600 text-green-600 rounded-lg hover:bg-green-600 hover:text-white transition text-sm font-medium"
-        >
-          <Download size={18} />
-          {isArabic ? "تصدير Excel" : "Export Excel"}
-        </button>
-        <button
-          onClick={() => window.print()}
-          className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition text-sm font-medium"
-        >
-          <Printer size={18} />
-          {isArabic ? "طباعة PDF" : "Print PDF"}
-        </button>
-      </div>
-
-      {/* Filters */}
-      <div className="flex flex-wrap gap-3 items-center bg-white p-3 rounded-lg shadow-sm">
-        <div className="relative flex-1 min-w-[200px]">
-          <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-          <input
-            type="text"
-            placeholder={
-              isArabic ? "بحث بالاسم أو الكود..." : "Search by name or code..."
-            }
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pr-10 pl-4 py-2 border border-gray-200 rounded-lg w-full text-sm focus:outline-none focus:border-gold"
-            suppressHydrationWarning
-          />
-        </div>
-        <div className="relative min-w-[150px]">
-          <Filter className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-          <select
-            value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value)}
-            className="pr-10 pl-4 py-2 border border-gray-200 rounded-lg appearance-none text-sm focus:outline-none focus:border-gold w-full"
-            suppressHydrationWarning
-          >
-            <option value="all">
-              {isArabic ? "كل التصنيفات" : "All Categories"}
-            </option>
-            {categories.map((cat) => (
-              <option key={cat} value={cat}>
-                {cat}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
-
-      {/* Table */}
-      <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="p-3 text-center">#</th>
-                <th className="p-3 text-right">
-                  {isArabic ? "الكود" : "Code"}
-                </th>
-                <th className="p-3 text-right">
-                  {isArabic ? "الاسم" : "Name"}
-                </th>
-                <th className="p-3 text-center">
-                  {isArabic ? "التصنيف" : "Category"}
-                </th>
-                <th className="p-3 text-center">
-                  {isArabic ? "الكمية" : "Qty"}
-                </th>
-                <th className="p-3 text-center">
-                  {isArabic ? "الوحدة" : "Unit"}
-                </th>
-                <th className="p-3 text-center">
-                  {isArabic ? "الموقع" : "Location"}
-                </th>
-                <th className="p-3 text-center">
-                  {isArabic ? "إجراءات" : "Actions"}
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {currentItems.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="p-8 text-center text-gray-500">
-                    <Package size={48} className="mx-auto text-gray-300 mb-3" />
-                    {isArabic ? "لا توجد أصناف" : "No items"}
-                  </td>
-                </tr>
-              ) : (
-                currentItems.map((item, idx) => (
-                  <tr key={item.id} className="border-t hover:bg-gray-50">
-                    <td className="p-3 text-center">{idx + 1}</td>
-                    <td className="p-3 font-mono">{item.code}</td>
-                    <td className="p-3">{item.name}</td>
-                    <td className="p-3 text-center">
-                      <span className="bg-gray-100 px-2 py-1 rounded-full text-xs">
-                        {item.category}
-                      </span>
-                    </td>
-                    <td
-                      className={`p-3 text-center font-bold ${
-                        item.quantity < item.minQuantity
-                          ? "text-red-500"
-                          : "text-gray-800"
-                      }`}
-                    >
-                      {item.quantity.toLocaleString()}
-                    </td>
-                    <td className="p-3 text-center">{item.unit}</td>
-                    <td className="p-3 text-center">{item.location}</td>
-                    <td className="p-3 text-center">
-                      <div className="flex justify-center gap-2">
-                        <button
-                          onClick={() => openEditModal(item)}
-                          className="text-blue-500 hover:text-blue-700 transition p-1"
-                          title={isArabic ? "تعديل" : "Edit"}
-                        >
-                          <Edit2 size={16} />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(item.id)}
-                          className="text-red-500 hover:text-red-700 transition p-1"
-                          title={isArabic ? "حذف" : "Delete"}
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Pagination */}
-      {filteredItems.length > 10 && (
-        <Pagination
-          currentPage={currentPage}
-          totalPages={totalPages}
-          onPageChange={goToPage}
-          isArabic={isArabic}
-        />
-      )}
-
-      {/* Add/Edit Modal */}
-      {showAddModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
-            <div className="p-5 border-b flex justify-between items-center sticky top-0 bg-white">
-              <h2 className="text-xl font-bold text-primary">
-                {editingItem
-                  ? isArabic
-                    ? "تعديل صنف"
-                    : "Edit Item"
-                  : isArabic
-                  ? "إضافة صنف جديد"
-                  : "New Item"}
-              </h2>
-              <button
-                onClick={() => {
-                  setShowAddModal(false);
-                  setEditingItem(null);
-                }}
-                className="text-gray-400 hover:text-gray-600 text-xl"
-              >
-                <X size={24} />
+      <div className="bg-surface border-b px-6 py-4">
+        <div className="flex justify-between items-center flex-wrap gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-primary">{isArabic ? "المخزون" : "Inventory"}</h1>
+            <p className="text-sm text-text-secondary mt-1">{isArabic ? "إدارة أصناف المخزون" : "Manage inventory items"}</p>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={handlePrintPDF} className="flex items-center gap-2 px-4 py-2 border border-info text-info rounded-lg hover:bg-info hover:text-white transition">
+              <Printer size={18} /> {isArabic ? "طباعة PDF" : "Print PDF"}
+            </button>
+            <button onClick={exportToExcel} className="flex items-center gap-2 px-4 py-2 border border-green-600 text-success-dark rounded-lg hover:bg-success-dark hover:text-white transition">
+              <Download size={18} /> {isArabic ? "تصدير Excel" : "Export Excel"}
+            </button>
+            <Can permission="inventory.create">
+              <button onClick={openAddModal} className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition">
+                <Plus size={18} /> {isArabic ? "إضافة صنف" : "Add Item"}
               </button>
+            </Can>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-surface border-b px-6 py-4">
+        <div className="flex flex-wrap gap-4 items-center justify-between">
+          <div className="flex flex-wrap gap-3 items-center">
+            <div className="relative">
+              <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 text-text-muted w-4 h-4" />
+              <input type="text" placeholder={isArabic ? "بحث بالاسم أو الكود..." : "Search by name or code..."} value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pr-10 pl-4 py-2 border border-border rounded-lg w-64 focus:outline-none focus:border-gold" />
+            </div>
+            <div className="relative">
+              <Filter className="absolute right-3 top-1/2 transform -translate-y-1/2 text-text-muted w-4 h-4" />
+              <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="pr-10 pl-4 py-2 border border-border rounded-lg appearance-none focus:outline-none focus:border-gold">
+                {statusOptions.map((opt) => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
+              </select>
+            </div>
+          </div>
+          <div className="flex gap-2 items-center">
+            <span className="text-sm text-text-secondary">{isArabic ? "ترتيب حسب:" : "Sort by:"}</span>
+            <button onClick={() => toggleSort("name")} className={`flex items-center gap-1 px-3 py-1 rounded-lg text-sm transition ${sortBy === "name" ? "bg-gold text-white" : "bg-surface-tertiary text-text-secondary hover:bg-surface-tertiary"}`}>
+              {isArabic ? "الاسم" : "Name"} <ArrowUpDown size={14} />
+            </button>
+            <button onClick={() => toggleSort("quantity")} className={`flex items-center gap-1 px-3 py-1 rounded-lg text-sm transition ${sortBy === "quantity" ? "bg-gold text-white" : "bg-surface-tertiary text-text-secondary hover:bg-surface-tertiary"}`}>
+              {isArabic ? "الكمية" : "Quantity"} <ArrowUpDown size={14} />
+            </button>
+            <button onClick={() => toggleSort("price")} className={`flex items-center gap-1 px-3 py-1 rounded-lg text-sm transition ${sortBy === "price" ? "bg-gold text-white" : "bg-surface-tertiary text-text-secondary hover:bg-surface-tertiary"}`}>
+              {isArabic ? "السعر" : "Price"} <ArrowUpDown size={14} />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="px-6 py-3">
+        <p className="text-sm text-text-secondary">
+          {isArabic ? `عرض ${filteredAndSortedItems.length} من ${items.length} صنف` : `Showing ${filteredAndSortedItems.length} of ${items.length} items`}
+        </p>
+      </div>
+
+      <div className="p-6 pt-0">
+        {loading ? (
+          <Card className="p-12 text-center"><p className="text-text-secondary">{isArabic ? "جاري التحميل..." : "Loading..."}</p></Card>
+        ) : filteredAndSortedItems.length === 0 ? (
+          <Card className="p-12 text-center">
+            <Package size={64} className="mx-auto text-text-muted mb-4" />
+            <p className="text-text-secondary">{isArabic ? "لا يوجد أصناف مطابقة للبحث" : "No matching items found"}</p>
+          </Card>
+        ) : (
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filteredAndSortedItems.map((item) => {
+              const status = getStatusBadge(item.status);
+              const lowStock = isLowStock(item);
+              return (
+                <Card key={item.id} hover className={`p-5 ${lowStock ? "border-l-4 border-l-red-400" : ""}`}>
+                  <div className="flex justify-between items-start">
+                    <div className="flex items-center gap-3">
+                      <div className={`w-12 h-12 rounded-full flex items-center justify-center ${lowStock ? "bg-danger-light" : "bg-primary/10"}`}>
+                        <Package className={`w-6 h-6 ${lowStock ? "text-danger" : "text-primary"}`} />
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-bold text-primary">{item.name}</h3>
+                        <p className="text-sm text-gold">{item.code}</p>
+                      </div>
+                    </div>
+                    <div className="flex gap-1">
+                      <Can permission="approvals.create">
+                        <button onClick={() => openApprovalModal(item)} className="p-1 text-text-muted hover:text-gold" title={isArabic ? "طلب موافقة" : "Request Approval"}><ClipboardCheck size={16} /></button>
+                      </Can>
+                      <Can permission="inventory.update">
+                        <button onClick={() => openEditModal(item)} className="p-1 text-text-muted hover:text-info"><Edit2 size={16} /></button>
+                      </Can>
+                      <Can permission="inventory.delete">
+                        <button onClick={() => { setDeletingId(item.id); setShowDeleteConfirm(true); }} className="p-1 text-text-muted hover:text-danger"><Trash2 size={16} /></button>
+                      </Can>
+                    </div>
+                  </div>
+                  {lowStock && (
+                    <div className="mt-2 flex items-center gap-1 text-xs text-danger bg-danger-light px-2 py-1 rounded">
+                      <AlertTriangle size={12} />
+                      {isArabic ? "المخزون منخفض" : "Low stock"}
+                    </div>
+                  )}
+                  <div className="mt-4 space-y-2 text-sm text-text-secondary">
+                    <div className="flex items-center gap-2"><span className="font-semibold text-text-primary">{isArabic ? "الوحدة" : "Unit"}:</span><span>{item.unit || "—"}</span></div>
+                    <div className="flex items-center gap-2"><span className="font-semibold text-text-primary">{isArabic ? "الكمية" : "Qty"}:</span><span className={lowStock ? "text-danger font-bold" : ""}>{item.quantity}</span></div>
+                    <div className="flex items-center gap-2"><span className="font-semibold text-text-primary">{isArabic ? "الحد الأدنى" : "Min Qty"}:</span><span>{item.minQuantity}</span></div>
+                    <div className="flex items-center gap-2"><span className="font-semibold text-text-primary">{isArabic ? "السعر" : "Price"}:</span><span>{item.price.toFixed(2)}</span></div>
+                    <div className="flex items-center gap-2"><span className="font-semibold text-text-primary">{isArabic ? "الوصف" : "Desc"}:</span><span className="truncate">{item.description || "—"}</span></div>
+                  </div>
+                  <div className="mt-3 pt-3 border-t border-border-light flex justify-between items-center">
+                    <span className={`text-xs px-2 py-1 rounded-full ${status.className}`}>{status.text}</span>
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {showModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-surface rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center p-5 border-b">
+              <h2 className="text-xl font-bold text-primary">
+                {editingItem ? (isArabic ? "تعديل الصنف" : "Edit Item") : (isArabic ? "إضافة صنف جديد" : "Add New Item")}
+              </h2>
+              <button onClick={() => setShowModal(false)}><X size={24} className="text-text-muted" /></button>
             </div>
             <form onSubmit={handleSubmit} className="p-5 space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    {isArabic ? "الكود" : "Code"}
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.code}
-                    onChange={(e) => updateForm("code", e.target.value)}
-                    className="w-full p-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-gold"
-                    required
-                    suppressHydrationWarning
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    {isArabic ? "الاسم" : "Name"}
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.name}
-                    onChange={(e) => updateForm("name", e.target.value)}
-                    className="w-full p-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-gold"
-                    required
-                    suppressHydrationWarning
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  {isArabic ? "التصنيف" : "Category"}
-                </label>
-                <input
-                  type="text"
-                  value={formData.category}
-                  onChange={(e) => updateForm("category", e.target.value)}
-                  className="w-full p-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-gold"
-                  required
-                  suppressHydrationWarning
-                />
-              </div>
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    {isArabic ? "الكمية" : "Qty"}
-                  </label>
-                  <input
-                    type="number"
-                    value={formData.quantity || ""}
-                    onChange={(e) =>
-                      updateForm("quantity", Number(e.target.value))
-                    }
-                    min="0"
-                    className="w-full p-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-gold"
-                    required
-                    suppressHydrationWarning
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    {isArabic ? "الوحدة" : "Unit"}
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.unit}
-                    onChange={(e) => updateForm("unit", e.target.value)}
-                    className="w-full p-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-gold"
-                    required
-                    suppressHydrationWarning
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    {isArabic ? "السعر" : "Price"}
-                  </label>
-                  <input
-                    type="number"
-                    value={formData.price || ""}
-                    onChange={(e) =>
-                      updateForm("price", Number(e.target.value))
-                    }
-                    min="0"
-                    className="w-full p-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-gold"
-                    required
-                    suppressHydrationWarning
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    {isArabic ? "الموقع" : "Location"}
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.location}
-                    onChange={(e) => updateForm("location", e.target.value)}
-                    className="w-full p-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-gold"
-                    required
-                    suppressHydrationWarning
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    {isArabic ? "الحد الأدنى" : "Min Qty"}
-                  </label>
-                  <input
-                    type="number"
-                    value={formData.minQuantity || ""}
-                    onChange={(e) =>
-                      updateForm("minQuantity", Number(e.target.value))
-                    }
-                    min="0"
-                    className="w-full p-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-gold"
-                    required
-                    suppressHydrationWarning
-                  />
-                </div>
-              </div>
-              <div className="flex gap-3 pt-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowAddModal(false);
-                    setEditingItem(null);
-                  }}
-                  className="flex-1 px-4 py-2 border border-gray-300 rounded-xl hover:bg-gray-50 transition"
-                >
-                  {isArabic ? "إلغاء" : "Cancel"}
-                </button>
-                <button
-                  type="submit"
-                  className="flex-1 px-4 py-2 bg-primary text-white rounded-xl hover:bg-primary-dark transition"
-                >
-                  {isArabic ? "حفظ" : "Save"}
-                </button>
+              <input type="text" name="code" placeholder={isArabic ? "كود الصنف" : "Item Code"} value={form.code} onChange={handleInputChange} className="w-full p-3 border rounded-xl" required />
+              <input type="text" name="name" placeholder={isArabic ? "اسم الصنف" : "Item Name"} value={form.name} onChange={handleInputChange} className="w-full p-3 border rounded-xl" required />
+              <textarea name="description" placeholder={isArabic ? "الوصف" : "Description"} value={form.description} onChange={handleInputChange} className="w-full p-3 border rounded-xl" rows={2} />
+              <input type="text" name="unit" placeholder={isArabic ? "الوحدة (مثل: قطعة، كجم)" : "Unit (e.g. piece, kg)"} value={form.unit} onChange={handleInputChange} className="w-full p-3 border rounded-xl" />
+              <input type="number" name="quantity" placeholder={isArabic ? "الكمية" : "Quantity"} value={form.quantity} onChange={handleInputChange} className="w-full p-3 border rounded-xl" min="0" />
+              <input type="number" name="minQuantity" placeholder={isArabic ? "الحد الأدنى للكمية" : "Min Quantity"} value={form.minQuantity} onChange={handleInputChange} className="w-full p-3 border rounded-xl" min="0" />
+              <input type="number" step="0.01" name="price" placeholder={isArabic ? "السعر" : "Price"} value={form.price} onChange={handleInputChange} className="w-full p-3 border rounded-xl" min="0" />
+              <select name="status" value={form.status} onChange={handleInputChange} className="w-full p-3 border rounded-xl">
+                <option value="active">{isArabic ? "نشط" : "Active"}</option>
+                <option value="inactive">{isArabic ? "غير نشط" : "Inactive"}</option>
+              </select>
+              <div className="flex gap-3">
+                <button type="button" onClick={() => setShowModal(false)} className="flex-1 px-4 py-2 border rounded-xl">{isArabic ? "إلغاء" : "Cancel"}</button>
+                <button type="submit" className="flex-1 px-4 py-2 bg-primary text-white rounded-xl">{editingItem ? (isArabic ? "تحديث" : "Update") : (isArabic ? "حفظ" : "Save")}</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {showApprovalModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-surface rounded-2xl w-full max-w-md">
+            <div className="flex justify-between items-center p-5 border-b">
+              <h2 className="text-xl font-bold text-primary">{isArabic ? "طلب موافقة مخزون" : "Inventory Approval Request"}</h2>
+              <button onClick={() => { setShowApprovalModal(false); setApprovalItem(null); }}><X size={24} className="text-text-muted" /></button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-text-primary mb-1">{isArabic ? "الصنف" : "Item"}</label>
+                <select
+                  value={approvalItem?.id ?? ""}
+                  onChange={(e) => { const item = items.find((i) => i.id === e.target.value); setApprovalItem(item ?? null); }}
+                  className="w-full p-3 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-gold"
+                  required
+                >
+                  <option value="">{isArabic ? "اختر صنفاً..." : "Select an item..."}</option>
+                  {items.map((item) => (<option key={item.id} value={item.id}>{item.code} - {item.name}</option>))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-text-primary mb-1">{isArabic ? "نوع الإرسال" : "Submission Type"}</label>
+                <select
+                  value={approvalStatus}
+                  onChange={(e) => setApprovalStatus(e.target.value as "draft" | "pending")}
+                  className="w-full p-3 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-gold"
+                >
+                  <option value="pending">{isArabic ? "إرسال مباشر" : "Submit directly"}</option>
+                  <option value="draft">{isArabic ? "حفظ كمسودة" : "Save as draft"}</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-text-primary mb-1">{isArabic ? "ملاحظات" : "Comment"}</label>
+                <textarea
+                  value={approvalComment}
+                  onChange={(e) => setApprovalComment(e.target.value)}
+                  className="w-full p-3 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-gold"
+                  rows={3}
+                  placeholder={isArabic ? "ملاحظات اختيارية" : "Optional comment"}
+                />
+              </div>
+              <div className="flex gap-3 pt-3">
+                <button type="button" onClick={() => { setShowApprovalModal(false); setApprovalItem(null); }} className="flex-1 px-4 py-2 border border-border-dark rounded-xl hover:bg-surface-secondary transition">{isArabic ? "إلغاء" : "Cancel"}</button>
+                <button onClick={handleApprovalSubmit} className="flex-1 px-4 py-2 bg-primary text-white rounded-xl hover:bg-primary-dark transition">
+                  {approvalStatus === "draft" ? (isArabic ? "حفظ مسودة" : "Save Draft") : (isArabic ? "إرسال" : "Submit")}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-surface rounded-2xl w-full max-w-md">
+            <div className="p-5 border-b"><h2 className="text-xl font-bold text-primary">{isArabic ? "تأكيد الحذف" : "Confirm Delete"}</h2></div>
+            <div className="p-5">
+              <p className="text-text-secondary">{isArabic ? "هل أنت متأكد من حذف هذا الصنف؟" : "Are you sure you want to delete this item?"}</p>
+              <div className="flex gap-3 mt-6">
+                <button onClick={() => setShowDeleteConfirm(false)} className="flex-1 px-4 py-2 border rounded-xl">{isArabic ? "إلغاء" : "Cancel"}</button>
+                <button onClick={handleDelete} className="flex-1 px-4 py-2 bg-danger text-white rounded-xl">{isArabic ? "حذف" : "Delete"}</button>
+              </div>
+            </div>
           </div>
         </div>
       )}

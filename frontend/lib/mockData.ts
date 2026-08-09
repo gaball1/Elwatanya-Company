@@ -1219,54 +1219,6 @@ export const mockAttendance = [
 ];
 
 // ============================================
-// دالة الصلاحيات
-// ============================================
-export const getEmployeePermissions = (roleKey: string, projectId?: string) => {
-  switch (roleKey) {
-    case "ceo":
-      return {
-        allProjects: true,
-        canEdit: true,
-        canDelete: true,
-        canApprove: true,
-      };
-    case "technical_office":
-      return {
-        allProjects: true,
-        canEdit: true,
-        canDelete: false,
-        canApprove: false,
-      };
-    case "site_engineer":
-      return {
-        allProjects: false,
-        projectId,
-        canEdit: true,
-        canDelete: false,
-        canApprove: false,
-      };
-    case "accountant":
-      return {
-        allProjects: true,
-        canEdit: false,
-        canDelete: false,
-        canApprove: true,
-        financialOnly: true,
-      };
-    case "store_manager":
-      return {
-        allProjects: false,
-        projectId,
-        canEdit: false,
-        canDelete: false,
-        inventoryOnly: true,
-      };
-    default:
-      return { allProjects: false, canEdit: false, canDelete: false };
-  }
-};
-
-// ============================================
 // دوال مساعدة للـ Attendance
 // ============================================
 export const getAttendanceByDate = (date: string) => {

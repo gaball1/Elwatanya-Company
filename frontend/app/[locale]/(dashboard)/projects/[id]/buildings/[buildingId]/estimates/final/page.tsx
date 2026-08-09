@@ -20,27 +20,15 @@ import SignaturesSection from "@/components/boq/SignaturesSection";
 import DeleteConfirmModal from "@/components/boq/DeleteConfirmModal";
 import { useToast } from "@/components/ui/Toast";
 import { exportToCsv, printHtml } from "@/lib/documentUtils";
-import {
-  getDocSignatures,
-  getEmployerItems,
-  getFinalItems,
-  importFinalFromEmployer,
-  removeFinalItem,
-  setDocSignatures,
-  updateFinalItem,
-  analyzeFinalItem,
-  distributeComponent,
-  updateFinalItemQuantity,
-  updateComponentOnly,
-  calculateFinalTotals,
-  getContractorsForItemStore,
-} from "@/lib/boqStore";
-import type { FinalBoqItem, FinalBoqComponent } from "@/types/boq";
-import {
-  mockSubcontractors,
-  mockProjects,
-  mockBuildings,
-} from "@/lib/mockData";
+import { getDocSignatures, setDocSignatures } from "@/lib/boqStore";
+import type { EmployerBoqItem, FinalBoqItem, FinalBoqComponent } from "@/types/boq";
+import { employerBoqService } from "@/services/employerBoq.service";
+import { finalBoqService } from "@/services/finalBoq.service";
+import { distributionService } from "@/services/distribution.service";
+import { buildingService } from "@/services/building.service";
+import { projectService } from "@/services/project.service";
+import { subcontractorService } from "@/services/subcontractor.service";
+import { Can } from "@/components/Can";
 
 // ============================================
 // ✅ مودال تحليل البند
@@ -93,32 +81,32 @@ function AnalyzeItemModal({
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-        <div className="p-5 border-b flex justify-between items-center sticky top-0 bg-white">
+      <div className="bg-surface rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+        <div className="p-5 border-b flex justify-between items-center sticky top-0 bg-surface">
           <h2 className="text-xl font-bold text-primary">
             {isArabic ? "تحليل البند" : "Analyze Item"}: {item.itemCode}
           </h2>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600"
+            className="text-text-muted hover:text-text-secondary"
           >
             <X size={24} />
           </button>
         </div>
 
         <div className="p-5 space-y-4">
-          <div className="bg-gray-50 p-3 rounded-lg">
-            <p className="text-sm text-gray-600">
+          <div className="bg-surface-secondary p-3 rounded-lg">
+            <p className="text-sm text-text-secondary">
               {isArabic ? "البند:" : "Item:"}{" "}
               <span className="font-bold">{item.description}</span>
             </p>
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-text-secondary">
               {isArabic ? "الكمية:" : "Quantity:"}{" "}
               <span className="font-bold">
                 {item.quantity} {item.unit}
               </span>
             </p>
-            <p className="text-sm text-yellow-600 mt-2">
+            <p className="text-sm text-warning-dark mt-2">
               ⚠️{" "}
               {isArabic
                 ? "الكمية ثابتة لكل المكونات وتساوي كمية البند الأصلي"
@@ -152,7 +140,7 @@ function AnalyzeItemModal({
                 </select>
                 <input
                   type="number"
-                  value={comp.unitPrice || ""}
+                  value={comp.unitPrice ?? ""}
                   onChange={(e) =>
                     updateComponent(idx, "unitPrice", Number(e.target.value))
                   }
@@ -160,12 +148,12 @@ function AnalyzeItemModal({
                   placeholder={isArabic ? "السعر" : "Price"}
                   min={0}
                 />
-                <span className="text-xs text-gray-400 w-16 text-center">
+                <span className="text-xs text-text-muted w-16 text-center">
                   {item.quantity} {item.unit}
                 </span>
                 <button
                   onClick={() => removeComponent(idx)}
-                  className="text-red-500 hover:text-red-700 p-1"
+                  className="text-danger hover:text-danger-dark p-1"
                   disabled={components.length === 1}
                 >
                   <Trash2 size={16} />
@@ -184,7 +172,7 @@ function AnalyzeItemModal({
           <div className="flex gap-3 pt-3 border-t">
             <button
               onClick={onClose}
-              className="flex-1 px-4 py-2 border rounded-lg hover:bg-gray-50"
+              className="flex-1 px-4 py-2 border rounded-lg hover:bg-surface-secondary"
             >
               {isArabic ? "إلغاء" : "Cancel"}
             </button>
@@ -211,6 +199,7 @@ function DistributeComponentModal({
   component,
   onDistribute,
   isArabic,
+  subcontractors,
 }: {
   isOpen: boolean;
   onClose: () => void;
@@ -220,6 +209,7 @@ function DistributeComponentModal({
     distribution: { contractorId: string; quantity: number }[]
   ) => void;
   isArabic: boolean;
+  subcontractors: { id: string; name: string }[];
 }) {
   if (!isOpen || !component || !item) {
     return null;
@@ -260,33 +250,33 @@ function DistributeComponentModal({
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-        <div className="p-5 border-b flex justify-between items-center sticky top-0 bg-white">
+      <div className="bg-surface rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+        <div className="p-5 border-b flex justify-between items-center sticky top-0 bg-surface">
           <h2 className="text-xl font-bold text-primary">
             {isArabic ? "توزيع المكون" : "Distribute Component"}:{" "}
             {component.name}
           </h2>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600"
+            className="text-text-muted hover:text-text-secondary"
           >
             <X size={24} />
           </button>
         </div>
 
         <div className="p-5 space-y-4">
-          <div className="bg-gray-50 p-3 rounded-lg">
-            <p className="text-sm text-gray-600">
+          <div className="bg-surface-secondary p-3 rounded-lg">
+            <p className="text-sm text-text-secondary">
               {isArabic ? "المكون:" : "Component:"}{" "}
               <span className="font-bold">{component.name}</span>
             </p>
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-text-secondary">
               {isArabic ? "الكمية الكلية:" : "Total Quantity:"}{" "}
               <span className="font-bold">
                 {component.quantity} {component.unit}
               </span>
             </p>
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-text-secondary">
               {isArabic ? "السعر:" : "Price:"}{" "}
               <span className="font-bold">{component.unitPrice} ج.م</span>
             </p>
@@ -310,7 +300,7 @@ function DistributeComponentModal({
                   <option value="">
                     {isArabic ? "اختر المقاول" : "Select contractor"}
                   </option>
-                  {mockSubcontractors.map((s) => (
+                  {subcontractors.map((s) => (
                     <option key={s.id} value={s.id}>
                       {s.name}
                     </option>
@@ -318,7 +308,7 @@ function DistributeComponentModal({
                 </select>
                 <input
                   type="number"
-                  value={dist.quantity || ""}
+                  value={dist.quantity ?? ""}
                   onChange={(e) =>
                     updateRow(idx, "quantity", Number(e.target.value))
                   }
@@ -327,7 +317,7 @@ function DistributeComponentModal({
                   min={0}
                   max={component.quantity}
                 />
-                <span className="text-xs text-gray-400 w-16 text-center">
+                <span className="text-xs text-text-muted w-16 text-center">
                   {dist.quantity && component.quantity
                     ? ((dist.quantity / component.quantity) * 100).toFixed(1)
                     : 0}
@@ -335,7 +325,7 @@ function DistributeComponentModal({
                 </span>
                 <button
                   onClick={() => removeRow(idx)}
-                  className="text-red-500 hover:text-red-700 p-1"
+                  className="text-danger hover:text-danger-dark p-1"
                   disabled={distribution.length === 1}
                 >
                   <Trash2 size={16} />
@@ -353,14 +343,14 @@ function DistributeComponentModal({
 
           <div
             className={`p-3 rounded-lg ${
-              remaining === 0 ? "bg-green-50" : "bg-yellow-50"
+              remaining === 0 ? "bg-success-light" : "bg-warning-light"
             }`}
           >
             <p className="text-sm">
               {isArabic ? "المتبقي للتوزيع:" : "Remaining for distribution:"}{" "}
               <span
                 className={`font-bold ${
-                  remaining === 0 ? "text-green-600" : "text-yellow-600"
+                  remaining === 0 ? "text-success-dark" : "text-warning-dark"
                 }`}
               >
                 {remaining} {component.unit}
@@ -371,7 +361,7 @@ function DistributeComponentModal({
           <div className="flex gap-3 pt-3 border-t">
             <button
               onClick={onClose}
-              className="flex-1 px-4 py-2 border rounded-lg hover:bg-gray-50"
+              className="flex-1 px-4 py-2 border rounded-lg hover:bg-surface-secondary"
             >
               {isArabic ? "إلغاء" : "Cancel"}
             </button>
@@ -381,7 +371,7 @@ function DistributeComponentModal({
               className={`flex-1 px-4 py-2 rounded-lg text-white ${
                 remaining === 0
                   ? "bg-gold hover:bg-gold/80"
-                  : "bg-gray-300 cursor-not-allowed"
+                  : "bg-surface-tertiary cursor-not-allowed"
               }`}
             >
               {isArabic ? "توزيع" : "Distribute"}
@@ -426,14 +416,14 @@ function EditItemModal({
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl w-full max-w-md">
+      <div className="bg-surface rounded-2xl w-full max-w-md">
         <div className="p-5 border-b flex justify-between items-center">
           <h2 className="text-xl font-bold text-primary">
             {isArabic ? "تعديل البند" : "Edit Item"}: {item.itemCode}
           </h2>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600"
+            className="text-text-muted hover:text-text-secondary"
           >
             <X size={24} />
           </button>
@@ -441,7 +431,7 @@ function EditItemModal({
 
         <div className="p-5 space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-text-primary mb-1">
               {isArabic ? "الكمية" : "Quantity"} ({item.unit})
             </label>
             <input
@@ -455,7 +445,7 @@ function EditItemModal({
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-text-primary mb-1">
               {isArabic ? "السعر" : "Unit Price"} (ج.م)
             </label>
             <input
@@ -468,15 +458,15 @@ function EditItemModal({
             />
           </div>
 
-          <div className="bg-gray-50 p-3 rounded-lg">
-            <p className="text-sm text-gray-600">
+          <div className="bg-surface-secondary p-3 rounded-lg">
+            <p className="text-sm text-text-secondary">
               {isArabic ? "القيمة الإجمالية:" : "Total Value:"}{" "}
               <span className="font-bold text-gold">
                 {(quantity * unitPrice).toLocaleString()} ج.م
               </span>
             </p>
             {item.isAnalyzed && (
-              <p className="text-xs text-yellow-600 mt-1">
+              <p className="text-xs text-warning-dark mt-1">
                 ⚠️{" "}
                 {isArabic
                   ? "تغيير الكمية سيؤثر على جميع المكونات بنفس النسبة"
@@ -488,7 +478,7 @@ function EditItemModal({
           <div className="flex gap-3 pt-3">
             <button
               onClick={onClose}
-              className="flex-1 px-4 py-2 border rounded-lg hover:bg-gray-50"
+              className="flex-1 px-4 py-2 border rounded-lg hover:bg-surface-secondary"
             >
               {isArabic ? "إلغاء" : "Cancel"}
             </button>
@@ -537,39 +527,39 @@ function EditComponentModal({
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl w-full max-w-md">
+      <div className="bg-surface rounded-2xl w-full max-w-md">
         <div className="p-5 border-b flex justify-between items-center">
           <h2 className="text-xl font-bold text-primary">
             {isArabic ? "تعديل المكون" : "Edit Component"}: {component.name}
           </h2>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600"
+            className="text-text-muted hover:text-text-secondary"
           >
             <X size={24} />
           </button>
         </div>
 
         <div className="p-5 space-y-4">
-          <div className="bg-gray-50 p-3 rounded-lg">
-            <p className="text-sm text-gray-600">
+          <div className="bg-surface-secondary p-3 rounded-lg">
+            <p className="text-sm text-text-secondary">
               {isArabic ? "المكون:" : "Component:"}{" "}
               <span className="font-bold">{component.name}</span>
             </p>
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-text-secondary">
               {isArabic ? "الكمية:" : "Quantity:"}{" "}
               <span className="font-bold">
                 {component.quantity} {component.unit}
               </span>
             </p>
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-text-secondary">
               {isArabic ? "السعر الحالي:" : "Current Price:"}{" "}
               <span className="font-bold">{component.unitPrice} ج.م</span>
             </p>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-text-primary mb-1">
               {isArabic ? "السعر الجديد" : "New Price"} (ج.م)
             </label>
             <input
@@ -582,8 +572,8 @@ function EditComponentModal({
             />
           </div>
 
-          <div className="bg-gray-50 p-3 rounded-lg">
-            <p className="text-sm text-gray-600">
+          <div className="bg-surface-secondary p-3 rounded-lg">
+            <p className="text-sm text-text-secondary">
               {isArabic ? "القيمة الجديدة:" : "New Value:"}{" "}
               <span className="font-bold text-gold">
                 {(component.quantity * unitPrice).toLocaleString()} ج.م
@@ -594,7 +584,7 @@ function EditComponentModal({
           <div className="flex gap-3 pt-3">
             <button
               onClick={onClose}
-              className="flex-1 px-4 py-2 border rounded-lg hover:bg-gray-50"
+              className="flex-1 px-4 py-2 border rounded-lg hover:bg-surface-secondary"
             >
               {isArabic ? "إلغاء" : "Cancel"}
             </button>
@@ -634,17 +624,17 @@ function ComponentsSubTable({
   return (
     <tr>
       <td colSpan={11} className="p-0">
-        <div className="bg-gray-50/50 border-t">
+        <div className="bg-surface-secondary/50 border-t">
           <button
             onClick={() => setExpanded(!expanded)}
-            className="flex items-center gap-1 px-4 py-1 text-xs text-gray-500 hover:text-primary"
+            className="flex items-center gap-1 px-4 py-1 text-xs text-text-secondary hover:text-primary"
           >
             {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
             {isArabic ? "المكونات" : "Components"} ({components.length})
           </button>
           {expanded && (
             <table className="w-full text-xs">
-              <thead className="bg-gray-100">
+              <thead className="bg-surface-tertiary">
                 <tr>
                   <th className="p-2 text-center">#</th>
                   <th className="p-2 text-right">
@@ -689,7 +679,7 @@ function ComponentsSubTable({
                       : "Not distributed";
 
                   return (
-                    <tr key={comp.id} className="border-t hover:bg-gray-50">
+                    <tr key={comp.id} className="border-t hover:bg-surface-secondary">
                       <td className="p-2 text-center">{idx + 1}</td>
                       <td className="p-2">{comp.name}</td>
                       <td className="p-2 text-center">{comp.unit}</td>
@@ -710,8 +700,8 @@ function ComponentsSubTable({
                         <span
                           className={`px-2 py-0.5 rounded-full text-xs ${
                             comp.isDistributed
-                              ? "bg-green-100 text-green-800"
-                              : "bg-yellow-100 text-yellow-800"
+                              ? "bg-success-light text-success-dark"
+                              : "bg-warning-light text-warning-dark"
                           }`}
                         >
                           {comp.isDistributed
@@ -725,28 +715,32 @@ function ComponentsSubTable({
                       </td>
                       <td className="p-2 text-center">
                         <div className="flex justify-center gap-1">
-                          {!comp.isDistributed && (
+                          <Can permission="final-boq.update">
+                            {!comp.isDistributed && (
+                              <button
+                                onClick={() => {
+                                  if (comp) {
+                                    onDistribute(comp);
+                                  }
+                                }}
+                                className="text-gold hover:underline text-xs flex items-center gap-1"
+                              >
+                                <Users size={14} />
+                                {isArabic ? "توزيع" : "Distribute"}
+                              </button>
+                            )}
+                          </Can>
+                          <Can permission="final-boq.update">
                             <button
                               onClick={() => {
-                                if (comp) {
-                                  onDistribute(comp);
-                                }
+                                onEditComponent(comp);
                               }}
-                              className="text-gold hover:underline text-xs flex items-center gap-1"
+                              className="text-info hover:text-info-dark text-xs p-1"
+                              title={isArabic ? "تعديل السعر" : "Edit Price"}
                             >
-                              <Users size={14} />
-                              {isArabic ? "توزيع" : "Distribute"}
+                              <Edit2 size={14} />
                             </button>
-                          )}
-                          <button
-                            onClick={() => {
-                              onEditComponent(comp);
-                            }}
-                            className="text-blue-500 hover:text-blue-700 text-xs p-1"
-                            title={isArabic ? "تعديل السعر" : "Edit Price"}
-                          >
-                            <Edit2 size={14} />
-                          </button>
+                          </Can>
                         </div>
                       </td>
                     </tr>
@@ -769,21 +763,25 @@ export default function FinalBoqPage() {
   const locale = (params.locale as string) ?? "ar";
   const isArabic = locale === "ar";
   const projectId = params.id as string;
-  const buildingId = params.buildingId as string;
+  const buildingId = (params.buildingId as string) ?? "";
+  const [building, setBuilding] = useState<any>(null);
+  useEffect(() => {
+    if (buildingId) {
+      buildingService.getBuilding(buildingId).then(setBuilding).catch(console.error);
+    }
+  }, [buildingId]);
   const docKey = `final:${buildingId}`;
   const back = `/${locale}/projects/${projectId}/buildings/${buildingId}/estimates`;
   const { showToast, ToastComponent } = useToast();
   const [, refresh] = useState(0);
 
-  // ✅ منع Hydration Error
   const [mounted, setMounted] = useState(false);
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  const employerItems = getEmployerItems(buildingId);
-  const items = getFinalItems(buildingId);
+  const [loading, setLoading] = useState(true);
+  const [items, setItems] = useState<FinalBoqItem[]>([]);
   const [sigs, setSigs] = useState(getDocSignatures(docKey));
+  const [employerItems, setEmployerItems] = useState<EmployerBoqItem[]>([]);
+  const [subcontractors, setSubcontractors] = useState<{ id: string; name: string }[]>([]);
+  const [project, setProject] = useState<any>(null);
   const [editItem, setEditItem] = useState<FinalBoqItem | null>(null);
   const [deleteCode, setDeleteCode] = useState<string | null>(null);
   const [showAnalyzeModal, setShowAnalyzeModal] = useState(false);
@@ -799,7 +797,42 @@ export default function FinalBoqPage() {
 
   const bump = () => refresh((n) => n + 1);
 
-  // ✅ فلترة البنود حسب البحث
+  const loadItems = async () => {
+    if (!buildingId) return;
+    try {
+      setLoading(true);
+      const data = await finalBoqService.list(buildingId);
+      setItems(data);
+    } catch (e) {
+      console.error(e);
+      showToast(isArabic ? "فشل تحميل المقايسة النهائية" : "Failed to load final BOQ", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (buildingId) {
+      loadItems();
+      employerBoqService.list(buildingId)
+        .then(setEmployerItems)
+        .catch((e) => {
+          console.error(e);
+          showToast(isArabic ? "فشل تحميل بنود جهة الإسناد" : "Failed to load employer items", "error");
+        });
+      subcontractorService.list()
+        .then(setSubcontractors)
+        .catch(console.error);
+      projectService.getProject(projectId)
+        .then(setProject)
+        .catch(console.error);
+    }
+  }, [buildingId, isArabic]);
+
   const filteredItems = items.filter(
     (item) =>
       item.itemCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -807,22 +840,11 @@ export default function FinalBoqPage() {
   );
 
   const getContractorsForItem = (item: FinalBoqItem): string => {
-    // البنود العادية
     if (!item.isAnalyzed || item.components.length === 0) {
-      const contractors = getContractorsForItemStore(buildingId, item.itemCode);
-
-      if (contractors.length === 0) {
-        return isArabic ? "غير موزع" : "Not distributed";
-      }
-
-      return contractors
-        .map((c) => `${c.contractorName} (${c.quantity})`)
-        .join(", ");
+      return isArabic ? "غير موزع" : "Not distributed";
     }
 
-    // البنود المحللة
     const contractorMap = new Map<string, number>();
-
     item.components.forEach((comp) => {
       comp.distribution.forEach((d) => {
         contractorMap.set(
@@ -840,99 +862,91 @@ export default function FinalBoqPage() {
       .map(([name, qty]) => `${name} (${qty})`)
       .join(", ");
   };
-  const handleAnalyze = (
+
+  const handleAnalyze = async (
     components: { name: string; unit: string; unitPrice: number }[]
   ) => {
     if (selectedItem) {
-      const result = analyzeFinalItem(
-        buildingId,
-        selectedItem.itemCode,
-        components
-      );
-      if (result) {
+      try {
+        await finalBoqService.analyze(buildingId, selectedItem.itemCode, components);
         showToast(
           isArabic ? "تم تحليل البند بنجاح" : "Item analyzed successfully",
           "success"
         );
-        bump();
+        await loadItems();
         setShowAnalyzeModal(false);
         setSelectedItem(null);
+      } catch (e: any) {
+        showToast(e?.message || "خطأ", "error");
       }
     }
   };
 
-  const handleDistribute = (
+  const handleDistribute = async (
     distribution: { contractorId: string; quantity: number }[]
   ) => {
     if (selectedItem && selectedComponent) {
-      const result = distributeComponent(
-        buildingId,
-        selectedItem.itemCode,
-        selectedComponent.id,
-        distribution
-      );
-      if (result.ok) {
+      try {
+        await distributionService.distribute(
+          buildingId,
+          selectedItem.itemCode,
+          selectedComponent.id,
+          distribution
+        );
         showToast(
-          isArabic
-            ? "تم توزيع المكون بنجاح"
-            : "Component distributed successfully",
+          isArabic ? "تم توزيع المكون بنجاح" : "Component distributed successfully",
           "success"
         );
-        bump();
+        await loadItems();
         setShowDistributeModal(false);
         setSelectedComponent(null);
         setSelectedItem(null);
-      } else {
-        showToast(result.error || "خطأ", "error");
+      } catch (e: any) {
+        showToast(e?.message || "خطأ", "error");
       }
     }
   };
 
-  const handleEditItemSave = (quantity: number, unitPrice: number) => {
+  const handleEditItemSave = async (quantity: number, unitPrice: number) => {
     if (editItem) {
-      const result = updateFinalItemQuantity(
-        buildingId,
-        editItem.itemCode,
-        quantity,
-        unitPrice
-      );
-      if (result) {
+      try {
+        await finalBoqService.updateQuantity(buildingId, editItem.itemCode, quantity, unitPrice);
         showToast(
           isArabic ? "تم تعديل البند بنجاح" : "Item updated successfully",
           "success"
         );
-        bump();
+        await loadItems();
         setEditItem(null);
         setShowEditItemModal(false);
-      } else {
+      } catch (e: any) {
         showToast(
-          isArabic
+          e?.message || (isArabic
             ? "لا يمكن تقليل الكمية عن الكمية الموزعة على المقاولين"
-            : "Cannot reduce quantity below allocated to contractors",
+            : "Cannot reduce quantity below allocated to contractors"),
           "error"
         );
       }
     }
   };
 
-  const handleEditComponentSave = (newPrice: number) => {
+  const handleEditComponentSave = async (newPrice: number) => {
     if (selectedItem && editingComponent) {
-      const result = updateComponentOnly(
-        buildingId,
-        selectedItem.itemCode,
-        editingComponent.id,
-        newPrice
-      );
-      if (result) {
+      try {
+        await finalBoqService.updateComponent(
+          buildingId,
+          selectedItem.itemCode,
+          editingComponent.id,
+          { unitPrice: newPrice, quantity: editingComponent.quantity }
+        );
         showToast(
           isArabic ? "تم تعديل المكون بنجاح" : "Component updated successfully",
           "success"
         );
-        bump();
+        await loadItems();
         setShowEditComponentModal(false);
         setEditingComponent(null);
         setSelectedItem(null);
-      } else {
+      } catch (e: any) {
         showToast(
           isArabic ? "فشل تعديل المكون" : "Failed to update component",
           "error"
@@ -942,10 +956,10 @@ export default function FinalBoqPage() {
   };
 
   // ✅ لو مش mounted، ارجع loading
-  if (!mounted) {
+  if (!mounted || loading) {
     return (
       <div className="min-h-screen bg-gray-light -m-6 flex items-center justify-center">
-        <div className="animate-pulse text-gray-400">
+        <div className="animate-pulse text-text-muted">
           {isArabic ? "جاري التحميل..." : "Loading..."}
         </div>
       </div>
@@ -1004,8 +1018,7 @@ export default function FinalBoqPage() {
               });
             }
 
-            const project = mockProjects.find((p) => p.id === projectId);
-            const building = mockBuildings.find((b) => b.id === buildingId);
+            const buildingData = building || { name: "", code: "" };
 
             // Header with optional logo, project name, and building name (if buildingId exists)
             const headerHtml = `
@@ -1030,10 +1043,10 @@ export default function FinalBoqPage() {
                         : ""
                     }
                     ${
-                      buildingId && building
+                      buildingId && buildingData
                         ? `<div><strong>${
                             isArabic ? "المبنى" : "Building"
-                          }:</strong> ${building.name}</div>`
+                          }:</strong> ${buildingData.name}</div>`
                         : ""
                     }
                   </div>
@@ -1250,7 +1263,7 @@ export default function FinalBoqPage() {
         {/* ✅ شريط البحث */}
         <div className="mb-4">
           <div className="relative max-w-md">
-            <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+            <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 text-text-muted w-4 h-4" />
             <input
               type="text"
               placeholder={
@@ -1260,17 +1273,17 @@ export default function FinalBoqPage() {
               }
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pr-10 pl-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-gold"
+              className="w-full pr-10 pl-4 py-2 border border-border rounded-lg text-sm focus:outline-none focus:border-gold"
             />
           </div>
         </div>
 
         {/* ✅ إضافة من جهة الإسناد - مع منع التكرار */}
-        <div className="bg-white rounded-xl p-4 mb-4 shadow-sm">
-          <p className="text-sm text-gray-500 mb-2"></p>
+        <div className="bg-surface rounded-xl p-4 mb-4 shadow-sm">
+          <p className="text-sm text-text-secondary mb-2"></p>
           <div className="flex flex-wrap gap-2">
             {employerItems.length === 0 ? (
-              <span className="text-sm text-gray-400">
+              <span className="text-sm text-text-muted">
                 {isArabic
                   ? "لا توجد بنود في جهة الإسناد"
                   : "No items in employer BOQ"}
@@ -1285,34 +1298,32 @@ export default function FinalBoqPage() {
                     )
                 )
                 .map((e) => (
-                  <button
-                    key={e.itemCode}
-                    onClick={() => {
-                      const result = importFinalFromEmployer(
-                        buildingId,
-                        e.itemCode
-                      );
-                      if (result) {
-                        bump();
-                        showToast(
-                          isArabic
-                            ? `تم إضافة البند ${e.itemCode}`
-                            : `Added item ${e.itemCode}`,
-                          "success"
-                        );
-                      } else {
-                        showToast(
-                          isArabic
-                            ? `البند "${e.description}" موجود بالفعل`
-                            : `Item "${e.description}" already exists`,
-                          "error"
-                        );
-                      }
-                    }}
-                    className="flex items-center gap-1 px-3 py-1.5 border border-gold text-gold rounded-lg text-sm hover:bg-gold hover:text-white transition"
-                  >
-                    <Plus size={14} /> {e.itemCode}
-                  </button>
+                  <Can key={e.itemCode} permission="final-boq.create">
+                    <button
+                      onClick={async () => {
+                        try {
+                          await finalBoqService.importFromEmployer(buildingId, e.itemCode);
+                          await loadItems();
+                          showToast(
+                            isArabic
+                              ? `تم إضافة البند ${e.itemCode}`
+                              : `Added item ${e.itemCode}`,
+                            "success"
+                          );
+                        } catch (err: any) {
+                          showToast(
+                            err?.message || (isArabic
+                              ? `البند "${e.description}" موجود بالفعل`
+                              : `Item "${e.description}" already exists`),
+                            "error"
+                          );
+                        }
+                      }}
+                      className="flex items-center gap-1 px-3 py-1.5 border border-gold text-gold rounded-lg text-sm hover:bg-gold hover:text-white transition"
+                    >
+                      <Plus size={14} /> {e.itemCode}
+                    </button>
+                  </Can>
                 ))
             )}
           </div>
@@ -1342,9 +1353,9 @@ export default function FinalBoqPage() {
         </div>
 
         {/* ✅ جدول البنود */}
-        <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+        <div className="bg-surface rounded-xl shadow-sm overflow-hidden">
           <table className="w-full text-sm">
-            <thead className="bg-gray-50">
+            <thead className="bg-surface-secondary">
               <tr>
                 <th className="p-3">#</th>
                 <th className="p-3">كود</th>
@@ -1362,7 +1373,7 @@ export default function FinalBoqPage() {
             <tbody>
               {filteredItems.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="p-8 text-center text-gray-500">
+                  <td colSpan={11} className="p-8 text-center text-text-secondary">
                     {isArabic
                       ? searchTerm
                         ? "لا توجد نتائج للبحث"
@@ -1375,7 +1386,7 @@ export default function FinalBoqPage() {
               ) : (
                 filteredItems.map((item, idx) => (
                   <React.Fragment key={item.itemCode}>
-                    <tr className="border-t hover:bg-gray-50">
+                    <tr className="border-t hover:bg-surface-secondary">
                       <td className="p-3 text-center">{idx + 1}</td>
                       <td className="p-3 font-mono">{item.itemCode}</td>
                       <td className="p-3">{item.description}</td>
@@ -1397,12 +1408,12 @@ export default function FinalBoqPage() {
                         <span
                           className={`px-2 py-0.5 rounded-full text-xs ${
                             item.status === "distributed"
-                              ? "bg-green-100 text-green-800"
+                              ? "bg-success-light text-success-dark"
                               : item.status === "partial"
-                              ? "bg-yellow-100 text-yellow-800"
+                              ? "bg-warning-light text-warning-dark"
                               : item.status === "analyzed"
-                              ? "bg-blue-100 text-blue-800"
-                              : "bg-gray-100 text-gray-600"
+                              ? "bg-info-light text-info-dark"
+                              : "bg-surface-tertiary text-text-secondary"
                           }`}
                         >
                           {item.status === "distributed"
@@ -1424,34 +1435,40 @@ export default function FinalBoqPage() {
                       </td>
                       <td className="p-3 text-center">
                         <div className="flex justify-center gap-2 flex-wrap">
-                          {!item.isAnalyzed && (
+                          <Can permission="final-boq.update">
+                            {!item.isAnalyzed && (
+                              <button
+                                onClick={() => {
+                                  setSelectedItem(item);
+                                  setShowAnalyzeModal(true);
+                                }}
+                                className="text-gold hover:text-gold/80 p-1"
+                                title={isArabic ? "تحليل البند" : "Analyze Item"}
+                              >
+                                <Layers size={16} />
+                              </button>
+                            )}
+                          </Can>
+                          <Can permission="final-boq.update">
                             <button
                               onClick={() => {
-                                setSelectedItem(item);
-                                setShowAnalyzeModal(true);
+                                setEditItem(item);
+                                setShowEditItemModal(true);
                               }}
-                              className="text-gold hover:text-gold/80 p-1"
-                              title={isArabic ? "تحليل البند" : "Analyze Item"}
+                              className="text-info hover:text-info-dark p-1"
+                              title={isArabic ? "تعديل البند" : "Edit Item"}
                             >
-                              <Layers size={16} />
+                              <Edit2 size={16} />
                             </button>
-                          )}
-                          <button
-                            onClick={() => {
-                              setEditItem(item);
-                              setShowEditItemModal(true);
-                            }}
-                            className="text-blue-500 hover:text-blue-700 p-1"
-                            title={isArabic ? "تعديل البند" : "Edit Item"}
-                          >
-                            <Edit2 size={16} />
-                          </button>
-                          <button
-                            onClick={() => setDeleteCode(item.itemCode)}
-                            className="text-red-500 hover:text-red-700 p-1"
-                          >
-                            <Trash2 size={16} />
-                          </button>
+                          </Can>
+                          <Can permission="final-boq.delete">
+                            <button
+                              onClick={() => setDeleteCode(item.itemCode)}
+                              className="text-danger hover:text-danger-dark p-1"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </Can>
                         </div>
                       </td>
                     </tr>
@@ -1521,10 +1538,15 @@ export default function FinalBoqPage() {
           isArabic={isArabic}
           message="حذف البند؟"
           onCancel={() => setDeleteCode(null)}
-          onConfirm={() => {
-            removeFinalItem(buildingId, deleteCode);
+          onConfirm={async () => {
+            try {
+              await finalBoqService.remove(buildingId, deleteCode);
+              showToast(isArabic ? "تم حذف البند" : "Item deleted", "success");
+              await loadItems();
+            } catch (e: any) {
+              showToast(e?.message || "خطأ", "error");
+            }
             setDeleteCode(null);
-            bump();
           }}
         />
       )}
@@ -1553,6 +1575,7 @@ export default function FinalBoqPage() {
         component={selectedComponent}
         onDistribute={handleDistribute}
         isArabic={isArabic}
+        subcontractors={subcontractors}
       />
     </div>
   );

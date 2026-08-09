@@ -7,4 +7,5 @@ export interface ISubcontractorRepository {
   save(subcontractor: Subcontractor): Promise<void>;
   findById(id: UniqueEntityId): Promise<Subcontractor | null>;
   findAll(): Promise<Subcontractor[]>;
+  delete(id: UniqueEntityId): Promise<void>;
 }

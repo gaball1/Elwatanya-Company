@@ -7,6 +7,12 @@ import { ProjectCode } from './value-objects/project-code.vo';
 export interface ProjectProps {
   code: ProjectCode;
   name: string;
+  location: string;
+  description: string;
+  client: string;
+  startDate: Date | null;
+  status: string;
+  progress: number;
   deletedAt: Date | null;
 }
 
@@ -31,6 +37,30 @@ export class Project extends AggregateRoot {
     return this.props.name;
   }
 
+  get location(): string {
+    return this.props.location;
+  }
+
+  get description(): string {
+    return this.props.description;
+  }
+
+  get client(): string {
+    return this.props.client;
+  }
+
+  get startDate(): Date | null {
+    return this.props.startDate;
+  }
+
+  get status(): string {
+    return this.props.status;
+  }
+
+  get progress(): number {
+    return this.props.progress;
+  }
+
   get deletedAt(): Date | null {
     return this.props.deletedAt;
   }
@@ -39,7 +69,16 @@ export class Project extends AggregateRoot {
     return this.props.deletedAt !== null;
   }
 
-  public static create(input: { code: ProjectCode; name: string }): Result<Project> {
+  public static create(input: {
+    code: ProjectCode;
+    name: string;
+    location?: string;
+    description?: string;
+    client?: string;
+    startDate?: Date | null;
+    status?: string;
+    progress?: number;
+  }): Result<Project> {
     const nameResult = Project.validateName(input.name);
     if (nameResult.isFailure) {
       return Result.fail(nameResult.error as Error);
@@ -49,6 +88,12 @@ export class Project extends AggregateRoot {
       new Project({
         code: input.code,
         name: nameResult.getValue(),
+        location: input.location ?? '',
+        description: input.description ?? '',
+        client: input.client ?? '',
+        startDate: input.startDate ?? null,
+        status: input.status ?? 'active',
+        progress: input.progress ?? 0,
         deletedAt: null,
       }),
     );
@@ -61,6 +106,36 @@ export class Project extends AggregateRoot {
     updatedAt: Date,
   ): Project {
     return new Project(props, id, createdAt, updatedAt);
+  }
+
+  public update(fields: {
+    name?: string;
+    location?: string;
+    description?: string;
+    client?: string;
+    startDate?: Date | null;
+    status?: string;
+    progress?: number;
+  }): Result<void> {
+    if (this.isDeleted) {
+      return Result.fail(new Error('Cannot update a deleted project'));
+    }
+
+    if (fields.name !== undefined) {
+      const nameResult = Project.validateName(fields.name);
+      if (nameResult.isFailure) {
+        return Result.fail(nameResult.error as Error);
+      }
+      this.props.name = nameResult.getValue();
+    }
+    if (fields.location !== undefined) this.props.location = fields.location;
+    if (fields.description !== undefined) this.props.description = fields.description;
+    if (fields.client !== undefined) this.props.client = fields.client;
+    if (fields.startDate !== undefined) this.props.startDate = fields.startDate;
+    if (fields.status !== undefined) this.props.status = fields.status;
+    if (fields.progress !== undefined) this.props.progress = fields.progress;
+
+    return Result.ok();
   }
 
   public rename(name: string): Result<void> {

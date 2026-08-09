@@ -67,3 +67,22 @@ Thumbs.db
 
 # Root node_modules
 /node_modules/
+
+# Runtime uploads (user data, not source)
+uploads/
+backend/uploads/
+frontend/uploads/
+
+# QA / temp / generated artifacts (not part of source)
+.admintoken
+.purchasid
+.openapi.json
+tmp_*
+test-output-*.pdf
+frontend.zip
+*.pid
+*.err
+e2e-acceptance-results.json
+backend/generated-pdfs/
+backend/scripts/reports/
+backend/scripts/*.log

@@ -1,0 +1,32 @@
+import { IsOptional, IsString, MinLength, IsNotEmpty } from 'class-validator';
+import { ApiPropertyOptional, ApiProperty } from '@nestjs/swagger';
+
+export class UpdateProfileDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  name?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  phone?: string;
+}
+
+export class ChangePasswordDto {
+  @ApiPropertyOptional()
+  @IsString()
+  currentPassword: string;
+
+  @ApiPropertyOptional()
+  @IsString()
+  @MinLength(6)
+  newPassword: string;
+}
+
+export class SaveSignatureDto {
+  @ApiProperty({ description: 'Base64 data URL of signature image' })
+  @IsString()
+  @IsNotEmpty()
+  signatureUrl: string;
+}

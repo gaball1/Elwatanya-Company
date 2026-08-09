@@ -3,12 +3,13 @@
 
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card } from "@/components/ui";
 import { Printer, Download, Edit2, Plus, X } from "lucide-react";
-import { mockSubcontractorStatements } from "@/lib/mockData";
+import { subcontractorStatementService, type SubcontractorStatement } from "@/services/subcontractor-statement.service";
 import { useToast } from "@/components/ui/Toast";
 import BackButton from "@/components/shared/BackButton";
+import { printHtmlDocument } from "@/lib/printUtils";
 
 interface Signature {
   id: string;
@@ -24,9 +25,8 @@ export default function StatementDetailsPage() {
   const statementId = params.id as string;
   const { showToast, ToastComponent } = useToast();
 
-  const [statement, setStatement] = useState(() =>
-    mockSubcontractorStatements.find((s) => s.id === statementId)
-  );
+  const [statement, setStatement] = useState<SubcontractorStatement | null>(null);
+  const [loading, setLoading] = useState(true);
   const [showSignatureModal, setShowSignatureModal] = useState(false);
   const [newSignature, setNewSignature] = useState({
     name: "",
@@ -34,10 +34,25 @@ export default function StatementDetailsPage() {
     date: new Date().toISOString().split("T")[0],
   });
 
+  useEffect(() => {
+    subcontractorStatementService.get(statementId).then((data) => {
+      setStatement(data);
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  }, [statementId]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <p className="text-text-secondary">...</p>
+      </div>
+    );
+  }
+
   if (!statement) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <p className="text-gray-500">
+        <p className="text-text-secondary">
           {isArabic ? "المستخلص غير موجود" : "Statement not found"}
         </p>
       </div>
@@ -67,15 +82,6 @@ export default function StatementDetailsPage() {
   const signatures: Signature[] = (statement as any).signatures || [];
 
   const handlePrint = () => {
-    const iframe = document.createElement("iframe");
-    iframe.style.position = "fixed";
-    iframe.style.right = "0";
-    iframe.style.bottom = "0";
-    iframe.style.width = "0";
-    iframe.style.height = "0";
-    iframe.style.border = "0";
-    document.body.appendChild(iframe);
-
     const itemsHtml = (statement.items || [])
       .map(
         (item: any, idx: number) => `
@@ -277,15 +283,11 @@ export default function StatementDetailsPage() {
   </html>
   `;
 
-    iframe.srcdoc = htmlContent;
-    iframe.onload = () => {
-      setTimeout(() => {
-        iframe.contentWindow?.print();
-        setTimeout(() => {
-          document.body.removeChild(iframe);
-        }, 1000);
-      }, 500);
-    };
+    printHtmlDocument(
+      isArabic ? "مستخلص أعمال جاري" : "Current Work Statement",
+      htmlContent,
+      `${statement.statementNumber}.pdf`
+    );
   };
 
   const exportToExcel = () => {
@@ -367,7 +369,7 @@ export default function StatementDetailsPage() {
     <div className="min-h-screen bg-gray-light">
       {ToastComponent}
 
-      <div className="bg-white border-b px-6 py-4">
+      <div className="bg-surface border-b px-6 py-4">
         <div className="flex justify-between items-center flex-wrap gap-4">
           <div className="flex items-center gap-4">
             <BackButton fallbackHref={fallbackHref} />
@@ -375,7 +377,7 @@ export default function StatementDetailsPage() {
               <h1 className="text-3xl font-bold text-primary">
                 {isArabic ? "مستخلص أعمال جاري" : "Current Work Statement"}
               </h1>
-              <p className="text-sm text-gray-500">
+              <p className="text-sm text-text-secondary">
                 {statement.date || "—"} | {isArabic ? "المشروع" : "Project"}:{" "}
                 {statement.projectName || "—"}
               </p>
@@ -383,13 +385,13 @@ export default function StatementDetailsPage() {
           </div>
           <div className="flex gap-2 flex-wrap">
             <Link href={`/${locale}/statements/${statementId}/edit`}>
-              <button className="flex items-center gap-2 px-4 py-2 border border-blue-500 text-blue-500 rounded-lg hover:bg-blue-500 hover:text-white transition">
+              <button className="flex items-center gap-2 px-4 py-2 border border-info text-info rounded-lg hover:bg-info hover:text-white transition">
                 <Edit2 size={18} /> {isArabic ? "تعديل" : "Edit"}
               </button>
             </Link>
             <button
               onClick={exportToExcel}
-              className="flex items-center gap-2 px-4 py-2 border border-green-600 text-green-600 rounded-lg hover:bg-green-600 hover:text-white transition"
+              className="flex items-center gap-2 px-4 py-2 border border-success-dark text-success-dark rounded-lg hover:bg-success-dark hover:text-white transition"
             >
               <Download size={18} /> {isArabic ? "تصدير Excel" : "Export Excel"}
             </button>
@@ -405,16 +407,16 @@ export default function StatementDetailsPage() {
 
       <div className="p-6">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-          <div className="bg-white p-4 rounded-lg shadow-sm border-r-4 border-gold">
-            <p className="text-gray-500 text-sm">
+          <div className="bg-surface p-4 rounded-lg shadow-sm border-r-4 border-gold">
+            <p className="text-text-secondary text-sm">
               {isArabic ? "النموذج" : "Form"}
             </p>
             <p className="font-bold text-primary text-lg">
               {statement.formNumber || statement.statementNumber || "—"}
             </p>
           </div>
-          <div className="bg-white p-4 rounded-lg shadow-sm">
-            <p className="text-gray-500 text-sm">
+          <div className="bg-surface p-4 rounded-lg shadow-sm">
+            <p className="text-text-secondary text-sm">
               {isArabic ? "اسم المقاول" : "Subcontractor"}
             </p>
             <p className="font-bold text-primary">
@@ -422,16 +424,16 @@ export default function StatementDetailsPage() {
             </p>
             <p className="text-xs text-gold">{statement.workType || "—"}</p>
           </div>
-          <div className="bg-white p-4 rounded-lg shadow-sm">
-            <p className="text-gray-500 text-sm">
+          <div className="bg-surface p-4 rounded-lg shadow-sm">
+            <p className="text-text-secondary text-sm">
               {isArabic ? "المبنى" : "Building"}
             </p>
             <p className="font-bold text-primary">
               {statement.buildingName || "—"}
             </p>
           </div>
-          <div className="bg-white p-4 rounded-lg shadow-sm">
-            <p className="text-gray-500 text-sm">
+          <div className="bg-surface p-4 rounded-lg shadow-sm">
+            <p className="text-text-secondary text-sm">
               {isArabic ? "رقم القطعة" : "Block No"}
             </p>
             <p className="font-bold text-primary">
@@ -497,7 +499,7 @@ export default function StatementDetailsPage() {
                   statement.items.map((item: any, idx: number) => (
                     <tr
                       key={item.id || idx}
-                      className="border-t hover:bg-gray-50"
+                      className="border-t hover:bg-surface-secondary"
                     >
                       <td className="p-2 border text-center">{idx + 1}</td>
                       <td className="p-2 border">{item.itemName || "—"}</td>
@@ -528,7 +530,7 @@ export default function StatementDetailsPage() {
                       <td className="p-2 border text-center">
                         {statement.insurancePercent || 5}%
                       </td>
-                      <td className="p-2 border text-center text-red-500">
+                      <td className="p-2 border text-center text-danger">
                         {item.insuranceAmount?.toLocaleString() || 0}
                       </td>
                       <td className="p-2 border text-center font-bold text-gold">
@@ -538,13 +540,13 @@ export default function StatementDetailsPage() {
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={13} className="p-8 text-center text-gray-500">
+                    <td colSpan={13} className="p-8 text-center text-text-secondary">
                       {isArabic ? "لا توجد بنود" : "No items"}
                     </td>
                   </tr>
                 )}
               </tbody>
-              <tfoot className="bg-gray-100 font-bold">
+              <tfoot className="bg-surface-tertiary font-bold">
                 <tr className="border-t">
                   <td colSpan={9} className="p-2 text-left">
                     {isArabic ? "الإجمالي" : "Total"}
@@ -580,16 +582,16 @@ export default function StatementDetailsPage() {
                     <span>{d.name || "—"}</span>
                     <div className="flex gap-2">
                       {d.percent > 0 && (
-                        <span className="text-gray-500">{d.percent}%</span>
+                        <span className="text-text-secondary">{d.percent}%</span>
                       )}
-                      <span className="font-bold text-red-500">
+                      <span className="font-bold text-danger">
                         {d.amount?.toLocaleString() || 0}
                       </span>
                     </div>
                   </div>
                 ))
               ) : (
-                <div className="text-center text-gray-500 py-4">
+                <div className="text-center text-text-secondary py-4">
                   {isArabic ? "لا توجد خصومات" : "No deductions"}
                 </div>
               )}
@@ -597,7 +599,7 @@ export default function StatementDetailsPage() {
                 <span>
                   {isArabic ? "إجمالي الاستقطاعات" : "Total Deductions"}
                 </span>
-                <span className="text-red-500">
+                <span className="text-danger">
                   {totalDeductions.toLocaleString()}
                 </span>
               </div>
@@ -605,9 +607,9 @@ export default function StatementDetailsPage() {
           </Card>
 
           <div className="space-y-4">
-            <Card className="p-5 bg-green-50">
+            <Card className="p-5 bg-success-light">
               <div className="flex justify-between items-center">
-                <span className="font-bold text-gray-700">
+                <span className="font-bold text-text-primary">
                   {isArabic ? "الإجمالي لقيمة الأعمال" : "Total Work Value"}
                 </span>
                 <span className="text-2xl font-bold text-primary">
@@ -615,19 +617,19 @@ export default function StatementDetailsPage() {
                 </span>
               </div>
             </Card>
-            <Card className="p-5 bg-red-50">
+            <Card className="p-5 bg-danger-light">
               <div className="flex justify-between items-center">
-                <span className="font-bold text-gray-700">
+                <span className="font-bold text-text-primary">
                   {isArabic ? "خصم الاستقطاعات" : "Deductions"}
                 </span>
-                <span className="text-2xl font-bold text-red-500">
+                <span className="text-2xl font-bold text-danger">
                   {totalDeductions.toLocaleString()}
                 </span>
               </div>
             </Card>
             <Card className="p-5 bg-gold/10 border-gold">
               <div className="flex justify-between items-center">
-                <span className="font-bold text-gray-700">
+                <span className="font-bold text-text-primary">
                   {isArabic ? "المستحق صرفة" : "Net Payable"}
                 </span>
                 <span className="text-3xl font-bold text-gold">
@@ -655,12 +657,12 @@ export default function StatementDetailsPage() {
               <div key={sig.id} className="border rounded-lg p-3 text-center">
                 <div className="border-b border-gray-400 w-4/5 mx-auto mb-2 h-8" />
                 <p className="font-bold text-primary">{sig.name}</p>
-                <p className="text-xs text-gray-500">{sig.title}</p>
-                <p className="text-xs text-gray-400">{sig.date}</p>
+                <p className="text-xs text-text-secondary">{sig.title}</p>
+                <p className="text-xs text-text-muted">{sig.date}</p>
               </div>
             ))}
             {signatures.length === 0 && (
-              <div className="col-span-full text-center text-gray-400 text-sm py-4">
+              <div className="col-span-full text-center text-text-muted text-sm py-4">
                 {isArabic ? "لا توجد توقيعات" : "No signatures"}
               </div>
             )}
@@ -670,21 +672,21 @@ export default function StatementDetailsPage() {
 
       {showSignatureModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-md">
+          <div className="bg-surface rounded-2xl w-full max-w-md">
             <div className="flex justify-between items-center p-5 border-b">
               <h2 className="text-xl font-bold text-primary">
                 {isArabic ? "إضافة توقيع" : "Add Signature"}
               </h2>
               <button
                 onClick={() => setShowSignatureModal(false)}
-                className="text-gray-400 hover:text-gray-600"
+                className="text-text-muted hover:text-text-secondary"
               >
                 <X size={24} />
               </button>
             </div>
             <div className="p-5 space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-text-primary mb-1">
                   {isArabic ? "الاسم" : "Name"}
                 </label>
                 <input
@@ -698,7 +700,7 @@ export default function StatementDetailsPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-text-primary mb-1">
                   {isArabic ? "المسمى الوظيفي" : "Title"}
                 </label>
                 <input
@@ -712,7 +714,7 @@ export default function StatementDetailsPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-text-primary mb-1">
                   {isArabic ? "التاريخ" : "Date"}
                 </label>
                 <input

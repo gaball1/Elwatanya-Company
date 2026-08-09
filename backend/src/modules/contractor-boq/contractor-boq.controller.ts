@@ -15,6 +15,9 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { RequirePermission } from '../../common/decorators/permissions.decorator';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { Permissions } from '../../common/constants/permissions.constant';
 import {
   BuildingApplicationError,
   BuildingErrorCode,
@@ -54,38 +57,45 @@ export class ContractorBoqController {
 
   @Get('buildings/:buildingId/contractors/:contractorId/boq')
   @ApiOperation({ summary: 'List contractor BOQ items (mirrors getContractorBoq)' })
+  @RequirePermission(Permissions.ContractorBoq.Read)
   async list(
     @Param('buildingId', ParseUUIDPipe) buildingId: string,
     @Param('contractorId', ParseUUIDPipe) contractorId: string,
+    @CurrentUser('projectId') projectId?: string,
   ) {
-    const result = await this.listItems.execute(buildingId, contractorId);
+    const result = await this.listItems.execute(buildingId, contractorId, projectId);
     if (result.isFailure) throw this.mapError(result.error);
     return { items: result.getValue() };
   }
 
   @Get('buildings/:buildingId/contractors/:contractorId/boq/meta')
   @ApiOperation({ summary: 'Get contractor BOQ meta' })
+  @RequirePermission(Permissions.ContractorBoq.Read)
   async meta(
     @Param('buildingId', ParseUUIDPipe) buildingId: string,
     @Param('contractorId', ParseUUIDPipe) contractorId: string,
+    @CurrentUser('projectId') projectId?: string,
   ) {
-    const result = await this.getMeta.execute(buildingId, contractorId);
+    const result = await this.getMeta.execute(buildingId, contractorId, projectId);
     if (result.isFailure) throw this.mapError(result.error);
     return { meta: result.getValue() };
   }
 
   @Put('buildings/:buildingId/contractors/:contractorId/boq/meta')
   @ApiOperation({ summary: 'Set contractor BOQ meta (mirrors setContractorMeta)' })
+  @RequirePermission(Permissions.ContractorBoq.Write)
   async setMetaHandler(
     @Param('buildingId', ParseUUIDPipe) buildingId: string,
     @Param('contractorId', ParseUUIDPipe) contractorId: string,
     @Body() dto: SetContractorMetaDto,
+    @CurrentUser('projectId') projectId?: string,
+    @CurrentUser('sub') userId?: string,
   ) {
     const result = await this.setMeta.execute({
       buildingId,
       contractorId,
       workType: dto.workType,
-    });
+    }, projectId, userId);
     if (result.isFailure) throw this.mapError(result.error);
     return { meta: result.getValue() };
   }
@@ -93,28 +103,34 @@ export class ContractorBoqController {
   @Post('buildings/:buildingId/contractors/:contractorId/boq/allocate')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Allocate final item/component to contractor' })
+  @RequirePermission(Permissions.ContractorBoq.Allocate)
   async allocateHandler(
     @Param('buildingId', ParseUUIDPipe) buildingId: string,
     @Param('contractorId', ParseUUIDPipe) contractorId: string,
     @Body() dto: AllocateContractorItemDto,
+    @CurrentUser('projectId') projectId?: string,
+    @CurrentUser('sub') userId?: string,
   ) {
     const result = await this.allocate.execute({
       buildingId,
       contractorId,
       itemCodeOrComponent: dto.itemCodeOrComponent,
       quantity: dto.quantity,
-    });
+    }, projectId, userId);
     if (result.isFailure) throw this.mapError(result.error);
     return { items: result.getValue() };
   }
 
   @Patch('buildings/:buildingId/contractors/:contractorId/boq/items/:itemCode')
   @ApiOperation({ summary: 'Update contractor item assigned quantity' })
+  @RequirePermission(Permissions.ContractorBoq.Write)
   async updateQuantity(
     @Param('buildingId', ParseUUIDPipe) buildingId: string,
     @Param('contractorId', ParseUUIDPipe) contractorId: string,
     @Param('itemCode') itemCode: string,
     @Body() dto: UpdateContractorItemQuantityDto,
+    @CurrentUser('projectId') projectId?: string,
+    @CurrentUser('sub') userId?: string,
   ) {
     const result = await this.updateQty.execute({
       buildingId,
@@ -122,7 +138,7 @@ export class ContractorBoqController {
       itemCode,
       componentId: dto.componentId,
       quantity: dto.quantity,
-    });
+    }, projectId, userId);
     if (result.isFailure) throw this.mapError(result.error);
     return { items: result.getValue() };
   }
@@ -130,35 +146,42 @@ export class ContractorBoqController {
   @Delete('buildings/:buildingId/contractors/:contractorId/boq/items/:itemCode')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Remove contractor BOQ item' })
+  @RequirePermission(Permissions.ContractorBoq.Write)
   async remove(
     @Param('buildingId', ParseUUIDPipe) buildingId: string,
     @Param('contractorId', ParseUUIDPipe) contractorId: string,
     @Param('itemCode') itemCode: string,
     @Query('componentId') componentId?: string,
+    @CurrentUser('projectId') projectId?: string,
+    @CurrentUser('sub') userId?: string,
   ) {
     const result = await this.removeItem.execute(
       buildingId,
       contractorId,
       itemCode,
       componentId,
+      projectId,
+      userId,
     );
     if (result.isFailure) throw this.mapError(result.error);
   }
 
   @Get('buildings/:buildingId/contractors/:contractorId/boq/available')
   @ApiOperation({ summary: 'Available qty for contractor item/component' })
+  @RequirePermission(Permissions.ContractorBoq.Read)
   async available(
     @Param('buildingId', ParseUUIDPipe) buildingId: string,
     @Param('contractorId', ParseUUIDPipe) contractorId: string,
     @Query('itemCode') itemCode: string,
     @Query('componentId') componentId?: string,
+    @CurrentUser('projectId') projectId?: string,
   ) {
     const result = await this.availableQty.execute({
       buildingId,
       contractorId,
       itemCode,
       componentId,
-    });
+    }, projectId);
     if (result.isFailure) throw this.mapError(result.error);
     return { available: result.getValue() };
   }

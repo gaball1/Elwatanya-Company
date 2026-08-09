@@ -1,10 +1,14 @@
+/* eslint-disable */
 "use client";
+
+import { cn } from "@/lib/utils";
 
 interface PaginationProps {
   currentPage: number;
   totalPages: number;
   onPageChange: (page: number) => void;
   isArabic: boolean;
+  total?: number;
 }
 
 export default function Pagination({
@@ -12,6 +16,7 @@ export default function Pagination({
   totalPages,
   onPageChange,
   isArabic,
+  total,
 }: PaginationProps) {
   if (totalPages <= 1) return null;
 
@@ -22,11 +27,7 @@ export default function Pagination({
     } else {
       pages.push(1);
       if (currentPage > 3) pages.push("...");
-      for (
-        let i = Math.max(2, currentPage - 1);
-        i <= Math.min(totalPages - 1, currentPage + 1);
-        i++
-      ) {
+      for (let i = Math.max(2, currentPage - 1); i <= Math.min(totalPages - 1, currentPage + 1); i++) {
         pages.push(i);
       }
       if (currentPage < totalPages - 2) pages.push("...");
@@ -36,42 +37,49 @@ export default function Pagination({
   };
 
   return (
-    <div className="flex items-center justify-center gap-2 mt-4">
-      <button
-        onClick={() => onPageChange(currentPage - 1)}
-        disabled={currentPage === 1}
-        className="px-3 py-1 border rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
-      >
-        {isArabic ? "السابق" : "Previous"}
-      </button>
-
-      {getPageNumbers().map((page, index) =>
-        page === "..." ? (
-          <span key={`ellipsis-${index}`} className="px-3 py-1">
-            ...
-          </span>
-        ) : (
-          <button
-            key={page}
-            onClick={() => onPageChange(page as number)}
-            className={`px-3 py-1 rounded-lg ${
-              currentPage === page
-                ? "bg-primary text-white"
-                : "hover:bg-gray-50"
-            }`}
-          >
-            {page}
-          </button>
-        )
+    <div className="flex items-center justify-between gap-4 mt-4 px-2 py-3 border-t border-border">
+      {total !== undefined && (
+        <span className="text-sm text-text-muted">
+          {isArabic ? `إجمالي ${total}` : `${total} total`}
+        </span>
       )}
-
-      <button
-        onClick={() => onPageChange(currentPage + 1)}
-        disabled={currentPage === totalPages}
-        className="px-3 py-1 border rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
-      >
-        {isArabic ? "التالي" : "Next"}
-      </button>
+      <div className="flex items-center gap-1.5" role="navigation" aria-label="Pagination">
+        <button
+          onClick={() => onPageChange(currentPage - 1)}
+          disabled={currentPage === 1}
+          className="px-3 py-1.5 text-sm rounded-md border border-border bg-surface text-text-secondary hover:bg-surface-secondary disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          aria-label="Previous page"
+        >
+          {isArabic ? "السابق" : "←"}
+        </button>
+        {getPageNumbers().map((page, index) =>
+          page === "..." ? (
+            <span key={`e-${index}`} className="px-2 py-1 text-sm text-text-muted">...</span>
+          ) : (
+            <button
+              key={page}
+              onClick={() => onPageChange(page as number)}
+              className={cn(
+                "min-w-[36px] px-2.5 py-1.5 text-sm font-medium rounded-md transition-colors",
+                currentPage === page
+                  ? "bg-primary text-text-inverse shadow-sm"
+                  : "text-text-secondary hover:bg-surface-secondary"
+              )}
+              aria-current={currentPage === page ? "page" : undefined}
+            >
+              {page}
+            </button>
+          )
+        )}
+        <button
+          onClick={() => onPageChange(currentPage + 1)}
+          disabled={currentPage === totalPages}
+          className="px-3 py-1.5 text-sm rounded-md border border-border bg-surface text-text-secondary hover:bg-surface-secondary disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          aria-label="Next page"
+        >
+          {isArabic ? "التالي" : "→"}
+        </button>
+      </div>
     </div>
   );
 }

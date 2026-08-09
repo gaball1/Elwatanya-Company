@@ -51,7 +51,7 @@ export default function ProjectForm({ onSubmit, initial }: ProjectFormProps) {
       <div>
         <label
           htmlFor="project-status"
-          className="block text-sm font-medium text-gray-700 mb-1.5"
+          className="block text-sm font-medium text-text-primary mb-1.5"
         >
           الحالة
         </label>
@@ -59,7 +59,7 @@ export default function ProjectForm({ onSubmit, initial }: ProjectFormProps) {
           id="project-status"
           value={status}
           onChange={(e) => setStatus(e.target.value as ProjectStatus)}
-          className="w-full rounded-lg border border-gray-200 px-4 py-2.5 focus:border-gold focus:outline-none focus:ring-2 focus:ring-gold/20"
+          className="w-full rounded-lg border border-border px-4 py-2.5 focus:border-gold focus:outline-none focus:ring-2 focus:ring-gold/20"
         >
           <option value="planning">تخطيط</option>
           <option value="active">نشط</option>
@@ -70,7 +70,7 @@ export default function ProjectForm({ onSubmit, initial }: ProjectFormProps) {
       <div>
         <label
           htmlFor="project-desc"
-          className="block text-sm font-medium text-gray-700 mb-1.5"
+          className="block text-sm font-medium text-text-primary mb-1.5"
         >
           الوصف
         </label>

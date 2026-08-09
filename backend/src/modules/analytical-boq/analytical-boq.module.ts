@@ -1,5 +1,6 @@
 import { forwardRef, Module } from '@nestjs/common';
 import { PrismaModule } from '@/prisma/prisma.module';
+import { PrismaService } from '@/prisma/prisma.service';
 import { BuildingModule } from '@/modules/building/building.module';
 import { BUILDING_REPOSITORY } from '@/modules/building/domain/building.repository';
 import { IBuildingRepository } from '@/modules/building/domain/building.repository';
@@ -8,6 +9,8 @@ import { EMPLOYER_BOQ_REPOSITORY } from '@/modules/employer-boq/domain/employer-
 import { IEmployerBoqRepository } from '@/modules/employer-boq/domain/employer-boq.repository';
 import { FinalBoqModule } from '@/modules/final-boq/final-boq.module';
 import { SyncFinalFromAnalyticalUseCase } from '@/modules/final-boq/application/use-cases/sync-final-from-analytical.use-case';
+import { OwnershipService } from '@/common/services/ownership.service';
+import { AuditService } from '@/modules/audit/audit.service';
 import { ANALYTICAL_BOQ_REPOSITORY } from './domain/analytical-boq.repository';
 import { PrismaAnalyticalBoqRepository } from './infrastructure/prisma-analytical-boq.repository';
 import { ListAnalyticalBoqItemsUseCase } from './application/use-cases/list-analytical-boq-items.use-case';
@@ -32,12 +35,18 @@ import { AnalyticalBoqController } from './analytical-boq.controller';
   providers: [
     { provide: ANALYTICAL_BOQ_REPOSITORY, useClass: PrismaAnalyticalBoqRepository },
     {
+      provide: OwnershipService,
+      useFactory: (prisma: PrismaService) => new OwnershipService(prisma),
+      inject: [PrismaService],
+    },
+    {
       provide: ListAnalyticalBoqItemsUseCase,
       useFactory: (
         analyticalBoq: PrismaAnalyticalBoqRepository,
         buildings: IBuildingRepository,
-      ) => new ListAnalyticalBoqItemsUseCase(analyticalBoq, buildings),
-      inject: [ANALYTICAL_BOQ_REPOSITORY, BUILDING_REPOSITORY],
+        ownership: OwnershipService,
+      ) => new ListAnalyticalBoqItemsUseCase(analyticalBoq, buildings, ownership),
+      inject: [ANALYTICAL_BOQ_REPOSITORY, BUILDING_REPOSITORY, OwnershipService],
     },
     {
       provide: SetAnalyticalBoqItemsUseCase,
@@ -45,8 +54,10 @@ import { AnalyticalBoqController } from './analytical-boq.controller';
         analyticalBoq: PrismaAnalyticalBoqRepository,
         buildings: IBuildingRepository,
         syncFinal: SyncFinalFromAnalyticalUseCase,
-      ) => new SetAnalyticalBoqItemsUseCase(analyticalBoq, buildings, syncFinal),
-      inject: [ANALYTICAL_BOQ_REPOSITORY, BUILDING_REPOSITORY, SyncFinalFromAnalyticalUseCase],
+        ownership: OwnershipService,
+        audit: AuditService,
+      ) => new SetAnalyticalBoqItemsUseCase(analyticalBoq, buildings, syncFinal, ownership, audit),
+      inject: [ANALYTICAL_BOQ_REPOSITORY, BUILDING_REPOSITORY, SyncFinalFromAnalyticalUseCase, OwnershipService, AuditService],
     },
     {
       provide: UpdateAnalyticalBoqItemUseCase,
@@ -54,8 +65,10 @@ import { AnalyticalBoqController } from './analytical-boq.controller';
         analyticalBoq: PrismaAnalyticalBoqRepository,
         buildings: IBuildingRepository,
         syncFinal: SyncFinalFromAnalyticalUseCase,
-      ) => new UpdateAnalyticalBoqItemUseCase(analyticalBoq, buildings, syncFinal),
-      inject: [ANALYTICAL_BOQ_REPOSITORY, BUILDING_REPOSITORY, SyncFinalFromAnalyticalUseCase],
+        ownership: OwnershipService,
+        audit: AuditService,
+      ) => new UpdateAnalyticalBoqItemUseCase(analyticalBoq, buildings, syncFinal, ownership, audit),
+      inject: [ANALYTICAL_BOQ_REPOSITORY, BUILDING_REPOSITORY, SyncFinalFromAnalyticalUseCase, OwnershipService, AuditService],
     },
     {
       provide: RemoveAnalyticalBoqItemUseCase,
@@ -63,8 +76,10 @@ import { AnalyticalBoqController } from './analytical-boq.controller';
         analyticalBoq: PrismaAnalyticalBoqRepository,
         buildings: IBuildingRepository,
         syncFinal: SyncFinalFromAnalyticalUseCase,
-      ) => new RemoveAnalyticalBoqItemUseCase(analyticalBoq, buildings, syncFinal),
-      inject: [ANALYTICAL_BOQ_REPOSITORY, BUILDING_REPOSITORY, SyncFinalFromAnalyticalUseCase],
+        ownership: OwnershipService,
+        audit: AuditService,
+      ) => new RemoveAnalyticalBoqItemUseCase(analyticalBoq, buildings, syncFinal, ownership, audit),
+      inject: [ANALYTICAL_BOQ_REPOSITORY, BUILDING_REPOSITORY, SyncFinalFromAnalyticalUseCase, OwnershipService, AuditService],
     },
     {
       provide: ImportAnalyticalFromEmployerUseCase,
@@ -73,13 +88,17 @@ import { AnalyticalBoqController } from './analytical-boq.controller';
         employerBoq: IEmployerBoqRepository,
         buildings: IBuildingRepository,
         syncFinal: SyncFinalFromAnalyticalUseCase,
+        ownership: OwnershipService,
+        audit: AuditService,
       ) =>
-        new ImportAnalyticalFromEmployerUseCase(analyticalBoq, employerBoq, buildings, syncFinal),
+        new ImportAnalyticalFromEmployerUseCase(analyticalBoq, employerBoq, buildings, syncFinal, ownership, audit),
       inject: [
         ANALYTICAL_BOQ_REPOSITORY,
         EMPLOYER_BOQ_REPOSITORY,
         BUILDING_REPOSITORY,
         SyncFinalFromAnalyticalUseCase,
+        OwnershipService,
+        AuditService,
       ],
     },
     {
@@ -105,6 +124,7 @@ import { AnalyticalBoqController } from './analytical-boq.controller';
     ANALYTICAL_BOQ_REPOSITORY,
     SyncAnalyticalFromEmployerUseCase,
     AddAnalyticalFromEmployerUseCase,
+    RemoveAnalyticalBoqItemUseCase,
   ],
 })
 export class AnalyticalBoqModule {}

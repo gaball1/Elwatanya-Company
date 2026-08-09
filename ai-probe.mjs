@@ -1,0 +1,28 @@
+import { chromium } from 'playwright';
+const base = 'http://localhost:3000';
+const api = 'http://localhost:3001/api/v1';
+const login = await fetch(`${api}/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: 'admin@elwataniya.com', password: 'Admin@123' }) }).then((r) => r.json());
+const token = login?.data?.accessToken;
+const browser = await chromium.launch();
+const ctx = await browser.newContext();
+const page = await ctx.newPage();
+await page.goto(base + '/ar/logout', { waitUntil: 'domcontentloaded' }).catch(() => {});
+await page.goto(base, { waitUntil: 'domcontentloaded' });
+await page.evaluate((t) => { localStorage.setItem('elwataniya_access_token', t); document.cookie = `elwataniya_token=${t};path=/;SameSite=Lax;max-age=604800`; }, token);
+await page.goto(base + '/ar/projects', { waitUntil: 'domcontentloaded', timeout: 90000 });
+await page.waitForTimeout(5000);
+await page.evaluate(() => document.querySelector('nextjs-portal')?.remove());
+const bot = page.locator('button[aria-label="فتح المساعد الذكي"]');
+console.log('bot count:', await bot.count());
+await bot.first().click();
+await page.waitForTimeout(1500);
+const widget = await page.evaluate(() => {
+  const w = Array.from(document.querySelectorAll('div')).find((d) => d.className.includes && typeof d.className === 'string' && d.className.includes('w-[420px]'));
+  return w ? w.innerText : '(no widget)';
+});
+console.log('WIDGET:', JSON.stringify(widget.slice(0, 300)));
+const inputs = await page.evaluate(() => Array.from(document.querySelectorAll('input')).map((i) => i.placeholder).filter(Boolean));
+console.log('INPUTS:', JSON.stringify(inputs.slice(0, 10)));
+const buttons = await page.evaluate(() => Array.from(document.querySelectorAll('button')).map((b) => (b.textContent || '').trim().slice(0, 40)).filter(Boolean).slice(0, 20));
+console.log('BUTTONS:', JSON.stringify(buttons));
+await browser.close();

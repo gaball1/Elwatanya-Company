@@ -11,15 +11,20 @@ import {
 } from '../errors/analytical-boq-application.error';
 import { toAnalyticalBoqItemResult } from './list-analytical-boq-items.use-case';
 import { SyncFinalFromAnalyticalUseCase } from '@/modules/final-boq/application/use-cases/sync-final-from-analytical.use-case';
+import { OwnershipService } from '@/common/services/ownership.service';
+import { AuditService } from '@/modules/audit/audit.service';
 
 export class SetAnalyticalBoqItemsUseCase {
   constructor(
     private readonly analyticalBoq: IAnalyticalBoqRepository,
     private readonly buildings: IBuildingRepository,
     private readonly syncFinalFromAnalytical: SyncFinalFromAnalyticalUseCase,
+    private readonly ownership: OwnershipService,
+    private readonly audit: AuditService,
   ) {}
 
-  async execute(input: SetAnalyticalBoqItemsInput): Promise<Result<AnalyticalBoqItemResult[]>> {
+  async execute(input: SetAnalyticalBoqItemsInput, userProjectId?: string | null, userId?: string): Promise<Result<AnalyticalBoqItemResult[]>> {
+    await this.ownership.verifyBuildingAccess(userProjectId, input.buildingId);
     const buildingId = new UniqueEntityId(input.buildingId);
     const building = await this.buildings.findById(buildingId);
     if (!building) {
@@ -64,6 +69,9 @@ export class SetAnalyticalBoqItemsUseCase {
     await this.analyticalBoq.replaceAllForBuilding(buildingId, domainItems);
     // Mirrors setAnalyticalItems → syncFinalFromAnalytical
     await this.syncFinalFromAnalytical.execute({ buildingId: input.buildingId });
+    if (userId) {
+      this.audit.log({ userId, entity: 'analytical_boq', entityId: input.buildingId, action: 'REPLACE_ALL', before: null, after: { items: domainItems.map(i => ({ itemCode: i.itemCode, description: i.description })) } });
+    }
     return Result.ok(domainItems.map(toAnalyticalBoqItemResult));
   }
 }

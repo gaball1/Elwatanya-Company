@@ -43,21 +43,21 @@ export default function SignaturesSection({
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {signatures.map((s) => (
           <div key={s.id} className="border rounded-lg p-3 text-center">
-            <div className="border-b border-gray-400 w-4/5 mx-auto mb-2 h-8" />
+            <div className="border-b border-border-dark w-4/5 mx-auto mb-2 h-8" />
             <p className="font-bold text-primary">{s.name}</p>
-            <p className="text-xs text-gray-500">{s.title}</p>
-            <p className="text-xs text-gray-400">{s.date}</p>
+            <p className="text-xs text-text-secondary">{s.title}</p>
+            <p className="text-xs text-text-muted">{s.date}</p>
           </div>
         ))}
         {signatures.length === 0 && (
-          <p className="col-span-full text-center text-gray-400 text-sm py-4">
+          <p className="col-span-full text-center text-text-muted text-sm py-4">
             {isArabic ? "لا توجد توقيعات" : "No signatures"}
           </p>
         )}
       </div>
       {open && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-md p-5 space-y-3">
+          <div className="bg-surface rounded-2xl w-full max-w-md p-5 space-y-3">
             <div className="flex justify-between">
               <h2 className="font-bold text-primary">{isArabic ? "إضافة توقيع" : "Add Signature"}</h2>
               <button onClick={() => setOpen(false)}><X size={20} /></button>

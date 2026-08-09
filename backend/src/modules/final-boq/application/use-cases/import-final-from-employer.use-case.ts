@@ -17,6 +17,8 @@ import {
   FinalBoqErrorCode,
 } from '../errors/final-boq-application.error';
 import { getOrCreateFinalBoq, toFinalBoqItemResult } from './final-boq-mappers';
+import { OwnershipService } from '@/common/services/ownership.service';
+import { AuditService } from '@/modules/audit/audit.service';
 
 /** Mirrors importFinalFromEmployer */
 export class ImportFinalFromEmployerUseCase {
@@ -25,9 +27,12 @@ export class ImportFinalFromEmployerUseCase {
     private readonly employerBoq: IEmployerBoqRepository,
     private readonly buildings: IBuildingRepository,
     private readonly allocations: IFinalBoqAllocationReader,
+    private readonly ownership: OwnershipService,
+    private readonly audit: AuditService,
   ) {}
 
-  async execute(input: ImportFinalFromEmployerInput): Promise<Result<FinalBoqItemResult | null>> {
+  async execute(input: ImportFinalFromEmployerInput, userProjectId?: string | null, userId?: string): Promise<Result<FinalBoqItemResult | null>> {
+    await this.ownership.verifyBuildingAccess(userProjectId, input.buildingId);
     const buildingId = new UniqueEntityId(input.buildingId);
     const building = await this.buildings.findById(buildingId);
     if (!building) {
@@ -67,6 +72,10 @@ export class ImportFinalFromEmployerUseCase {
     });
     aggregate.addItem(item);
     await this.finalBoq.save(aggregate);
+
+    if (userId) {
+      this.audit.log({ userId, entity: 'final_boq', entityId: item.id.toValue(), action: 'IMPORT', before: null, after: { itemCode: item.businessCode, description: item.description } });
+    }
 
     return Result.ok(toFinalBoqItemResult(item, allocationRefs));
   }

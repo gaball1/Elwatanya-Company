@@ -4,6 +4,7 @@ import {
   CurrentUser,
   JwtPayload,
 } from '../common/decorators/current-user.decorator';
+import { RequirePermission } from '../common/decorators/permissions.decorator';
 import { UsersService } from './users.service';
 
 @ApiTags('Users')
@@ -13,6 +14,7 @@ export class UsersController {
   constructor(private usersService: UsersService) {}
 
   @Get('me')
+  @RequirePermission('profile.read')
   @ApiOperation({ summary: 'Get current authenticated user profile' })
   getProfile(@CurrentUser() user: JwtPayload) {
     return this.usersService.getProfile(user.sub);

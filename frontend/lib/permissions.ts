@@ -1,211 +1,194 @@
-export type UserRole =
-  | "ceo"
-  | "technical_office"
-  | "site_engineer"
-  | "accountant"
-  | "store_manager"
-  | "employee";
-
-export interface User {
-  id: string;
-  name: string;
-  email: string;
-  role: UserRole;
-  projectId?: string; // للمستخدمين المخصصين لمشروع معين (مهندس موقع، مدير مخازن)
-}
-
-interface Permissions {
-  // الموظفين
-  canViewEmployees: boolean;
-  canEditEmployees: boolean;
-
-  // المشاريع
-  canViewProjects: boolean;
-  canEditProjects: boolean;
-  canDeleteProjects: boolean;
-
-  // المقاولين
-  canViewSubcontractors: boolean;
-  canEditSubcontractors: boolean;
-
-  // المخازن
-  canViewInventory: boolean;
-  canEditInventory: boolean;
-
-  // المستخلصات
-  canViewStatements: boolean;
-  canApproveStatements: boolean;
-
-  // الخزنة والمالية
-  canViewTreasury: boolean;
-  canViewFinancial: boolean;
-
-  // العملاء والموردين
-  canViewClients: boolean;
-  canViewSuppliers: boolean;
-
-  // التقارير
-  canViewReports: boolean;
-}
-
-const permissions: Record<UserRole, Permissions> = {
-  // مدير الشركة - كل الصلاحيات
-  ceo: {
-    canViewEmployees: true,
-    canEditEmployees: true,
-    canViewProjects: true,
-    canEditProjects: true,
-    canDeleteProjects: true,
-    canViewSubcontractors: true,
-    canEditSubcontractors: true,
-    canViewInventory: true,
-    canEditInventory: true,
-    canViewStatements: true,
-    canApproveStatements: true,
-    canViewTreasury: true,
-    canViewFinancial: true,
-    canViewClients: true,
-    canViewSuppliers: true,
-    canViewReports: true,
+// Frontend permission constants matching backend Permissions constant
+// These are the dotted-string permission names used by the backend PermissionGuard
+export const Permissions = {
+  Projects: {
+    Read: 'projects.read',
+    Create: 'projects.create',
+    Update: 'projects.update',
+    Delete: 'projects.delete',
   },
-
-  // المكتب الفني - مشاريع ومقايسات فقط
-  technical_office: {
-    canViewEmployees: false,
-    canEditEmployees: false,
-    canViewProjects: true,
-    canEditProjects: true,
-    canDeleteProjects: false,
-    canViewSubcontractors: true,
-    canEditSubcontractors: false,
-    canViewInventory: false,
-    canEditInventory: false,
-    canViewStatements: true,
-    canApproveStatements: false,
-    canViewTreasury: true,
-    canViewFinancial: false,
-    canViewClients: true,
-    canViewSuppliers: false,
-    canViewReports: true,
+  Buildings: {
+    Read: 'buildings.read',
+    Create: 'buildings.create',
+    Update: 'buildings.update',
+    Delete: 'buildings.delete',
   },
-
-  // مهندس موقع - مشروعه فقط
-  site_engineer: {
-    canViewEmployees: false,
-    canEditEmployees: false,
-    canViewProjects: true,
-    canEditProjects: true,
-    canDeleteProjects: false,
-    canViewSubcontractors: true,
-    canEditSubcontractors: false,
-    canViewInventory: true,
-    canEditInventory: false,
-    canViewStatements: true,
-    canApproveStatements: false,
-    canViewTreasury: false,
-    canViewFinancial: false,
-    canViewClients: false,
-    canViewSuppliers: false,
-    canViewReports: false,
+  EmployerBoq: {
+    Read: 'employer-boq.read',
+    Write: 'employer-boq.write',
   },
-
-  // محاسب - كل ما يتعلق بالفلوس
-  accountant: {
-    canViewEmployees: false,
-    canEditEmployees: false,
-    canViewProjects: true,
-    canEditProjects: false,
-    canDeleteProjects: false,
-    canViewSubcontractors: true,
-    canEditSubcontractors: false,
-    canViewInventory: true,
-    canEditInventory: false,
-    canViewStatements: true,
-    canApproveStatements: true,
-    canViewTreasury: true,
-    canViewFinancial: true,
-    canViewClients: true,
-    canViewSuppliers: true,
-    canViewReports: true,
+  AnalyticalBoq: {
+    Read: 'analytical-boq.read',
+    Write: 'analytical-boq.write',
+    Import: 'analytical-boq.import',
   },
-
-  // مدير مخازن - مخازن ومشتريات فقط
-  store_manager: {
-    canViewEmployees: false,
-    canEditEmployees: false,
-    canViewProjects: false,
-    canEditProjects: false,
-    canDeleteProjects: false,
-    canViewSubcontractors: false,
-    canEditSubcontractors: false,
-    canViewInventory: true,
-    canEditInventory: true,
-    canViewStatements: false,
-    canApproveStatements: false,
-    canViewTreasury: false,
-    canViewFinancial: false,
-    canViewClients: false,
-    canViewSuppliers: true,
-    canViewReports: false,
+  FinalBoq: {
+    Read: 'final-boq.read',
+    Write: 'final-boq.write',
+    Sync: 'final-boq.sync',
+    Import: 'final-boq.import',
+    Analyze: 'final-boq.analyze',
+    ManageComponents: 'final-boq.manage-components',
   },
-
-  // موظف عادي - عرض فقط في بعض الأماكن
-  employee: {
-    canViewEmployees: false,
-    canEditEmployees: false,
-    canViewProjects: false,
-    canEditProjects: false,
-    canDeleteProjects: false,
-    canViewSubcontractors: false,
-    canEditSubcontractors: false,
-    canViewInventory: false,
-    canEditInventory: false,
-    canViewStatements: false,
-    canApproveStatements: false,
-    canViewTreasury: false,
-    canViewFinancial: false,
-    canViewClients: false,
-    canViewSuppliers: false,
-    canViewReports: false,
+  ContractorBoq: {
+    Read: 'contractor-boq.read',
+    Write: 'contractor-boq.write',
+    Allocate: 'contractor-boq.allocate',
   },
-};
+  Distribution: {
+    Write: 'distribution.write',
+  },
+  Extracts: {
+    Read: 'extracts.read',
+    Write: 'extracts.write',
+    Delete: 'extracts.delete',
+  },
+  Payments: {
+    Read: 'payments.read',
+    Write: 'payments.write',
+  },
+  Clients: {
+    Read: 'clients.read',
+    Create: 'clients.create',
+    Update: 'clients.update',
+    Delete: 'clients.delete',
+  },
+  Subcontractors: {
+    Read: 'subcontractors.read',
+    Create: 'subcontractors.create',
+    Update: 'subcontractors.update',
+    Delete: 'subcontractors.delete',
+  },
+  Suppliers: {
+    Read: 'suppliers.read',
+    Create: 'suppliers.create',
+    Update: 'suppliers.update',
+    Delete: 'suppliers.delete',
+  },
+  Employees: {
+    Read: 'employees.read',
+    Create: 'employees.create',
+    Update: 'employees.update',
+    Delete: 'employees.delete',
+  },
+  Attendance: {
+    Read: 'attendance.read',
+    Create: 'attendance.create',
+    Update: 'attendance.update',
+    Delete: 'attendance.delete',
+  },
+  Leaves: {
+    Read: 'leaves.read',
+    Create: 'leaves.create',
+    Update: 'leaves.update',
+    Delete: 'leaves.delete',
+  },
+  Holidays: {
+    Read: 'holidays.read',
+    Create: 'holidays.create',
+    Update: 'holidays.update',
+    Delete: 'holidays.delete',
+  },
+  Departments: {
+    Read: 'departments.read',
+    Create: 'departments.create',
+    Update: 'departments.update',
+    Delete: 'departments.delete',
+  },
+  Warehouses: {
+    Read: 'warehouses.read',
+    Create: 'warehouses.create',
+    Update: 'warehouses.update',
+    Delete: 'warehouses.delete',
+  },
+  Categories: {
+    Read: 'categories.read',
+    Create: 'categories.create',
+    Update: 'categories.update',
+    Delete: 'categories.delete',
+  },
+  Inventory: {
+    Read: 'inventory.read',
+    Create: 'inventory.create',
+    Update: 'inventory.update',
+    Delete: 'inventory.delete',
+  },
+  StockMovements: {
+    Read: 'stock-movements.read',
+    Create: 'stock-movements.create',
+    Update: 'stock-movements.update',
+    Delete: 'stock-movements.delete',
+  },
+  ProjectFunds: {
+    Read: 'project-funds.read',
+    Create: 'project-funds.create',
+    Update: 'project-funds.update',
+    Delete: 'project-funds.delete',
+  },
+  FundTransactions: {
+    Read: 'fund-transactions.read',
+    Create: 'fund-transactions.create',
+    Update: 'fund-transactions.update',
+    Delete: 'fund-transactions.delete',
+  },
+  Miscellaneous: {
+    Read: 'miscellaneous.read',
+    Create: 'miscellaneous.create',
+    Update: 'miscellaneous.update',
+    Delete: 'miscellaneous.delete',
+  },
+  Notifications: {
+    Read: 'notifications.read',
+    Create: 'notifications.create',
+    Update: 'notifications.update',
+    Delete: 'notifications.delete',
+  },
+  ProjectBoards: {
+    Read: 'project-boards.read',
+    Create: 'project-boards.create',
+    Update: 'project-boards.update',
+    Delete: 'project-boards.delete',
+  },
+  ClientStatements: {
+    Read: 'client-statements.read',
+    Create: 'client-statements.create',
+    Update: 'client-statements.update',
+    Delete: 'client-statements.delete',
+  },
+  SubcontractorStatements: {
+    Read: 'subcontractor-statements.read',
+    Create: 'subcontractor-statements.create',
+    Update: 'subcontractor-statements.update',
+    Delete: 'subcontractor-statements.delete',
+  },
+  Roles: {
+    Read: 'roles.read',
+    Create: 'roles.create',
+    Update: 'roles.update',
+    Delete: 'roles.delete',
+  },
+  Users: {
+    Read: 'users.read',
+    Create: 'users.create',
+    Update: 'users.update',
+    Delete: 'users.delete',
+    AssignRole: 'users.assign-role',
+    AssignProject: 'users.assign-project',
+    ResetPassword: 'users.reset-password',
+  },
+  Profile: {
+    Read: 'profile.read',
+    Update: 'profile.update',
+    ChangePassword: 'profile.change-password',
+  },
+  Audit: {
+    View: 'audit.view',
+  },
+  RecycleBin: {
+    View: 'recycle-bin.view',
+    Restore: 'recycle-bin.restore',
+    Delete: 'recycle-bin.delete',
+  },
+} as const;
 
-// دالة للتحقق من صلاحية معينة
-export function hasPermission(
-  role: UserRole,
-  permission: keyof Permissions
-): boolean {
-  return permissions[role]?.[permission] || false;
-}
-
-// دالة للتحقق من الوصول لمشروع معين
-export function canAccessProject(user: User, projectId: string): boolean {
-  if (
-    user.role === "ceo" ||
-    user.role === "technical_office" ||
-    user.role === "accountant"
-  ) {
-    return true;
-  }
-  if (user.role === "site_engineer" || user.role === "store_manager") {
-    return user.projectId === projectId;
-  }
-  return false;
-}
-
-// دالة للحصول على المستخدم الحالي (مؤقتاً - بعدين من AuthContext)
-export function getCurrentUser(): User {
-  // مؤقتاً نرجع مدير الشركة
-  return {
-    id: "1",
-    name: "أحمد علي",
-    email: "ahmed@elwataniya.com",
-    role: "ceo",
-  };
-}
-
-// دالة لتغيير الدور (للتجربة)
-export function setTestRole(role: UserRole) {
-  // هذه دالة تجريبية فقط للاختبار
-  console.log(`Role changed to: ${role}`);
-}
+export type Permission = typeof Permissions[keyof typeof Permissions][keyof typeof Permissions[keyof typeof Permissions]];

@@ -108,24 +108,26 @@ export class PrismaEmployerBoqRepository implements IEmployerBoqRepository {
     return record ? this.toDomain(record) : null;
   }
 
-  async generateNextItemCode(buildingId: UniqueEntityId): Promise<string> {
-    const records = await this.prisma.employerBoqItem.findMany({
+  async deleteByItemCode(buildingId: UniqueEntityId, itemCode: string): Promise<void> {
+    await this.prisma.employerBoqItem.deleteMany({
       where: {
         buildingId: buildingId.toValue(),
-        itemCode: { startsWith: 'EMP-' },
+        itemCode,
       },
-      select: { itemCode: true },
     });
+  }
 
-    let max = 0;
-    for (const record of records) {
-      const match = /^EMP-(\d+)$/.exec(record.itemCode);
-      if (match) {
-        max = Math.max(max, Number.parseInt(match[1], 10));
-      }
-    }
-
-    return `EMP-${String(max + 1).padStart(3, '0')}`;
+  async generateNextItemCode(buildingId: UniqueEntityId): Promise<string> {
+    return await this.prisma.$transaction(async (tx) => {
+      // Insert-or-increment atomically to avoid races when no counter row exists yet.
+      const updated = await tx.boqCodeCounter.upsert({
+        where: { buildingId: buildingId.toValue() },
+        create: { buildingId: buildingId.toValue(), nextSequence: 2 },
+        update: { nextSequence: { increment: 1 } },
+      });
+      const seq = updated.nextSequence - 1;
+      return `EMP-${String(seq).padStart(3, '0')}`;
+    });
   }
 
   private toDomain(record: {

@@ -2,11 +2,11 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { Card } from "@/components/ui";
 import { Plus, Trash2, Save } from "lucide-react";
-import { mockClientStatements } from "@/lib/mockData";
+import { clientStatementService } from "@/services/client-statement.service";
 import BackButton from "@/components/shared/BackButton";
 
 interface Item {
@@ -40,37 +40,57 @@ export default function EditClientStatementPage() {
   const isArabic = locale === "ar";
   const statementId = params.statementId as string;
 
-  const existingStatement = mockClientStatements.find(
-    (s) => s.id === statementId
-  );
+  const [existingStatement, setExistingStatement] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    clientStatementService.get(statementId).then((data) => {
+      setExistingStatement(data);
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  }, [statementId]);
+
+  const [statementNumber, setStatementNumber] = useState("");
+  const [statementDate, setStatementDate] = useState("");
+  const [deductionPercent, setDeductionPercent] = useState(5);
+  const [items, setItems] = useState<Item[]>([]);
+  const [deductions, setDeductions] = useState<Deduction[]>([]);
+
+  useEffect(() => {
+    if (existingStatement) {
+      setStatementNumber(existingStatement.statementNumber);
+      setStatementDate(existingStatement.date);
+      setItems(existingStatement.items.map((i: any) => ({
+        ...i,
+        total: i.quantity * i.unitPrice,
+        totalDone: i.previous + i.current,
+        final: ((i.previous + i.current) / i.quantity) * 100,
+        workValue: (i.previous + i.current) * i.unitPrice,
+        deduction:
+          (i.previous + i.current) * i.unitPrice * (deductionPercent / 100),
+        net:
+          (i.previous + i.current) * i.unitPrice * (1 - deductionPercent / 100),
+      })));
+      setDeductions(existingStatement.deductions);
+    }
+  }, [existingStatement]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <p className="text-text-secondary">...</p>
+      </div>
+    );
+  }
+
   if (!existingStatement)
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <p className="text-gray-500">
+        <p className="text-text-secondary">
           {isArabic ? "المستخلص غير موجود" : "Statement not found"}
         </p>
       </div>
     );
-
-  const [statementNumber, setStatementNumber] = useState(
-    existingStatement.statementNumber
-  );
-  const [statementDate, setStatementDate] = useState(existingStatement.date);
-  const [deductionPercent, setDeductionPercent] = useState(5);
-  const [items, setItems] = useState<Item[]>(
-    existingStatement.items.map((i) => ({
-      ...i,
-      total: i.quantity * i.unitPrice,
-      totalDone: i.previous + i.current,
-      final: ((i.previous + i.current) / i.quantity) * 100,
-      workValue: (i.previous + i.current) * i.unitPrice,
-      deduction:
-        (i.previous + i.current) * i.unitPrice * (deductionPercent / 100),
-      net:
-        (i.previous + i.current) * i.unitPrice * (1 - deductionPercent / 100),
-    }))
-  );
-  const [deductions, setDeductions] = useState(existingStatement.deductions);
   const [showDeleteItemConfirm, setShowDeleteItemConfirm] = useState<
     number | null
   >(null);
@@ -168,11 +188,11 @@ export default function EditClientStatementPage() {
       {/* Delete modals */}
       {showDeleteItemConfirm !== null && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full">
+          <div className="bg-surface rounded-2xl p-6 max-w-md w-full">
             <h3 className="text-xl font-bold text-primary mb-4">
               {isArabic ? "تأكيد الحذف" : "Confirm Delete"}
             </h3>
-            <p className="text-gray-600 mb-6">
+            <p className="text-text-secondary mb-6">
               {isArabic
                 ? "هل أنت متأكد من حذف هذا البند؟"
                 : "Are you sure you want to delete this item?"}
@@ -186,7 +206,7 @@ export default function EditClientStatementPage() {
               </button>
               <button
                 onClick={() => deleteItem(showDeleteItemConfirm)}
-                className="flex-1 px-4 py-2 bg-red-500 text-white rounded-xl"
+                className="flex-1 px-4 py-2 bg-danger text-white rounded-xl"
               >
                 {isArabic ? "حذف" : "Delete"}
               </button>
@@ -197,11 +217,11 @@ export default function EditClientStatementPage() {
 
       {showDeleteDeductionConfirm !== null && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full">
+          <div className="bg-surface rounded-2xl p-6 max-w-md w-full">
             <h3 className="text-xl font-bold text-primary mb-4">
               {isArabic ? "تأكيد الحذف" : "Confirm Delete"}
             </h3>
-            <p className="text-gray-600 mb-6">
+            <p className="text-text-secondary mb-6">
               {isArabic
                 ? "هل أنت متأكد من حذف هذا الخصم؟"
                 : "Are you sure you want to delete this deduction?"}
@@ -215,7 +235,7 @@ export default function EditClientStatementPage() {
               </button>
               <button
                 onClick={() => deleteDeduction(showDeleteDeductionConfirm)}
-                className="flex-1 px-4 py-2 bg-red-500 text-white rounded-xl"
+                className="flex-1 px-4 py-2 bg-danger text-white rounded-xl"
               >
                 {isArabic ? "حذف" : "Delete"}
               </button>
@@ -224,7 +244,7 @@ export default function EditClientStatementPage() {
         </div>
       )}
 
-      <div className="bg-white border-b px-6 py-4 sticky top-0 z-10">
+      <div className="bg-surface border-b px-6 py-4 sticky top-0 z-10">
         <div className="flex justify-between items-center">
           <div className="flex items-center gap-4">
             <BackButton
@@ -247,8 +267,8 @@ export default function EditClientStatementPage() {
 
       <div className="p-6 space-y-6">
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-          <div className="bg-white p-4 rounded-lg shadow-sm border-r-4 border-gold">
-            <p className="text-gray-500 text-sm">
+          <div className="bg-surface p-4 rounded-lg shadow-sm border-r-4 border-gold">
+            <p className="text-text-secondary text-sm">
               {isArabic ? "رقم المستخلص" : "Statement No"}
             </p>
             <input
@@ -258,8 +278,8 @@ export default function EditClientStatementPage() {
               className="w-full font-bold text-primary bg-transparent border-b"
             />
           </div>
-          <div className="bg-white p-4 rounded-lg shadow-sm">
-            <p className="text-gray-500 text-sm">
+          <div className="bg-surface p-4 rounded-lg shadow-sm">
+            <p className="text-text-secondary text-sm">
               {isArabic ? "التاريخ" : "Date"}
             </p>
             <input
@@ -269,15 +289,15 @@ export default function EditClientStatementPage() {
               className="w-full font-bold text-primary bg-transparent border-b"
             />
           </div>
-          <div className="bg-white p-4 rounded-lg shadow-sm">
-            <p className="text-gray-500 text-sm">
+          <div className="bg-surface p-4 rounded-lg shadow-sm">
+            <p className="text-text-secondary text-sm">
               {isArabic ? "العميل" : "Client"}
             </p>
             <input
               type="text"
               value={existingStatement.clientName}
               disabled
-              className="w-full font-bold text-primary bg-gray-100 border-b"
+              className="w-full font-bold text-primary bg-surface-tertiary border-b"
             />
           </div>
         </div>
@@ -337,7 +357,7 @@ export default function EditClientStatementPage() {
               </thead>
               <tbody>
                 {items.map((item, idx) => (
-                  <tr key={item.id} className="border-t hover:bg-gray-50">
+                  <tr key={item.id} className="border-t hover:bg-surface-secondary">
                     <td className="p-1 border text-center">{idx + 1}</td>
                     <td className="p-1 border">
                       <input
@@ -362,7 +382,7 @@ export default function EditClientStatementPage() {
                     <td className="p-1 border">
                       <input
                         type="number"
-                        value={item.quantity || ""}
+                        value={item.quantity ?? ""}
                         onChange={(e) =>
                           updateItem(idx, "quantity", Number(e.target.value))
                         }
@@ -373,7 +393,7 @@ export default function EditClientStatementPage() {
                     <td className="p-1 border">
                       <input
                         type="number"
-                        value={item.unitPrice || ""}
+                        value={item.unitPrice ?? ""}
                         onChange={(e) =>
                           updateItem(idx, "unitPrice", Number(e.target.value))
                         }
@@ -384,7 +404,7 @@ export default function EditClientStatementPage() {
                     <td className="p-1 border">
                       <input
                         type="number"
-                        value={item.previous || ""}
+                        value={item.previous ?? ""}
                         onChange={(e) =>
                           updateItem(idx, "previous", Number(e.target.value))
                         }
@@ -395,7 +415,7 @@ export default function EditClientStatementPage() {
                     <td className="p-1 border">
                       <input
                         type="number"
-                        value={item.current || ""}
+                        value={item.current ?? ""}
                         onChange={(e) =>
                           updateItem(idx, "current", Number(e.target.value))
                         }
@@ -412,7 +432,7 @@ export default function EditClientStatementPage() {
                     <td className="p-1 border text-center font-bold">
                       {item.workValue.toLocaleString()}
                     </td>
-                    <td className="p-1 border text-center text-red-500">
+                    <td className="p-1 border text-center text-danger">
                       {item.deduction.toLocaleString()}
                     </td>
                     <td className="p-1 border text-center font-bold text-gold">
@@ -431,7 +451,7 @@ export default function EditClientStatementPage() {
                     <td className="p-1 border text-center">
                       <button
                         onClick={() => setShowDeleteItemConfirm(idx)}
-                        className="text-red-500"
+                        className="text-danger"
                       >
                         <Trash2 size={14} />
                       </button>
@@ -439,7 +459,7 @@ export default function EditClientStatementPage() {
                   </tr>
                 ))}
               </tbody>
-              <tfoot className="bg-gray-100 font-bold">
+              <tfoot className="bg-surface-tertiary font-bold">
                 <tr className="border-t">
                   <td colSpan={9} className="p-2 text-left">
                     {isArabic ? "الإجمالي" : "Total"}
@@ -484,7 +504,7 @@ export default function EditClientStatementPage() {
                 />
                 <input
                   type="number"
-                  value={ded.amount || ""}
+                  value={ded.amount ?? ""}
                   onChange={(e) =>
                     updateDeduction(idx, "amount", Number(e.target.value))
                   }
@@ -495,7 +515,7 @@ export default function EditClientStatementPage() {
                 {/* ❌ حذف حقل percent */}
                 <button
                   onClick={() => setShowDeleteDeductionConfirm(idx)}
-                  className="text-red-500"
+                  className="text-danger"
                 >
                   <Trash2 size={14} />
                 </button>
@@ -512,7 +532,7 @@ export default function EditClientStatementPage() {
 
         {/* Summary */}
         <div className="grid md:grid-cols-3 gap-4">
-          <Card className="p-4 bg-green-50">
+          <Card className="p-4 bg-success-light">
             <div className="flex justify-between">
               <span className="font-bold text-sm">
                 {isArabic ? "الإجمالي لقيمة الأعمال" : "Total Work Value"}
@@ -522,12 +542,12 @@ export default function EditClientStatementPage() {
               </span>
             </div>
           </Card>
-          <Card className="p-4 bg-red-50">
+          <Card className="p-4 bg-danger-light">
             <div className="flex justify-between">
               <span className="font-bold text-sm">
                 {isArabic ? "إجمالي الاستقطاعات" : "Total Deductions"}
               </span>
-              <span className="text-xl font-bold text-red-500">
+              <span className="text-xl font-bold text-danger">
                 {totalDeductions.toLocaleString()}
               </span>
             </div>

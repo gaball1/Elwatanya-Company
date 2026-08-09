@@ -5,11 +5,16 @@ import {
   ProjectApplicationError,
   ProjectErrorCode,
 } from '../errors/project-application.error';
+import { OwnershipService } from '@/common/services/ownership.service';
 
 export class SoftDeleteProjectUseCase {
-  constructor(private readonly projects: IProjectRepository) {}
+  constructor(
+    private readonly projects: IProjectRepository,
+    private readonly ownership: OwnershipService,
+  ) {}
 
-  async execute(projectId: string): Promise<Result<void>> {
+  async execute(projectId: string, userProjectId?: string | null): Promise<Result<void>> {
+    await this.ownership.verifyProjectAccess(userProjectId, projectId);
     const project = await this.projects.findById(new UniqueEntityId(projectId));
     if (!project) {
       return Result.fail(

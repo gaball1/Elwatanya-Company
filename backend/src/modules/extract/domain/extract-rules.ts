@@ -136,12 +136,18 @@ export function getPreviousQuantitiesFromExtracts(
   return map;
 }
 
-/** Mirrors validateExtractItems — total must not exceed assignedQuantity */
+/** Mirrors validateExtractItems — validates all extract business rules */
 export function validateExtractItems(
   items: ExtractItemCalculated[],
   contractorAssigned: { itemCode: string; assignedQuantity: number }[],
 ): { ok: true } | { ok: false; error: string } {
+  if (!items.length || items.every((i) => i.current === 0)) {
+    return { ok: false, error: 'At least one item with executed quantity is required' };
+  }
   for (const item of items) {
+    if (item.current < 0) {
+      return { ok: false, error: `Negative executed quantity for ${item.itemCode}` };
+    }
     const contract = contractorAssigned.find((b) => b.itemCode === item.itemCode);
     if (!contract) continue;
     if (item.total > contract.assignedQuantity) {

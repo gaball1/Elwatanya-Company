@@ -24,16 +24,9 @@ import React from "react";
 import { useDebounce } from "@/hooks/useDebounce";
 import { usePagination } from "@/hooks/usePagination";
 import Pagination from "@/components/ui/Pagination";
-import { mockProjectFunds } from "@/lib/mockData";
-import { financeApi } from "@/lib/api/financeApi";
-import type { ProjectFund } from "@/types/finance";
-import {
-  getMiscellaneous,
-  addMiscellaneous as addMiscStore,
-  deleteMiscellaneous as deleteMiscStore,
-  updateMiscellaneous as updateMiscStore,
-  type MiscStoreItem,
-} from "@/lib/mockData";
+import { projectFundService } from "@/services/project-fund.service";
+import { miscellaneousService, type Miscellaneous } from "@/services/miscellaneous.service";
+import { Can } from "@/components/Can";
 
 export default function ProjectMiscellaneousPage() {
   const params = useParams();
@@ -43,37 +36,42 @@ export default function ProjectMiscellaneousPage() {
   const { showToast, ToastComponent } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // ✅ State - جلب البيانات من الـ Store
-  const [miscItems, setMiscItems] = useState<MiscStoreItem[]>(() =>
-    getMiscellaneous(projectId)
-  );
+  // ✅ State - جلب البيانات من الـ API
+  const [miscItems, setMiscItems] = useState<Miscellaneous[]>([]);
+  const [projectFund, setProjectFund] = useState<{ currentBalance: number } | undefined>();
+  const [loading, setLoading] = useState(true);
 
-  const [projectFund, setProjectFund] = useState<ProjectFund | undefined>(
-    mockProjectFunds.find((f) => f.projectId === projectId)
-  );
-
-  // ✅ تحميل العهدة من الـ API
+  // ✅ تحميل البيانات من الـ API
   useEffect(() => {
-    financeApi
-      .getFund(projectId)
-      .then(({ fund }) => setProjectFund(fund))
-      .catch(() => {});
-  }, [projectId]);
+    Promise.all([
+      miscellaneousService.list(),
+      projectFundService.list(),
+    ])
+      .then(([items, funds]) => {
+        setMiscItems(items.filter((m) => m.projectId === projectId));
+        const fund = funds.find((f) => f.projectId === projectId);
+        if (fund) setProjectFund(fund);
+      })
+      .catch(() => {
+        showToast(isArabic ? "فشل تحميل البيانات" : "Failed to load data", "error");
+      })
+      .finally(() => setLoading(false));
+  }, [projectId, showToast, isArabic]);
 
   const [searchTerm, setSearchTerm] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [showAddModal, setShowAddModal] = useState(false);
-  const [editingItem, setEditingItem] = useState<MiscStoreItem | null>(null);
+  const [editingItem, setEditingItem] = useState<Miscellaneous | null>(null);
   const [showFundModal, setShowFundModal] = useState(false);
   const [showRequestModal, setShowRequestModal] = useState(false);
-  const [selectedInvoice, setSelectedInvoice] = useState<MiscStoreItem | null>(
+  const [selectedInvoice, setSelectedInvoice] = useState<Miscellaneous | null>(
     null
   );
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
   const [formData, setFormData] = useState({
     description: "",
     amount: 0,
-    category: "food" as MiscStoreItem["category"],
+    category: "other" as string,
     notes: "",
     invoiceFile: null as File | null,
   });
@@ -116,12 +114,12 @@ export default function ProjectMiscellaneousPage() {
 
   const getCategoryColor = (category: string) => {
     const colors: Record<string, string> = {
-      food: "bg-orange-100 text-orange-800",
-      transport: "bg-blue-100 text-blue-800",
-      tools: "bg-purple-100 text-purple-800",
-      other: "bg-gray-100 text-gray-800",
+      food: "bg-warning-light text-warning-dark",
+      transport: "bg-info-light text-info-dark",
+      tools: "bg-info-light text-info-dark",
+      other: "bg-surface-tertiary text-text-primary",
     };
-    return colors[category] || "bg-gray-100 text-gray-800";
+    return colors[category] || "bg-surface-tertiary text-text-primary";
   };
 
   // ✅ معالج رفع الملف
@@ -174,17 +172,6 @@ export default function ProjectMiscellaneousPage() {
         return;
       }
 
-      // ✅ التحقق من رفع الفاتورة (إجباري)
-      if (!invoiceFile) {
-        showToast(
-          isArabic
-            ? "يرجى رفع الفاتورة (إلزامي)"
-            : "Please upload the invoice (required)",
-          "error"
-        );
-        return;
-      }
-
       if (amount > fundBalance) {
         showToast(
           isArabic ? "رصيد العهدة غير كافٍ" : "Insufficient fund balance",
@@ -193,29 +180,15 @@ export default function ProjectMiscellaneousPage() {
         return;
       }
 
-      let invoiceData = undefined;
-      if (invoiceFile) {
-        const base64 = await fileToBase64(invoiceFile);
-        invoiceData = {
-          name: invoiceFile.name,
-          url: base64,
-          size: invoiceFile.size,
-          type: invoiceFile.type,
-          uploadedAt: new Date().toISOString(),
-        };
-      }
-
       if (editingItem) {
-        // ✅ تعديل في الـ Store
-        const updated = updateMiscStore(projectId, editingItem.id, {
-          description: sanitizeInput(description),
-          amount,
-          category,
-          notes: sanitizeInput(notes),
-          invoiceFile: invoiceData,
-        });
+        try {
+          const updated = await miscellaneousService.update(editingItem.id, {
+            description: sanitizeInput(description),
+            amount,
+            category,
+            notes: sanitizeInput(notes),
+          });
 
-        if (updated) {
           setMiscItems(
             miscItems.map((item) =>
               item.id === editingItem.id ? updated : item
@@ -225,60 +198,36 @@ export default function ProjectMiscellaneousPage() {
             isArabic ? "تم تعديل النثريات" : "Miscellaneous updated",
             "success"
           );
+        } catch {
+          showToast(isArabic ? "فشل التعديل" : "Update failed", "error");
         }
       } else {
-        // ✅ إضافة جديدة في الـ Store
-        const saved = addMiscStore(projectId, {
-          description: sanitizeInput(description),
-          amount,
-          category,
-          date: new Date().toISOString().split("T")[0],
-          notes: sanitizeInput(notes),
-          createdBy: isArabic ? "مدير الموقع" : "Site Manager",
-          invoiceFile: invoiceData,
-        });
-
-        setMiscItems([saved, ...miscItems]);
-
-        // ✅ تحديث العهدة
         try {
-          const { fund } = await financeApi.recordMiscellaneous({
-            id: saved.id,
+          const saved = await miscellaneousService.create({
             projectId,
-            description: saved.description,
-            amount: saved.amount,
-            category: saved.category,
-            date: saved.date,
-            notes: saved.notes,
-            createdBy: saved.createdBy,
+            description: sanitizeInput(description),
+            amount,
+            category,
+            date: new Date().toISOString().split("T")[0],
+            notes: sanitizeInput(notes),
+            createdBy: '',
           });
-          setProjectFund(fund);
-        } catch (err) {
-          // ✅ لو فشل، نرجع النثريات
-          setMiscItems(miscItems);
-          deleteMiscStore(projectId, saved.id);
-          showToast(
-            err instanceof Error
-              ? err.message
-              : isArabic
-              ? "فشل الخصم من العهدة"
-              : "Fund deduction failed",
-            "error"
-          );
-          return;
-        }
 
-        showToast(
-          isArabic ? "تم إضافة النثريات" : "Miscellaneous added",
-          "success"
-        );
+          setMiscItems([saved, ...miscItems]);
+          showToast(
+            isArabic ? "تم إضافة النثريات" : "Miscellaneous added",
+            "success"
+          );
+        } catch {
+          showToast(isArabic ? "فشل الإضافة" : "Failed to add", "error");
+        }
       }
       setShowAddModal(false);
       setEditingItem(null);
       setFormData({
         description: "",
         amount: 0,
-        category: "food",
+        category: "other",
         notes: "",
         invoiceFile: null,
       });
@@ -291,17 +240,15 @@ export default function ProjectMiscellaneousPage() {
       editingItem,
       formData,
       projectId,
-      projectFund,
       fundBalance,
       showToast,
       isArabic,
-      fileToBase64,
     ]
   );
 
   // ✅ عرض الفاتورة
   const viewInvoice = useCallback(
-    (item: MiscStoreItem) => {
+    (item: Miscellaneous) => {
       if (item.invoiceFile) {
         setSelectedInvoice(item);
         setShowInvoiceModal(true);
@@ -317,43 +264,21 @@ export default function ProjectMiscellaneousPage() {
 
   // ✅ حذف نثريات
   const handleDelete = useCallback(
-    (id: string) => {
+    async (id: string) => {
       if (confirm(isArabic ? "هل أنت متأكد من الحذف؟" : "Are you sure?")) {
-        const deletedItem = miscItems.find((m) => m.id === id);
-
-        // ✅ حذف من الـ Store
-        deleteMiscStore(projectId, id);
-        setMiscItems(miscItems.filter((m) => m.id !== id));
-
-        // ✅ تحديث العهدة (إضافة الرصيد مرة أخرى)
-        if (deletedItem && projectFund) {
-          const updatedFund = {
-            ...projectFund,
-            currentBalance: projectFund.currentBalance + deletedItem.amount,
-            lastUpdated: new Date().toISOString().split("T")[0],
-            transactions: [
-              ...projectFund.transactions,
-              {
-                id: `pft-${Date.now()}`,
-                type: "add" as const,
-                category: "miscellaneous" as const,
-                amount: deletedItem.amount,
-                description: `استرجاع: ${deletedItem.description}`,
-                date: new Date().toISOString().split("T")[0],
-                referenceId: deletedItem.id,
-              },
-            ],
-          };
-          setProjectFund(updatedFund);
+        try {
+          await miscellaneousService.remove(id);
+          setMiscItems(miscItems.filter((m) => m.id !== id));
+          showToast(
+            isArabic ? "تم حذف النثريات" : "Miscellaneous deleted",
+            "success"
+          );
+        } catch {
+          showToast(isArabic ? "فشل الحذف" : "Failed to delete", "error");
         }
-
-        showToast(
-          isArabic ? "تم حذف النثريات" : "Miscellaneous deleted",
-          "success"
-        );
       }
     },
-    [miscItems, projectId, projectFund, showToast, isArabic]
+    [miscItems, showToast, isArabic]
   );
 
   // ✅ فتح مودال الإضافة
@@ -373,13 +298,13 @@ export default function ProjectMiscellaneousPage() {
   }, []);
 
   // ✅ فتح مودال التعديل
-  const openEditModal = useCallback((item: MiscStoreItem) => {
+  const openEditModal = useCallback((item: Miscellaneous) => {
     setEditingItem(item);
     setFormData({
       description: item.description,
       amount: item.amount,
       category: item.category,
-      notes: item.notes || "",
+      notes: item.notes ?? "",
       invoiceFile: null,
     });
     setShowAddModal(true);
@@ -404,18 +329,6 @@ export default function ProjectMiscellaneousPage() {
       if (projectFund) {
         const updatedFund = {
           ...projectFund,
-          transactions: [
-            ...projectFund.transactions,
-            {
-              id: `pft-${Date.now()}`,
-              type: "request" as const,
-              category: "miscellaneous" as const,
-              amount,
-              description: `طلب زيادة عهدة نثريات: ${reason}`,
-              date: new Date().toISOString().split("T")[0],
-              status: "pending" as const,
-            },
-          ],
         };
         setProjectFund(updatedFund);
       }
@@ -435,20 +348,7 @@ export default function ProjectMiscellaneousPage() {
       if (projectFund) {
         const updatedFund = {
           ...projectFund,
-          initialBalance: projectFund.initialBalance + amount,
           currentBalance: projectFund.currentBalance + amount,
-          lastUpdated: new Date().toISOString().split("T")[0],
-          transactions: [
-            ...projectFund.transactions,
-            {
-              id: `pft-${Date.now()}`,
-              type: "add" as const,
-              category: "miscellaneous" as const,
-              amount,
-              description: "زيادة عهدة نثريات (معتمدة)",
-              date: new Date().toISOString().split("T")[0],
-            },
-          ],
         };
         setProjectFund(updatedFund);
         showToast(
@@ -474,7 +374,7 @@ export default function ProjectMiscellaneousPage() {
       {/* Fund Cards */}
       <div className="grid md:grid-cols-3 gap-4" suppressHydrationWarning>
         <Card className="p-4 border-r-4 border-gold" suppressHydrationWarning>
-          <p className="text-gray-500 text-sm">
+          <p className="text-text-secondary text-sm">
             {isArabic ? "رصيد العهدة" : "Fund Balance"}
           </p>
           <p className="text-2xl font-bold text-gold">
@@ -482,77 +382,83 @@ export default function ProjectMiscellaneousPage() {
           </p>
         </Card>
         <Card
-          className="p-4 border-r-4 border-red-500"
+          className="p-4 border-r-4 border-danger"
           suppressHydrationWarning
         >
-          <p className="text-gray-500 text-sm">
+          <p className="text-text-secondary text-sm">
             {isArabic ? "إجمالي النثريات" : "Total Miscellaneous"}
           </p>
-          <p className="text-2xl font-bold text-red-500">
+          <p className="text-2xl font-bold text-danger">
             {totalMisc.toLocaleString()} ج.م
           </p>
         </Card>
         <Card
-          className="p-4 border-r-4 border-blue-500"
+          className="p-4 border-r-4 border-info"
           suppressHydrationWarning
         >
-          <p className="text-gray-500 text-sm">
+          <p className="text-text-secondary text-sm">
             {isArabic ? "عدد المصروفات" : "Items Count"}
           </p>
-          <p className="text-2xl font-bold text-blue-500">{miscItems.length}</p>
+          <p className="text-2xl font-bold text-info">{miscItems.length}</p>
         </Card>
       </div>
 
       {/* Actions */}
       <div className="flex flex-wrap gap-3" suppressHydrationWarning>
-        <button
-          onClick={openAddModal}
-          className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition text-sm font-medium"
-          suppressHydrationWarning
-        >
-          <Plus size={18} />
-          {isArabic ? "إضافة نثريات" : "Add Miscellaneous"}
-        </button>
-        <button
-          onClick={() => setShowRequestModal(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition text-sm font-medium"
-          suppressHydrationWarning
-        >
-          <DollarSign size={18} />
-          {isArabic ? "طلب زيادة عهدة" : "Request Fund Increase"}
-        </button>
-        <button
-          onClick={() => setShowFundModal(true)}
-          className="flex items-center gap-2 px-4 py-2 border border-green-600 text-green-600 rounded-lg hover:bg-green-600 hover:text-white transition text-sm font-medium"
-          suppressHydrationWarning
-        >
-          <Plus size={18} />
-          {isArabic ? "إضافة رصيد للعهدة" : "Add Fund"}
-        </button>
+        <Can permission="miscellaneous.create">
+          <button
+            onClick={openAddModal}
+            className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition text-sm font-medium"
+            suppressHydrationWarning
+          >
+            <Plus size={18} />
+            {isArabic ? "إضافة نثريات" : "Add Miscellaneous"}
+          </button>
+        </Can>
+        <Can permission="miscellaneous.create">
+          <button
+            onClick={() => setShowRequestModal(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-warning-dark text-white rounded-lg hover:bg-warning-dark transition text-sm font-medium"
+            suppressHydrationWarning
+          >
+            <DollarSign size={18} />
+            {isArabic ? "طلب زيادة عهدة" : "Request Fund Increase"}
+          </button>
+        </Can>
+        <Can permission="miscellaneous.create">
+          <button
+            onClick={() => setShowFundModal(true)}
+            className="flex items-center gap-2 px-4 py-2 border border-success-dark text-success-dark rounded-lg hover:bg-success-dark hover:text-white transition text-sm font-medium"
+            suppressHydrationWarning
+          >
+            <Plus size={18} />
+            {isArabic ? "إضافة رصيد للعهدة" : "Add Fund"}
+          </button>
+        </Can>
       </div>
 
       {/* Filters */}
       <div
-        className="flex flex-wrap gap-3 items-center bg-white p-3 rounded-lg shadow-sm"
+        className="flex flex-wrap gap-3 items-center bg-surface p-3 rounded-lg shadow-sm"
         suppressHydrationWarning
       >
         <div className="relative flex-1 min-w-[200px]">
-          <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+          <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 text-text-muted w-4 h-4" />
           <input
             type="text"
             placeholder={isArabic ? "بحث..." : "Search..."}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="pr-10 pl-4 py-2 border border-gray-200 rounded-lg w-full text-sm focus:outline-none focus:border-gold"
+            className="pr-10 pl-4 py-2 border border-border rounded-lg w-full text-sm focus:outline-none focus:border-gold"
             suppressHydrationWarning
           />
         </div>
         <div className="relative min-w-[150px]">
-          <Filter className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+          <Filter className="absolute right-3 top-1/2 transform -translate-y-1/2 text-text-muted w-4 h-4" />
           <select
             value={categoryFilter}
             onChange={(e) => setCategoryFilter(e.target.value)}
-            className="pr-10 pl-4 py-2 border border-gray-200 rounded-lg appearance-none text-sm focus:outline-none focus:border-gold w-full"
+            className="pr-10 pl-4 py-2 border border-border rounded-lg appearance-none text-sm focus:outline-none focus:border-gold w-full"
             suppressHydrationWarning
           >
             <option value="all">{isArabic ? "الكل" : "All"}</option>
@@ -570,8 +476,8 @@ export default function ProjectMiscellaneousPage() {
       <div className="space-y-2">
         {currentItems.length === 0 ? (
           <Card className="p-8 text-center">
-            <Coffee size={48} className="mx-auto text-gray-300 mb-3" />
-            <p className="text-gray-500">
+            <Coffee size={48} className="mx-auto text-text-muted mb-3" />
+            <p className="text-text-secondary">
               {isArabic ? "لا توجد نثريات" : "No miscellaneous expenses"}
             </p>
           </Card>
@@ -579,12 +485,12 @@ export default function ProjectMiscellaneousPage() {
           currentItems.map((item) => (
             <div
               key={item.id}
-              className="bg-white p-4 rounded-lg shadow-sm flex justify-between items-center hover:shadow-md transition"
+              className="bg-surface p-4 rounded-lg shadow-sm flex justify-between items-center hover:shadow-md transition"
               suppressHydrationWarning
             >
               <div className="flex items-center gap-4">
                 <div className="text-center min-w-[80px]">
-                  <p className="text-xs text-gray-400">{item.date}</p>
+                  <p className="text-xs text-text-muted">{item.date}</p>
                   <span
                     className={`text-xs px-2 py-0.5 rounded-full ${getCategoryColor(
                       item.category
@@ -594,49 +500,53 @@ export default function ProjectMiscellaneousPage() {
                   </span>
                 </div>
                 <div>
-                  <p className="font-medium text-gray-800">
+                  <p className="font-medium text-text-primary">
                     {item.description}
                   </p>
                   {item.notes && (
-                    <p className="text-xs text-gray-400">{item.notes}</p>
+                    <p className="text-xs text-text-muted">{item.notes}</p>
                   )}
-                  <p className="text-xs text-gray-400">{item.createdBy}</p>
+                  <p className="text-xs text-text-muted">{item.createdBy}</p>
                 </div>
               </div>
               <div className="flex items-center gap-3">
-                <p className="font-bold text-red-500">
+                <p className="font-bold text-danger">
                   -{item.amount.toLocaleString()} ج.م
                 </p>
                 {item.invoiceFile ? (
                   <button
                     onClick={() => viewInvoice(item)}
-                    className="text-blue-500 hover:text-blue-700 transition p-1"
+                    className="text-info hover:text-info-dark transition p-1"
                     title={isArabic ? "عرض الفاتورة" : "View Invoice"}
                     suppressHydrationWarning
                   >
                     <FileText size={16} />
                   </button>
                 ) : (
-                  <span className="text-xs text-gray-400 w-[16px]">
+                  <span className="text-xs text-text-muted w-[16px]">
                     {isArabic ? "لا" : "-"}
                   </span>
                 )}
-                <button
-                  onClick={() => openEditModal(item)}
-                  className="text-blue-500 hover:text-blue-700 transition p-1"
-                  title={isArabic ? "تعديل" : "Edit"}
-                  suppressHydrationWarning
-                >
-                  <Edit2 size={16} />
-                </button>
-                <button
-                  onClick={() => handleDelete(item.id)}
-                  className="text-red-500 hover:text-red-700 transition p-1"
-                  title={isArabic ? "حذف" : "Delete"}
-                  suppressHydrationWarning
-                >
-                  <Trash2 size={16} />
-                </button>
+                <Can permission="miscellaneous.update">
+                  <button
+                    onClick={() => openEditModal(item)}
+                    className="text-info hover:text-info-dark transition p-1"
+                    title={isArabic ? "تعديل" : "Edit"}
+                    suppressHydrationWarning
+                  >
+                    <Edit2 size={16} />
+                  </button>
+                </Can>
+                <Can permission="miscellaneous.delete">
+                  <button
+                    onClick={() => handleDelete(item.id)}
+                    className="text-danger hover:text-danger-dark transition p-1"
+                    title={isArabic ? "حذف" : "Delete"}
+                    suppressHydrationWarning
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </Can>
               </div>
             </div>
           ))
@@ -656,8 +566,8 @@ export default function ProjectMiscellaneousPage() {
       {/* Add/Edit Modal */}
       {showAddModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
-            <div className="p-5 border-b flex justify-between items-center sticky top-0 bg-white">
+          <div className="bg-surface rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+            <div className="p-5 border-b flex justify-between items-center sticky top-0 bg-surface">
               <h2 className="text-xl font-bold text-primary">
                 {editingItem
                   ? isArabic
@@ -682,56 +592,56 @@ export default function ProjectMiscellaneousPage() {
                     fileInputRef.current.value = "";
                   }
                 }}
-                className="text-gray-400 hover:text-gray-600 text-xl"
+                className="text-text-muted hover:text-text-secondary text-xl"
               >
                 ✕
               </button>
             </div>
             <form onSubmit={handleSubmit} className="p-5 space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-text-primary mb-1">
                   {isArabic ? "البيان" : "Description"}{" "}
-                  <span className="text-red-500">*</span>
+                  <span className="text-danger">*</span>
                 </label>
                 <input
                   type="text"
                   value={formData.description}
                   onChange={(e) => updateForm("description", e.target.value)}
-                  className="w-full p-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-gold"
+                  className="w-full p-3 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-gold"
                   required
                   suppressHydrationWarning
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-text-primary mb-1">
                   {isArabic ? "المبلغ" : "Amount"}{" "}
-                  <span className="text-red-500">*</span>
+                  <span className="text-danger">*</span>
                 </label>
                 <input
                   type="number"
-                  value={formData.amount || ""}
+                  value={formData.amount ?? ""}
                   onChange={(e) => updateForm("amount", Number(e.target.value))}
                   min="1"
                   step="any"
-                  className="w-full p-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-gold"
+                  className="w-full p-3 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-gold"
                   required
                   suppressHydrationWarning
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-text-primary mb-1">
                   {isArabic ? "التصنيف" : "Category"}{" "}
-                  <span className="text-red-500">*</span>
+                  <span className="text-danger">*</span>
                 </label>
                 <select
                   value={formData.category}
                   onChange={(e) =>
                     updateForm(
                       "category",
-                      e.target.value as MiscStoreItem["category"]
+                      e.target.value as string
                     )
                   }
-                  className="w-full p-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-gold"
+                  className="w-full p-3 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-gold"
                   suppressHydrationWarning
                 >
                   <option value="food">{isArabic ? "أكل عمال" : "Food"}</option>
@@ -743,23 +653,23 @@ export default function ProjectMiscellaneousPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-text-primary mb-1">
                   {isArabic ? "ملاحظات" : "Notes"}
                 </label>
                 <input
                   type="text"
                   value={formData.notes}
                   onChange={(e) => updateForm("notes", e.target.value)}
-                  className="w-full p-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-gold"
+                  className="w-full p-3 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-gold"
                   suppressHydrationWarning
                 />
               </div>
 
               {/* ✅ رفع الفاتورة */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-text-primary mb-1">
                   {isArabic ? "رفع الفاتورة" : "Upload Invoice"}{" "}
-                  <span className="text-red-500">*</span>
+                  <span className="text-danger">*</span>
                 </label>
                 <div className="flex items-center gap-3">
                   <input
@@ -775,8 +685,8 @@ export default function ProjectMiscellaneousPage() {
                     onClick={() => fileInputRef.current?.click()}
                     className={`flex items-center gap-2 px-4 py-2 border rounded-lg transition text-sm font-medium ${
                       formData.invoiceFile
-                        ? "border-green-500 text-green-500 bg-green-50 hover:bg-green-100"
-                        : "border-red-400 text-red-500 hover:bg-red-50"
+                        ? "border-success text-success bg-success-light hover:bg-success-light"
+                        : "border-red-400 text-danger hover:bg-danger-light"
                     }`}
                   >
                     <Upload size={16} />
@@ -789,22 +699,22 @@ export default function ProjectMiscellaneousPage() {
                       : "Choose File (Required)"}
                   </button>
                   {formData.invoiceFile && (
-                    <div className="flex items-center gap-2 bg-green-50 px-3 py-1 rounded-lg">
-                      <FileText size={14} className="text-green-600" />
-                      <span className="text-xs text-gray-600 truncate max-w-[150px]">
+                    <div className="flex items-center gap-2 bg-success-light px-3 py-1 rounded-lg">
+                      <FileText size={14} className="text-success-dark" />
+                      <span className="text-xs text-text-secondary truncate max-w-[150px]">
                         {formData.invoiceFile.name}
                       </span>
                       <button
                         type="button"
                         onClick={removeFile}
-                        className="text-red-500 hover:text-red-700"
+                        className="text-danger hover:text-danger-dark"
                       >
                         <X size={14} />
                       </button>
                     </div>
                   )}
                 </div>
-                <p className="text-xs text-red-500 mt-1">
+                <p className="text-xs text-danger mt-1">
                   {isArabic
                     ? "رفع الفاتورة إلزامي"
                     : "Invoice upload is required"}
@@ -827,7 +737,7 @@ export default function ProjectMiscellaneousPage() {
                       fileInputRef.current.value = "";
                     }
                   }}
-                  className="flex-1 px-4 py-2 border border-gray-300 rounded-xl hover:bg-gray-50 transition"
+                  className="flex-1 px-4 py-2 border border-border-dark rounded-xl hover:bg-surface-secondary transition"
                 >
                   {isArabic ? "إلغاء" : "Cancel"}
                 </button>
@@ -846,8 +756,8 @@ export default function ProjectMiscellaneousPage() {
       {/* ✅ View Invoice Modal */}
       {showInvoiceModal && selectedInvoice?.invoiceFile && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-            <div className="p-5 border-b flex justify-between items-center sticky top-0 bg-white">
+          <div className="bg-surface rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="p-5 border-b flex justify-between items-center sticky top-0 bg-surface">
               <h2 className="text-xl font-bold text-primary">
                 {isArabic ? "فاتورة النثريات" : "Miscellaneous Invoice"}
               </h2>
@@ -856,65 +766,51 @@ export default function ProjectMiscellaneousPage() {
                   setShowInvoiceModal(false);
                   setSelectedInvoice(null);
                 }}
-                className="text-gray-400 hover:text-gray-600 text-xl"
+                className="text-text-muted hover:text-text-secondary text-xl"
               >
                 ✕
               </button>
             </div>
             <div className="p-5">
               <div className="bg-gray-50 p-4 rounded-lg mb-4">
-                <p className="text-sm text-gray-600">
+                <p className="text-sm text-text-secondary">
                   <span className="font-bold">
-                    {isArabic ? "اسم الملف:" : "File:"}
+                    {isArabic ? "الوصف:" : "Description:"}
                   </span>{" "}
-                  {selectedInvoice.invoiceFile.name}
-                </p>
-                <p className="text-sm text-gray-600">
-                  <span className="font-bold">
-                    {isArabic ? "الحجم:" : "Size:"}
-                  </span>{" "}
-                  {(selectedInvoice.invoiceFile.size / 1024).toFixed(2)} KB
-                </p>
-                <p className="text-sm text-gray-600">
-                  <span className="font-bold">
-                    {isArabic ? "تاريخ الرفع:" : "Uploaded:"}
-                  </span>{" "}
-                  {selectedInvoice.invoiceFile.uploadedAt}
+                  {selectedInvoice.description}
                 </p>
               </div>
               <div className="border rounded-lg p-4 min-h-[300px] flex items-center justify-center">
-                {selectedInvoice.invoiceFile.type.startsWith("image/") ? (
+                {typeof selectedInvoice.invoiceFile === 'string' && selectedInvoice.invoiceFile.startsWith("data:image/") ? (
                   <img
-                    src={selectedInvoice.invoiceFile.url}
-                    alt={selectedInvoice.invoiceFile.name}
+                    src={selectedInvoice.invoiceFile}
+                    alt={selectedInvoice.description}
                     className="max-w-full max-h-[500px] object-contain"
                   />
-                ) : selectedInvoice.invoiceFile.type === "application/pdf" ? (
-                  <iframe
-                    src={selectedInvoice.invoiceFile.url}
-                    className="w-full h-[500px]"
-                    title={selectedInvoice.invoiceFile.name}
-                  />
-                ) : (
+                ) : typeof selectedInvoice.invoiceFile === 'string' ? (
                   <div className="text-center">
                     <FileText
                       size={64}
-                      className="mx-auto text-gray-300 mb-3"
+                      className="mx-auto text-text-muted mb-3"
                     />
-                    <p className="text-gray-500">
+                    <p className="text-text-secondary">
                       {isArabic
                         ? "لا يمكن عرض هذا النوع من الملفات"
                         : "Cannot preview this file type"}
                     </p>
                     <a
-                      href={selectedInvoice.invoiceFile.url}
-                      download={selectedInvoice.invoiceFile.name}
+                      href={selectedInvoice.invoiceFile}
+                      download={selectedInvoice.description}
                       className="mt-3 inline-flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition"
                     >
                       <Download size={16} />
                       {isArabic ? "تحميل الملف" : "Download File"}
                     </a>
                   </div>
+                ) : (
+                  <p className="text-text-secondary">
+                    {isArabic ? "لا توجد فاتورة مرفقة" : "No invoice attached"}
+                  </p>
                 )}
               </div>
             </div>
@@ -925,7 +821,7 @@ export default function ProjectMiscellaneousPage() {
       {/* Request Fund Modal */}
       {showRequestModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-md">
+          <div className="bg-surface rounded-2xl w-full max-w-md">
             <div className="p-5 border-b flex justify-between items-center">
               <h2 className="text-xl font-bold text-primary">
                 {isArabic
@@ -934,14 +830,14 @@ export default function ProjectMiscellaneousPage() {
               </h2>
               <button
                 onClick={() => setShowRequestModal(false)}
-                className="text-gray-400 hover:text-gray-600 text-xl"
+                className="text-text-muted hover:text-text-secondary text-xl"
               >
                 ✕
               </button>
             </div>
             <form onSubmit={handleRequestFund} className="p-5 space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-text-primary mb-1">
                   {isArabic ? "المبلغ المطلوب" : "Requested Amount"}
                 </label>
                 <input
@@ -950,20 +846,20 @@ export default function ProjectMiscellaneousPage() {
                   required
                   min="1"
                   step="any"
-                  className="w-full p-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-gold"
+                  className="w-full p-3 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-gold"
                   placeholder={isArabic ? "أدخل المبلغ" : "Enter amount"}
                   suppressHydrationWarning
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-text-primary mb-1">
                   {isArabic ? "السبب" : "Reason"}
                 </label>
                 <input
                   type="text"
                   name="reason"
                   required
-                  className="w-full p-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-gold"
+                  className="w-full p-3 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-gold"
                   placeholder={
                     isArabic ? "سبب طلب الزيادة" : "Reason for increase"
                   }
@@ -974,13 +870,13 @@ export default function ProjectMiscellaneousPage() {
                 <button
                   type="button"
                   onClick={() => setShowRequestModal(false)}
-                  className="flex-1 px-4 py-2 border border-gray-300 rounded-xl hover:bg-gray-50 transition"
+                  className="flex-1 px-4 py-2 border border-border-dark rounded-xl hover:bg-surface-secondary transition"
                 >
                   {isArabic ? "إلغاء" : "Cancel"}
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 px-4 py-2 bg-yellow-600 text-white rounded-xl hover:bg-yellow-700 transition"
+                  className="flex-1 px-4 py-2 bg-warning-dark text-white rounded-xl hover:bg-warning-dark transition"
                 >
                   {isArabic ? "إرسال الطلب" : "Send Request"}
                 </button>
@@ -993,20 +889,20 @@ export default function ProjectMiscellaneousPage() {
       {/* Add Fund Modal */}
       {showFundModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-md">
+          <div className="bg-surface rounded-2xl w-full max-w-md">
             <div className="p-5 border-b flex justify-between items-center">
               <h2 className="text-xl font-bold text-primary">
                 {isArabic ? "إضافة رصيد للعهدة" : "Add Fund"}
               </h2>
               <button
                 onClick={() => setShowFundModal(false)}
-                className="text-gray-400 hover:text-gray-600 text-xl"
+                className="text-text-muted hover:text-text-secondary text-xl"
               >
                 ✕
               </button>
             </div>
             <div className="p-5">
-              <p className="text-gray-600 mb-4">
+              <p className="text-text-secondary mb-4">
                 {isArabic
                   ? "المبلغ الحالي في العهدة:"
                   : "Current fund balance:"}
@@ -1035,7 +931,7 @@ export default function ProjectMiscellaneousPage() {
                 className="space-y-4"
               >
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-sm font-medium text-text-primary mb-1">
                     {isArabic ? "المبلغ المضاف" : "Amount to Add"}
                   </label>
                   <input
@@ -1044,7 +940,7 @@ export default function ProjectMiscellaneousPage() {
                     required
                     min="1"
                     step="any"
-                    className="w-full p-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-gold"
+                    className="w-full p-3 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-gold"
                     placeholder={isArabic ? "أدخل المبلغ" : "Enter amount"}
                     suppressHydrationWarning
                   />
@@ -1053,13 +949,13 @@ export default function ProjectMiscellaneousPage() {
                   <button
                     type="button"
                     onClick={() => setShowFundModal(false)}
-                    className="flex-1 px-4 py-2 border border-gray-300 rounded-xl hover:bg-gray-50 transition"
+                    className="flex-1 px-4 py-2 border border-border-dark rounded-xl hover:bg-surface-secondary transition"
                   >
                     {isArabic ? "إلغاء" : "Cancel"}
                   </button>
                   <button
                     type="submit"
-                    className="flex-1 px-4 py-2 bg-green-600 text-white rounded-xl hover:bg-green-700 transition"
+                    className="flex-1 px-4 py-2 bg-success-dark text-white rounded-xl hover:bg-success-dark transition"
                   >
                     {isArabic ? "إضافة" : "Add"}
                   </button>

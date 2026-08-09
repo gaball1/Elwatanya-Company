@@ -1,7 +1,7 @@
 /* eslint-disable */
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useParams, usePathname } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
@@ -17,6 +17,9 @@ import {
   LogOut,
   Bell,
 } from "lucide-react";
+import ThemeToggle from "@/components/ui/ThemeToggle";
+import { usePermissions } from "@/hooks/usePermissions";
+import { Permissions } from "@/lib/permissions";
 
 interface NavbarDashboardProps {
   isArabic: boolean;
@@ -28,54 +31,76 @@ export default function NavbarDashboard({ isArabic }: NavbarDashboardProps) {
   const params = useParams();
   const pathname = usePathname();
   const locale = (params.locale as string) ?? "ar";
+  const userPermissions = usePermissions();
 
   useEffect(() => {
     setUnreadCount(3);
   }, []);
 
-  const navItems = [
+  const hasPermission = (permission: string) =>
+    userPermissions.includes(permission);
+
+  const allNavItems = [
     {
       href: `/${locale}/admin`,
       icon: <LayoutDashboard size={18} />,
       label: isArabic ? "لوحة التحكم" : "Dashboard",
+      permission: null as string | null,
     },
     {
       href: `/${locale}/projects`,
       icon: <FolderKanban size={18} />,
       label: isArabic ? "المشاريع" : "Projects",
+      permission: Permissions.Projects.Read,
     },
     {
       href: `/${locale}/employees`,
       icon: <Briefcase size={18} />,
       label: isArabic ? "الموظفين" : "Employees",
+      permission: Permissions.Employees.Read,
+    },
+    {
+      href: `/${locale}/departments`,
+      icon: <Building2 size={18} />,
+      label: isArabic ? "الأقسام" : "Departments",
+      permission: Permissions.Departments.Read,
     },
     {
       href: `/${locale}/subcontractors`,
       icon: <Users size={18} />,
       label: isArabic ? "المقاولين" : "Subcontractors",
+      permission: Permissions.Subcontractors.Read,
     },
     {
       href: `/${locale}/clients`,
       icon: <Building2 size={18} />,
       label: isArabic ? "العملاء" : "Clients",
+      permission: Permissions.Clients.Read,
     },
     {
       href: `/${locale}/suppliers`,
       icon: <Truck size={18} />,
       label: isArabic ? "الموردين" : "Suppliers",
+      permission: Permissions.Suppliers.Read,
     },
     {
       href: `/${locale}/attendance`,
       icon: <Bell size={18} />,
       label: isArabic ? "الحضور" : "Attendance",
+      permission: Permissions.Attendance.Read,
     },
   ];
+
+  const navItems = useMemo(
+    () => allNavItems.filter((item) => !item.permission || hasPermission(item.permission)),
+    [userPermissions, locale, isArabic]
+  );
 
   const isActive = (href: string) =>
     pathname === href || pathname?.startsWith(href + "/");
 
   return (
-    <nav className="sticky top-0 z-40 bg-white border-b border-gray-200 shadow-sm">
+    <nav className="sticky top-0 z-40 bg-surface border-b border-border shadow-sm">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
@@ -85,7 +110,7 @@ export default function NavbarDashboard({ isArabic }: NavbarDashboardProps) {
               alt="Logo"
               className="w-8 h-8 rounded-lg object-contain"
             />
-            <span className="font-bold text-primary hidden sm:block">
+            <span className="font-bold text-gold hidden sm:block">
               {isArabic ? "الوطنية" : "El Wataniya"}
             </span>
           </Link>
@@ -98,8 +123,8 @@ export default function NavbarDashboard({ isArabic }: NavbarDashboardProps) {
                 href={item.href}
                 className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
                   isActive(item.href)
-                    ? "bg-primary/10 text-primary"
-                    : "text-gray-600 hover:bg-gray-100 hover:text-primary"
+                    ? "bg-gold/10 text-gold"
+                    : "text-text-secondary hover:bg-surface-secondary hover:text-gold"
                 }`}
               >
                 {item.icon}
@@ -109,21 +134,21 @@ export default function NavbarDashboard({ isArabic }: NavbarDashboardProps) {
           </div>
 
           {/* Right Side */}
-          <div className="flex items-center gap-3">
-            {/* Notifications Button - شكل أكبر وأوضح */}
+          <div className="flex items-center gap-2">
+            {/* Notifications */}
             <Link
               href={`/${locale}/notifications`}
               className="relative"
               suppressHydrationWarning
             >
               <button
-                className="relative p-2 text-gray-500 hover:text-primary transition rounded-full hover:bg-gray-100"
+                className="relative p-2 text-text-muted hover:text-gold transition rounded-full hover:bg-surface-secondary"
                 suppressHydrationWarning
               >
                 <Bell size={22} />
                 {unreadCount > 0 && (
                   <span
-                    className="absolute -top-1 -right-1 min-w-[22px] h-5 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center px-1.5 shadow-md"
+                    className="absolute -top-1 -right-1 min-w-[22px] h-5 bg-danger text-white text-xs font-bold rounded-full flex items-center justify-center px-1.5 shadow-md"
                     suppressHydrationWarning
                   >
                     {unreadCount > 99 ? "99+" : unreadCount}
@@ -132,23 +157,25 @@ export default function NavbarDashboard({ isArabic }: NavbarDashboardProps) {
               </button>
             </Link>
 
+            {/* ThemeToggle */}
+            <ThemeToggle />
+
             {/* Home */}
             <Link
               href={`/${locale}`}
-              className="text-gray-500 hover:text-primary text-sm transition-colors"
+              className="text-text-muted hover:text-gold text-sm transition-colors"
               suppressHydrationWarning
             >
               {isArabic ? "الرئيسية" : "Home"}
             </Link>
-            
 
             {/* Logout */}
             <Link
               href={`/${locale}`}
-              className="text-gray-500 hover:text-red-500 transition-colors"
+              className="text-text-muted hover:text-danger transition-colors"
               suppressHydrationWarning
             >
-              <button className="text-gray-500 hover:text-red-500 transition-colors">
+              <button className="text-text-muted hover:text-danger transition-colors">
                 <LogOut size={18} />
               </button>
             </Link>
@@ -156,7 +183,7 @@ export default function NavbarDashboard({ isArabic }: NavbarDashboardProps) {
             {/* Mobile Menu Button */}
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="md:hidden"
+              className="md:hidden p-2 text-text-secondary hover:bg-surface-secondary rounded-lg"
               suppressHydrationWarning
             >
               {mobileMenuOpen ? (
@@ -170,7 +197,7 @@ export default function NavbarDashboard({ isArabic }: NavbarDashboardProps) {
 
         {/* Mobile Menu */}
         {mobileMenuOpen && (
-          <div className="md:hidden py-4 border-t border-gray-100">
+          <div className="md:hidden py-4 border-t border-border">
             <div className="flex flex-col gap-2">
               {navItems.map((item) => (
                 <Link
@@ -179,8 +206,8 @@ export default function NavbarDashboard({ isArabic }: NavbarDashboardProps) {
                   onClick={() => setMobileMenuOpen(false)}
                   className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
                     isActive(item.href)
-                      ? "bg-primary/10 text-primary"
-                      : "text-gray-600 hover:bg-gray-100"
+                      ? "bg-gold/10 text-gold"
+                      : "text-text-secondary hover:bg-surface-secondary"
                   }`}
                 >
                   {item.icon}
@@ -190,21 +217,21 @@ export default function NavbarDashboard({ isArabic }: NavbarDashboardProps) {
               <Link
                 href={`/${locale}/notifications`}
                 onClick={() => setMobileMenuOpen(false)}
-                className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100"
+                className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-text-secondary hover:bg-surface-secondary"
               >
                 <Bell size={18} />
                 {isArabic ? "الإشعارات" : "Notifications"}
                 {unreadCount > 0 && (
-                  <span className="bg-red-500 text-white text-xs px-1.5 py-0.5 rounded-full ml-2">
+                  <span className="bg-danger text-white text-xs px-1.5 py-0.5 rounded-full mr-2">
                     {unreadCount}
                   </span>
                 )}
               </Link>
-              <div className="pt-2 mt-2 border-t border-gray-100">
+              <div className="pt-2 mt-2 border-t border-border">
                 <Link
                   href={`/${locale}`}
                   onClick={() => setMobileMenuOpen(false)}
-                  className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100"
+                  className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-text-secondary hover:bg-surface-secondary"
                 >
                   {isArabic ? "الرئيسية" : "Home"}
                 </Link>

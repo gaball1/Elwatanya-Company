@@ -2,17 +2,18 @@
 "use client";
 
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useState } from "react";
+import { Suspense, useState, useEffect } from "react";
 import Link from "next/link";
 import { Card } from "@/components/ui";
 import { Plus, Trash2, Save } from "lucide-react";
-import {
-  mockProjects,
-  mockBuildings,
-  mockClients,
-  mockClientStatements,
-} from "@/lib/mockData";
 import BackButton from "@/components/shared/BackButton";
+import { buildingService } from "@/services/building.service";
+import { projectService } from '@/services/project.service';
+import { clientService, type Client } from '@/services/client.service';
+import { clientStatementService } from '@/services/client-statement.service';
+
+// State for projects will be moved inside component
+
 
 interface Item {
   id: string;
@@ -43,7 +44,7 @@ export default function NewClientStatementPage() {
     <Suspense
       fallback={
         <div className="min-h-screen flex items-center justify-center bg-gray-light">
-          <p className="text-gray-500">...</p>
+          <p className="text-text-secondary">...</p>
         </div>
       }
     >
@@ -60,8 +61,8 @@ function NewClientStatementPageContent() {
   const isArabic = locale === "ar";
 
   // Read from URL params (when navigated from a building)
-  const prefilledProjectId = searchParams.get("projectId") || "";
-  const prefilledBuildingId = searchParams.get("buildingId") || "";
+  const prefilledProjectId = searchParams.get("projectId") ?? "";
+  const prefilledBuildingId = searchParams.get("buildingId") ?? "";
   const isPreFilled = !!(prefilledProjectId && prefilledBuildingId);
 
   // Basic Info
@@ -106,12 +107,22 @@ function NewClientStatementPageContent() {
     number | null
   >(null);
 
-  const selectedProject = mockProjects.find((p) => p.id === projectId);
-  const selectedBuilding = mockBuildings.find((b) => b.id === buildingId);
-  const selectedClient = mockClients.find((c) => c.id === clientId);
-  const availableBuildings = mockBuildings.filter(
-    (b) => b.projectId === projectId
-  );
+  const [projects, setProjects] = useState<any[]>([]);
+  useEffect(() => {
+    projectService.getProjects().then(setProjects).catch(console.error);
+  }, []);
+  const selectedProject = projects.find(p => p.id === projectId);
+  const [buildings, setBuildings] = useState<any[]>([]);
+  useEffect(() => {
+    buildingService.getBuildings(projectId).then((data) => setBuildings(data as any[])).catch(console.error);
+  }, [projectId]);
+  const selectedBuilding = buildings.find(b => b.id === buildingId);
+  const [clients, setClients] = useState<Client[]>([]);
+  useEffect(() => {
+    clientService.list().then(setClients).catch(console.error);
+  }, []);
+  const selectedClient = clients.find((c) => c.id === clientId);
+  const availableBuildings = buildings.filter(b => b.projectId === projectId);
 
   // حساب الإجماليات
   const calculateItem = (item: Item): Item => {
@@ -188,7 +199,7 @@ function NewClientStatementPageContent() {
     setShowDeleteDeductionConfirm(null);
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!projectId || !buildingId || !clientId) {
       alert(
         isArabic
@@ -198,39 +209,40 @@ function NewClientStatementPageContent() {
       return;
     }
 
-    const newId = (mockClientStatements.length + 1).toString();
-    const newStatement = {
-      id: newId,
-      statementNumber:
-        statementNumber || `CS-${new Date().getFullYear()}-${newId}`,
-      projectId,
-      projectName: selectedProject?.name || "",
-      buildingId,
-      buildingName: selectedBuilding?.name || "",
-      clientId,
-      clientName: selectedClient?.name || "",
-      date: statementDate,
-      status: "draft",
-      totalWorkValue,
-      totalDeductions,
-      netPayable,
-      items: items.filter((i) => i.itemName).map((i) => calculateItem(i)),
-      deductions: deductions
-        .filter((d) => d.name && d.amount > 0)
-        .map((d) => ({
-          id: d.id,
-          name: d.name,
-          amount: d.amount,
-        })),
-      signatures: [], // ✅ أضف هذا
-    };
+    try {
+      await clientStatementService.create({
+        statementNumber:
+          statementNumber || `CS-${new Date().getFullYear()}-${Date.now()}`,
+        projectId,
+        projectName: selectedProject?.name ?? "",
+        buildingId,
+        buildingName: selectedBuilding?.name ?? "",
+        clientId,
+        clientName: selectedClient?.name ?? "",
+        date: statementDate,
+        status: "draft",
+        totalWorkValue,
+        totalDeductions,
+        netPayable,
+        items: items.filter((i) => i.itemName).map((i) => calculateItem(i)),
+        deductions: deductions
+          .filter((d) => d.name && d.amount > 0)
+          .map((d) => ({
+            id: d.id,
+            name: d.name,
+            amount: d.amount,
+          })),
+        signatures: [],
+      });
 
-    mockClientStatements.push(newStatement);
-    alert(isArabic ? "تم حفظ المستخلص بنجاح" : "Statement saved successfully");
-    if (isPreFilled) {
-      router.push(`/${locale}/projects/${projectId}/buildings/${buildingId}/client-statements`);
-    } else {
-      router.push(`/${locale}/client-statements`);
+      alert(isArabic ? "تم حفظ المستخلص بنجاح" : "Statement saved successfully");
+      if (isPreFilled) {
+        router.push(`/${locale}/projects/${projectId}/buildings/${buildingId}/client-statements`);
+      } else {
+        router.push(`/${locale}/client-statements`);
+      }
+    } catch {
+      alert(isArabic ? "فشل حفظ المستخلص" : "Failed to save statement");
     }
   };
 
@@ -239,11 +251,11 @@ function NewClientStatementPageContent() {
       {/* Delete modals - same as before */}
       {showDeleteItemConfirm !== null && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full">
+          <div className="bg-surface rounded-2xl p-6 max-w-md w-full">
             <h3 className="text-xl font-bold text-primary mb-4">
               {isArabic ? "تأكيد الحذف" : "Confirm Delete"}
             </h3>
-            <p className="text-gray-600 mb-6">
+            <p className="text-text-secondary mb-6">
               {isArabic
                 ? "هل أنت متأكد من حذف هذا البند؟"
                 : "Are you sure you want to delete this item?"}
@@ -257,7 +269,7 @@ function NewClientStatementPageContent() {
               </button>
               <button
                 onClick={() => deleteItem(showDeleteItemConfirm)}
-                className="flex-1 px-4 py-2 bg-red-500 text-white rounded-xl"
+                className="flex-1 px-4 py-2 bg-danger text-white rounded-xl"
               >
                 {isArabic ? "حذف" : "Delete"}
               </button>
@@ -268,11 +280,11 @@ function NewClientStatementPageContent() {
 
       {showDeleteDeductionConfirm !== null && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full">
+          <div className="bg-surface rounded-2xl p-6 max-w-md w-full">
             <h3 className="text-xl font-bold text-primary mb-4">
               {isArabic ? "تأكيد الحذف" : "Confirm Delete"}
             </h3>
-            <p className="text-gray-600 mb-6">
+            <p className="text-text-secondary mb-6">
               {isArabic
                 ? "هل أنت متأكد من حذف هذا الخصم؟"
                 : "Are you sure you want to delete this deduction?"}
@@ -286,7 +298,7 @@ function NewClientStatementPageContent() {
               </button>
               <button
                 onClick={() => deleteDeduction(showDeleteDeductionConfirm)}
-                className="flex-1 px-4 py-2 bg-red-500 text-white rounded-xl"
+                className="flex-1 px-4 py-2 bg-danger text-white rounded-xl"
               >
                 {isArabic ? "حذف" : "Delete"}
               </button>
@@ -296,7 +308,7 @@ function NewClientStatementPageContent() {
       )}
 
       {/* Header */}
-      <div className="bg-white border-b px-6 py-4 sticky top-0 z-10">
+      <div className="bg-surface border-b px-6 py-4 sticky top-0 z-10">
         <div className="flex justify-between items-center">
           <div className="flex items-center gap-4">
             <BackButton
@@ -324,8 +336,8 @@ function NewClientStatementPageContent() {
       <div className="p-6 space-y-6">
         {/* Basic Info */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-          <div className="bg-white p-4 rounded-lg shadow-sm border-r-4 border-gold">
-            <p className="text-gray-500 text-sm">
+          <div className="bg-surface p-4 rounded-lg shadow-sm border-r-4 border-gold">
+            <p className="text-text-secondary text-sm">
               {isArabic ? "رقم المستخلص" : "Statement No"}
             </p>
             <input
@@ -333,31 +345,31 @@ function NewClientStatementPageContent() {
               value={statementNumber}
               onChange={(e) => setStatementNumber(e.target.value)}
               placeholder="CS-001"
-              className="w-full font-bold text-primary bg-transparent border-b border-gray-200 focus:border-gold outline-none"
+              className="w-full font-bold text-primary bg-transparent border-b border-border focus:border-gold outline-none"
             />
           </div>
-          <div className="bg-white p-4 rounded-lg shadow-sm">
-            <p className="text-gray-500 text-sm">
+          <div className="bg-surface p-4 rounded-lg shadow-sm">
+            <p className="text-text-secondary text-sm">
               {isArabic ? "التاريخ" : "Date"}
             </p>
             <input
               type="date"
               value={statementDate}
               onChange={(e) => setStatementDate(e.target.value)}
-              className="w-full font-bold text-primary bg-transparent border-b border-gray-200 focus:border-gold outline-none"
+              className="w-full font-bold text-primary bg-transparent border-b border-border focus:border-gold outline-none"
             />
           </div>
           {/* Project & Building */}
           {isPreFilled ? (
-            <div className="col-span-2 bg-white p-4 rounded-lg shadow-sm">
-              <p className="text-gray-500 text-sm mb-2">
+            <div className="col-span-2 bg-surface p-4 rounded-lg shadow-sm">
+              <p className="text-text-secondary text-sm mb-2">
                 {isArabic ? "المشروع / المبنى" : "Project / Building"}
               </p>
               <div className="flex gap-3 flex-wrap">
                 <span className="font-bold text-primary">
                   {selectedProject?.name || projectId}
                 </span>
-                <span className="text-gray-400">/</span>
+                <span className="text-text-muted">/</span>
                 <span className="font-bold text-primary">
                   {selectedBuilding?.name || buildingId}
                 </span>
@@ -365,8 +377,8 @@ function NewClientStatementPageContent() {
             </div>
           ) : (
             <>
-              <div className="bg-white p-4 rounded-lg shadow-sm">
-                <p className="text-gray-500 text-sm">
+              <div className="bg-surface p-4 rounded-lg shadow-sm">
+                <p className="text-text-secondary text-sm">
                   {isArabic ? "المشروع" : "Project"}
                 </p>
                 <select
@@ -375,26 +387,26 @@ function NewClientStatementPageContent() {
                     setProjectId(e.target.value);
                     setBuildingId("");
                   }}
-                  className="w-full font-bold text-primary bg-transparent border-b border-gray-200 focus:border-gold outline-none"
+                  className="w-full font-bold text-primary bg-transparent border-b border-border focus:border-gold outline-none"
                 >
                   <option value="">
                     {isArabic ? "-- اختر --" : "-- Select --"}
                   </option>
-                  {mockProjects.map((p) => (
+                  {projects.map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.name}
                     </option>
                   ))}
                 </select>
               </div>
-              <div className="bg-white p-4 rounded-lg shadow-sm">
-                <p className="text-gray-500 text-sm">
+              <div className="bg-surface p-4 rounded-lg shadow-sm">
+                <p className="text-text-secondary text-sm">
                   {isArabic ? "المبنى" : "Building"}
                 </p>
                 <select
                   value={buildingId}
                   onChange={(e) => setBuildingId(e.target.value)}
-                  className="w-full font-bold text-primary bg-transparent border-b border-gray-200 focus:border-gold outline-none"
+                  className="w-full font-bold text-primary bg-transparent border-b border-border focus:border-gold outline-none"
                   disabled={!projectId}
                 >
                   <option value="">
@@ -409,19 +421,19 @@ function NewClientStatementPageContent() {
               </div>
             </>
           )}
-          <div className="bg-white p-4 rounded-lg shadow-sm">
-            <p className="text-gray-500 text-sm">
+          <div className="bg-surface p-4 rounded-lg shadow-sm">
+            <p className="text-text-secondary text-sm">
               {isArabic ? "العميل" : "Client"}
             </p>
             <select
               value={clientId}
               onChange={(e) => setClientId(e.target.value)}
-              className="w-full font-bold text-primary bg-transparent border-b border-gray-200 focus:border-gold outline-none"
+              className="w-full font-bold text-primary bg-transparent border-b border-border focus:border-gold outline-none"
             >
               <option value="">
                 {isArabic ? "-- اختر --" : "-- Select --"}
               </option>
-              {mockClients.map((c) => (
+              {clients.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
                 </option>
@@ -485,7 +497,7 @@ function NewClientStatementPageContent() {
               </thead>
               <tbody>
                 {items.map((item, idx) => (
-                  <tr key={item.id} className="border-t hover:bg-gray-50">
+                  <tr key={item.id} className="border-t hover:bg-surface-secondary">
                     <td className="p-1 border text-center">{idx + 1}</td>
                     <td className="p-1 border">
                       <input
@@ -512,7 +524,7 @@ function NewClientStatementPageContent() {
                     <td className="p-1 border">
                       <input
                         type="number"
-                        value={item.quantity || ""}
+                        value={item.quantity ?? ""}
                         onChange={(e) =>
                           updateItem(idx, "quantity", Number(e.target.value))
                         }
@@ -523,7 +535,7 @@ function NewClientStatementPageContent() {
                     <td className="p-1 border">
                       <input
                         type="number"
-                        value={item.unitPrice || ""}
+                        value={item.unitPrice ?? ""}
                         onChange={(e) =>
                           updateItem(idx, "unitPrice", Number(e.target.value))
                         }
@@ -534,7 +546,7 @@ function NewClientStatementPageContent() {
                     <td className="p-1 border">
                       <input
                         type="number"
-                        value={item.previous || ""}
+                        value={item.previous ?? ""}
                         onChange={(e) =>
                           updateItem(idx, "previous", Number(e.target.value))
                         }
@@ -545,7 +557,7 @@ function NewClientStatementPageContent() {
                     <td className="p-1 border">
                       <input
                         type="number"
-                        value={item.current || ""}
+                        value={item.current ?? ""}
                         onChange={(e) =>
                           updateItem(idx, "current", Number(e.target.value))
                         }
@@ -562,7 +574,7 @@ function NewClientStatementPageContent() {
                     <td className="p-1 border text-center font-bold">
                       {item.workValue.toLocaleString()}
                     </td>
-                    <td className="p-1 border text-center text-red-500">
+                    <td className="p-1 border text-center text-danger">
                       {item.deduction.toLocaleString()}
                     </td>
                     <td className="p-1 border text-center font-bold text-gold">
@@ -582,7 +594,7 @@ function NewClientStatementPageContent() {
                     <td className="p-1 border text-center">
                       <button
                         onClick={() => setShowDeleteItemConfirm(idx)}
-                        className="text-red-500"
+                        className="text-danger"
                       >
                         <Trash2 size={14} />
                       </button>
@@ -590,7 +602,7 @@ function NewClientStatementPageContent() {
                   </tr>
                 ))}
               </tbody>
-              <tfoot className="bg-gray-100 font-bold">
+              <tfoot className="bg-surface-tertiary font-bold">
                 <tr className="border-t">
                   <td colSpan={9} className="p-2 text-left">
                     {isArabic ? "الإجمالي" : "Total"}
@@ -635,7 +647,7 @@ function NewClientStatementPageContent() {
                 />
                 <input
                   type="number"
-                  value={ded.amount || ""}
+                  value={ded.amount ?? ""}
                   onChange={(e) =>
                     updateDeduction(idx, "amount", Number(e.target.value))
                   }
@@ -645,7 +657,7 @@ function NewClientStatementPageContent() {
                 />
                 <input
                   type="number"
-                  value={ded.percent || ""}
+                  value={ded.percent ?? ""}
                   onChange={(e) =>
                     updateDeduction(idx, "percent", Number(e.target.value))
                   }
@@ -655,7 +667,7 @@ function NewClientStatementPageContent() {
                 />
                 <button
                   onClick={() => setShowDeleteDeductionConfirm(idx)}
-                  className="text-red-500"
+                  className="text-danger"
                 >
                   <Trash2 size={14} />
                 </button>
@@ -672,7 +684,7 @@ function NewClientStatementPageContent() {
 
         {/* Summary */}
         <div className="grid md:grid-cols-3 gap-4">
-          <Card className="p-4 bg-green-50">
+          <Card className="p-4 bg-success-light">
             <div className="flex justify-between">
               <span className="font-bold text-sm">
                 {isArabic ? "الإجمالي لقيمة الأعمال" : "Total Work Value"}
@@ -682,12 +694,12 @@ function NewClientStatementPageContent() {
               </span>
             </div>
           </Card>
-          <Card className="p-4 bg-red-50">
+          <Card className="p-4 bg-danger-light">
             <div className="flex justify-between">
               <span className="font-bold text-sm">
                 {isArabic ? "إجمالي الاستقطاعات" : "Total Deductions"}
               </span>
-              <span className="text-xl font-bold text-red-500">
+              <span className="text-xl font-bold text-danger">
                 {totalDeductions.toLocaleString()}
               </span>
             </div>

@@ -6,10 +6,10 @@ import type { Project } from "@/types/project";
 import { MapPin, Calendar } from "lucide-react";
 
 const statusColors: Record<Project["status"], string> = {
-  planning: "bg-yellow-100 text-yellow-800",
-  active: "bg-green-100 text-green-800",
-  completed: "bg-blue-100 text-blue-800",
-  on_hold: "bg-gray-100 text-gray-800",
+  planning: "bg-warning-light text-warning-dark",
+  active: "bg-success-light text-success-dark",
+  completed: "bg-info-light text-info-dark",
+  on_hold: "bg-surface-tertiary text-text-secondary",
 };
 
 const statusLabels: Record<Project["status"], string> = {
@@ -36,10 +36,10 @@ export default function ProjectCard({ project }: ProjectCardProps) {
           {statusLabels[project.status]}
         </span>
       </div>
-      <p className="text-gray-500 text-sm mb-4 line-clamp-2">
+      <p className="text-text-secondary text-sm mb-4 line-clamp-2">
         {project.description}
       </p>
-      <div className="space-y-2 text-sm text-gray-500">
+      <div className="space-y-2 text-sm text-text-secondary">
         <div className="flex items-center gap-2">
           <MapPin size={14} className="text-gold" />
           <span>{project.location}</span>

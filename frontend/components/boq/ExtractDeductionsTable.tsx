@@ -45,13 +45,13 @@ export default function ExtractDeductionsTable({
   };
 
   return (
-    <div className="overflow-hidden rounded-xl border border-gray-200 shadow-sm">
-      <div className="bg-red-600 text-white px-4 py-2.5 font-bold text-sm">
+    <div className="overflow-hidden rounded-xl border border-border shadow-sm">
+      <div className="bg-danger-dark text-white px-4 py-2.5 font-bold text-sm">
         {isArabic ? "بيان الاستقطاعات" : "Deductions Statement"}
       </div>
       <table className="w-full text-sm border-collapse">
         <thead>
-          <tr className="bg-red-50 text-red-800">
+          <tr className="bg-danger-light text-danger-dark">
             <th className="p-2 border text-right">
               {isArabic ? "البيان" : "Description"}
             </th>
@@ -66,26 +66,26 @@ export default function ExtractDeductionsTable({
         </thead>
         <tbody>
           {autoRows.map((ded) => (
-            <tr key={ded.id} className="border-t bg-gray-50">
-              <td className="p-2 border font-medium text-gray-700">
+            <tr key={ded.id} className="border-t bg-surface-secondary">
+              <td className="p-2 border font-medium text-text-primary">
                 {ded.name}
                 {ded.readOnly && (
-                  <span className="ms-2 text-xs text-gray-400">
+                  <span className="ms-2 text-xs text-text-muted">
                     ({isArabic ? "تلقائي" : "auto"})
                   </span>
                 )}
               </td>
-              <td className="p-2 border text-center text-gray-600">
+              <td className="p-2 border text-center text-text-secondary">
                 {ded.percent ? `${ded.percent}%` : "—"}
               </td>
-              <td className="p-2 border text-center font-bold text-red-600">
+              <td className="p-2 border text-center font-bold text-danger">
                 {ded.amount.toLocaleString()}
               </td>
               <td className="p-2 border"></td>
             </tr>
           ))}
           {manualRows.map((ded, idx) => (
-            <tr key={ded.id} className="border-t hover:bg-gray-50">
+            <tr key={ded.id} className="border-t hover:bg-surface-secondary">
               <td className="p-2 border">
                 {readOnly ? (
                   ded.name
@@ -105,7 +105,7 @@ export default function ExtractDeductionsTable({
                 ) : (
                   <input
                     type="number"
-                    value={ded.percent || ""}
+                    value={ded.percent ?? ""}
                     onChange={(e) =>
                       updateManual(idx, "percent", Number(e.target.value))
                     }
@@ -115,13 +115,13 @@ export default function ExtractDeductionsTable({
                   />
                 )}
               </td>
-              <td className="p-2 border text-center font-bold text-red-600">
+              <td className="p-2 border text-center font-bold text-danger">
                 {readOnly ? (
                   ded.amount.toLocaleString()
                 ) : (
                   <input
                     type="number"
-                    value={ded.amount || ""}
+                    value={ded.amount ?? ""}
                     onChange={(e) =>
                       updateManual(idx, "amount", Number(e.target.value))
                     }
@@ -135,7 +135,7 @@ export default function ExtractDeductionsTable({
                   <button
                     type="button"
                     onClick={() => onDeleteConfirm(idx)}
-                    className="text-red-500 hover:text-red-700"
+                    className="text-danger hover:text-danger-dark"
                   >
                     <Trash2 size={16} />
                   </button>
@@ -145,7 +145,7 @@ export default function ExtractDeductionsTable({
           ))}
         </tbody>
         <tfoot>
-          <tr className="bg-red-600 text-white font-bold">
+          <tr className="bg-danger-dark text-white font-bold">
             <td className="p-2.5 border" colSpan={2}>
               {isArabic ? "إجمالي الاستقطاعات" : "Total Deductions"}
             </td>
@@ -159,7 +159,7 @@ export default function ExtractDeductionsTable({
         </tfoot>
       </table>
       {!readOnly && (
-        <div className="p-3 border-t bg-white">
+        <div className="p-3 border-t bg-surface">
           <button
             type="button"
             onClick={addManual}

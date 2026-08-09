@@ -2,11 +2,15 @@
 "use client";
 
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useState } from "react";
+
 import Link from "next/link";
 import { Card } from "@/components/ui";
 import { Plus, Trash2, Save, X } from "lucide-react";
-import { mockProjects, mockBuildings, mockSubcontractors, mockSubcontractorStatements } from "@/lib/mockData";
+import { buildingService } from "@/services/building.service";
+import { Suspense, useEffect, useState } from "react";
+import { projectService } from "@/services/project.service";
+import { subcontractorService } from "@/services/subcontractor.service";
+import { subcontractorStatementService } from "@/services/subcontractor-statement.service";
 import BackButton from "@/components/shared/BackButton";
 
 interface Item {
@@ -33,7 +37,7 @@ export default function NewStatementPage() {
     <Suspense
       fallback={
         <div className="min-h-screen flex items-center justify-center bg-gray-light">
-          <p className="text-gray-500">...</p>
+          <p className="text-text-secondary">...</p>
         </div>
       }
     >
@@ -50,8 +54,8 @@ function NewStatementPageContent() {
   const isArabic = locale === "ar";
 
   // Read from URL params (when navigated from a building)
-  const prefilledProjectId = searchParams.get("projectId") || "";
-  const prefilledBuildingId = searchParams.get("buildingId") || "";
+  const prefilledProjectId = searchParams.get("projectId") ?? "";
+  const prefilledBuildingId = searchParams.get("buildingId") ?? "";
   const isPreFilled = !!(prefilledProjectId && prefilledBuildingId);
 
   // Basic Info
@@ -78,10 +82,29 @@ function NewStatementPageContent() {
   const [showDeleteItemConfirm, setShowDeleteItemConfirm] = useState<number | null>(null);
   const [showDeleteDeductionConfirm, setShowDeleteDeductionConfirm] = useState<number | null>(null);
 
-  const selectedProject = mockProjects.find(p => p.id === projectId);
-  const selectedBuilding = mockBuildings.find(b => b.id === buildingId);
-  const selectedSubcontractor = mockSubcontractors.find(s => s.id === subcontractorId);
-  const availableBuildings = mockBuildings.filter(b => b.projectId === projectId);
+  const [projects, setProjects] = useState<any[]>([]);
+  useEffect(() => {
+    projectService.getProjects().then(setProjects).catch(console.error);
+  }, []);
+  const selectedProject = projects.find(p => p.id === projectId);
+  const [buildings, setBuildings] = useState<any[]>([]);
+  useEffect(() => {
+    if (projectId) {
+      const fetchBuildings = async () => {
+        const b = await buildingService.getBuildings(projectId);
+        setBuildings(b as any[]);
+      };
+      fetchBuildings().catch(console.error);
+    }
+  }, [projectId]);
+
+  const selectedBuilding = buildings.find(b => b.id === buildingId);
+  const [subcontractors, setSubcontractors] = useState<any[]>([]);
+  useEffect(() => {
+    subcontractorService.list().then(setSubcontractors).catch(console.error);
+  }, []);
+  const selectedSubcontractor = subcontractors.find(s => s.id === subcontractorId);
+  const availableBuildings = buildings.filter(b => b.projectId === projectId);
 
   // حساب الإجماليات
   const totalWorkValue = items.reduce((sum, item) => sum + (item.quantity * item.price), 0);
@@ -136,28 +159,25 @@ function NewStatementPageContent() {
       return;
     }
 
-    const newId = (mockSubcontractorStatements.length + 1).toString();
     const newStatement = {
-      id: newId,
-      statementNumber: statementNumber || `ST-${new Date().getFullYear()}-${newId}`,
+      statementNumber: statementNumber || `ST-${new Date().getFullYear()}-${Date.now()}`,
       projectId,
-      projectName: selectedProject?.name || "",
+      projectName: selectedProject?.name ?? "",
       buildingId,
-      buildingName: selectedBuilding?.name || "",
+      buildingName: selectedBuilding?.name ?? "",
       subcontractorId,
-      subcontractorName: selectedSubcontractor?.name || "",
-      workType: selectedSubcontractor?.workType || "",
+      subcontractorName: selectedSubcontractor?.name ?? "",
+      workType: selectedSubcontractor?.workType ?? "",
       date: statementDate,
       status: "draft",
-      blockNumber: blockNumber || `BLK-${newId}`,
-      formNumber: formNumber || `FRM-${newId}`,
+      blockNumber: blockNumber || `BLK-${Date.now()}`,
+      formNumber: formNumber || `FRM-${Date.now()}`,
       insurancePercent,
       totalWorkValue,
       totalInsurance,
       totalDeductions,
       previousPaid: 0,
       netPayable,
-      runningNumber: mockSubcontractorStatements.length + 1,
       items: items.filter(i => i.itemName).map((i, idx) => ({
         id: i.id,
         model: (idx + 1).toString(),
@@ -177,14 +197,14 @@ function NewStatementPageContent() {
       signatures: [],
     };
 
-    mockSubcontractorStatements.push(newStatement);
-    alert(isArabic ? "تم حفظ المستخلص بنجاح" : "Statement saved successfully");
-    // Return to building statements page if navigated from building, else go to statements list
-    if (isPreFilled) {
-      router.push(`/${locale}/projects/${projectId}/buildings/${buildingId}/statements`);
-    } else {
-      router.push(`/${locale}/statements`);
-    }
+    subcontractorStatementService.create(newStatement).then(() => {
+      alert(isArabic ? "تم حفظ المستخلص بنجاح" : "Statement saved successfully");
+      if (isPreFilled) {
+        router.push(`/${locale}/projects/${projectId}/buildings/${buildingId}/statements`);
+      } else {
+        router.push(`/${locale}/statements`);
+      }
+    }).catch(console.error);
   };
 
   return (
@@ -192,12 +212,12 @@ function NewStatementPageContent() {
       {/* Delete Item Confirmation Modal */}
       {showDeleteItemConfirm !== null && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full">
+          <div className="bg-surface rounded-2xl p-6 max-w-md w-full">
             <h3 className="text-xl font-bold text-primary mb-4">{isArabic ? "تأكيد الحذف" : "Confirm Delete"}</h3>
-            <p className="text-gray-600 mb-6">{isArabic ? "هل أنت متأكد من حذف هذا البند؟" : "Are you sure you want to delete this item?"}</p>
+            <p className="text-text-secondary mb-6">{isArabic ? "هل أنت متأكد من حذف هذا البند؟" : "Are you sure you want to delete this item?"}</p>
             <div className="flex gap-3">
               <button onClick={() => setShowDeleteItemConfirm(null)} className="flex-1 px-4 py-2 border rounded-xl">{isArabic ? "إلغاء" : "Cancel"}</button>
-              <button onClick={() => deleteItem(showDeleteItemConfirm)} className="flex-1 px-4 py-2 bg-red-500 text-white rounded-xl">{isArabic ? "حذف" : "Delete"}</button>
+              <button onClick={() => deleteItem(showDeleteItemConfirm)} className="flex-1 px-4 py-2 bg-danger text-white rounded-xl">{isArabic ? "حذف" : "Delete"}</button>
             </div>
           </div>
         </div>
@@ -206,19 +226,19 @@ function NewStatementPageContent() {
       {/* Delete Deduction Confirmation Modal */}
       {showDeleteDeductionConfirm !== null && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full">
+          <div className="bg-surface rounded-2xl p-6 max-w-md w-full">
             <h3 className="text-xl font-bold text-primary mb-4">{isArabic ? "تأكيد الحذف" : "Confirm Delete"}</h3>
-            <p className="text-gray-600 mb-6">{isArabic ? "هل أنت متأكد من حذف هذا الخصم؟" : "Are you sure you want to delete this deduction?"}</p>
+            <p className="text-text-secondary mb-6">{isArabic ? "هل أنت متأكد من حذف هذا الخصم؟" : "Are you sure you want to delete this deduction?"}</p>
             <div className="flex gap-3">
               <button onClick={() => setShowDeleteDeductionConfirm(null)} className="flex-1 px-4 py-2 border rounded-xl">{isArabic ? "إلغاء" : "Cancel"}</button>
-              <button onClick={() => deleteDeduction(showDeleteDeductionConfirm)} className="flex-1 px-4 py-2 bg-red-500 text-white rounded-xl">{isArabic ? "حذف" : "Delete"}</button>
+              <button onClick={() => deleteDeduction(showDeleteDeductionConfirm)} className="flex-1 px-4 py-2 bg-danger text-white rounded-xl">{isArabic ? "حذف" : "Delete"}</button>
             </div>
           </div>
         </div>
       )}
 
       {/* Header */}
-      <div className="bg-white border-b px-6 py-4 sticky top-0 z-10">
+      <div className="bg-surface border-b px-6 py-4 sticky top-0 z-10">
         <div className="flex justify-between items-center">
           <div className="flex items-center gap-4">
             <BackButton
@@ -230,7 +250,7 @@ function NewStatementPageContent() {
             />
             <div>
               <h1 className="text-3xl font-bold text-primary">{isArabic ? "مستخلص أعمال جاري" : "Current Work Statement"}</h1>
-              <p className="text-sm text-gray-500 mt-1">{statementDate} | {isArabic ? "اسم المشروع" : "Project"}: {selectedProject?.name || "---"}</p>
+              <p className="text-sm text-text-secondary mt-1">{statementDate} | {isArabic ? "اسم المشروع" : "Project"}: {selectedProject?.name || "---"}</p>
             </div>
           </div>
           <button onClick={handleSubmit} className="flex items-center gap-2 px-6 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition">
@@ -242,24 +262,24 @@ function NewStatementPageContent() {
       <div className="p-6 space-y-6">
         {/* Project and Contractor Info */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-white p-4 rounded-lg shadow-sm border-r-4 border-gold">
-            <p className="text-gray-500 text-sm">{isArabic ? "النموذج" : "Form"}</p>
-            <input type="text" value={formNumber} onChange={(e) => setFormNumber(e.target.value)} placeholder="B-T-B-9" className="w-full font-bold text-primary bg-transparent border-b border-gray-200 focus:border-gold outline-none" />
+          <div className="bg-surface p-4 rounded-lg shadow-sm border-r-4 border-gold">
+            <p className="text-text-secondary text-sm">{isArabic ? "النموذج" : "Form"}</p>
+            <input type="text" value={formNumber} onChange={(e) => setFormNumber(e.target.value)} placeholder="B-T-B-9" className="w-full font-bold text-primary bg-transparent border-b border-border focus:border-gold outline-none" />
           </div>
-          <div className="bg-white p-4 rounded-lg shadow-sm">
-            <p className="text-gray-500 text-sm">{isArabic ? "اسم المقاول" : "Subcontractor"}</p>
-            <select value={subcontractorId} onChange={(e) => setSubcontractorId(e.target.value)} className="w-full font-bold text-primary bg-transparent border-b border-gray-200 focus:border-gold outline-none">
+          <div className="bg-surface p-4 rounded-lg shadow-sm">
+            <p className="text-text-secondary text-sm">{isArabic ? "اسم المقاول" : "Subcontractor"}</p>
+            <select value={subcontractorId} onChange={(e) => setSubcontractorId(e.target.value)} className="w-full font-bold text-primary bg-transparent border-b border-border focus:border-gold outline-none">
               <option value="">{isArabic ? "-- اختر --" : "-- Select --"}</option>
-              {mockSubcontractors.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              {subcontractors.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </div>
-          <div className="bg-white p-4 rounded-lg shadow-sm">
-            <p className="text-gray-500 text-sm">{isArabic ? "البند الأساسي" : "Main Item"}</p>
-            <input type="text" value={selectedSubcontractor?.workType || ""} readOnly className="w-full font-bold text-primary bg-transparent" />
+          <div className="bg-surface p-4 rounded-lg shadow-sm">
+            <p className="text-text-secondary text-sm">{isArabic ? "البند الأساسي" : "Main Item"}</p>
+            <input type="text" value={selectedSubcontractor?.workType ?? ""} readOnly className="w-full font-bold text-primary bg-transparent" />
           </div>
-          <div className="bg-white p-4 rounded-lg shadow-sm">
-            <p className="text-gray-500 text-sm">{isArabic ? "رقم القطعة" : "Block No"}</p>
-            <input type="text" value={blockNumber} onChange={(e) => setBlockNumber(e.target.value)} placeholder="B-T-B-9" className="w-full font-bold text-primary bg-transparent border-b border-gray-200 focus:border-gold outline-none" />
+          <div className="bg-surface p-4 rounded-lg shadow-sm">
+            <p className="text-text-secondary text-sm">{isArabic ? "رقم القطعة" : "Block No"}</p>
+            <input type="text" value={blockNumber} onChange={(e) => setBlockNumber(e.target.value)} placeholder="B-T-B-9" className="w-full font-bold text-primary bg-transparent border-b border-border focus:border-gold outline-none" />
           </div>
         </div>
 
@@ -267,11 +287,11 @@ function NewStatementPageContent() {
         {isPreFilled && (
           <div className="flex gap-3 flex-wrap">
             <div className="bg-primary/5 border border-primary/20 rounded-lg px-4 py-2 text-sm">
-              <span className="text-gray-500">{isArabic ? "المشروع:" : "Project:"} </span>
+              <span className="text-text-secondary">{isArabic ? "المشروع:" : "Project:"} </span>
               <span className="font-bold text-primary">{selectedProject?.name || projectId}</span>
             </div>
             <div className="bg-primary/5 border border-primary/20 rounded-lg px-4 py-2 text-sm">
-              <span className="text-gray-500">{isArabic ? "المبنى:" : "Building:"} </span>
+              <span className="text-text-secondary">{isArabic ? "المبنى:" : "Building:"} </span>
               <span className="font-bold text-primary">{selectedBuilding?.name || buildingId}</span>
             </div>
           </div>
@@ -309,26 +329,26 @@ function NewStatementPageContent() {
                   const insuranceAmount = totalAmount * (insurancePercent / 100);
                   const netAmount = totalAmount - insuranceAmount;
                   return (
-                    <tr key={item.id} className="border-t hover:bg-gray-50">
+                    <tr key={item.id} className="border-t hover:bg-surface-secondary">
                       <td className="p-2 border text-center">{idx + 1}</td>
                       <td className="p-2 border"><input type="text" value={item.itemName} onChange={(e) => updateItem(idx, "itemName", e.target.value)} className="w-48 p-1 border rounded text-sm" placeholder="اسم البند" /></td>
                       <td className="p-2 border"><input type="text" value={item.unit} onChange={(e) => updateItem(idx, "unit", e.target.value)} className="w-20 p-1 border rounded text-sm" placeholder="وحدة" /></td>
-                      <td className="p-2 border"><input type="number" value={item.previous || ""} onChange={(e) => updateItem(idx, "previous", Number(e.target.value))} className="w-24 p-1 border rounded text-sm" /></td>
-                      <td className="p-2 border"><input type="number" value={item.current || ""} onChange={(e) => updateItem(idx, "current", Number(e.target.value))} className="w-24 p-1 border rounded text-sm" /></td>
-                      <td className="p-2 border"><input type="number" value={item.executionPercent || ""} onChange={(e) => updateItem(idx, "executionPercent", Number(e.target.value))} className="w-20 p-1 border rounded text-sm" step="any" /></td>
-                      <td className="p-2 border"><input type="number" value={item.count || ""} onChange={(e) => updateItem(idx, "count", Number(e.target.value))} className="w-20 p-1 border rounded text-sm" /></td>
-                      <td className="p-2 border"><input type="number" value={item.quantity || ""} onChange={(e) => updateItem(idx, "quantity", Number(e.target.value))} className="w-24 p-1 border rounded text-sm" step="any" /></td>
-                      <td className="p-2 border"><input type="number" value={item.price || ""} onChange={(e) => updateItem(idx, "price", Number(e.target.value))} className="w-24 p-1 border rounded text-sm" step="any" /></td>
+                      <td className="p-2 border"><input type="number" value={item.previous ?? ""} onChange={(e) => updateItem(idx, "previous", Number(e.target.value))} className="w-24 p-1 border rounded text-sm" /></td>
+                      <td className="p-2 border"><input type="number" value={item.current ?? ""} onChange={(e) => updateItem(idx, "current", Number(e.target.value))} className="w-24 p-1 border rounded text-sm" /></td>
+                      <td className="p-2 border"><input type="number" value={item.executionPercent ?? ""} onChange={(e) => updateItem(idx, "executionPercent", Number(e.target.value))} className="w-20 p-1 border rounded text-sm" step="any" /></td>
+                      <td className="p-2 border"><input type="number" value={item.count ?? ""} onChange={(e) => updateItem(idx, "count", Number(e.target.value))} className="w-20 p-1 border rounded text-sm" /></td>
+                      <td className="p-2 border"><input type="number" value={item.quantity ?? ""} onChange={(e) => updateItem(idx, "quantity", Number(e.target.value))} className="w-24 p-1 border rounded text-sm" step="any" /></td>
+                      <td className="p-2 border"><input type="number" value={item.price ?? ""} onChange={(e) => updateItem(idx, "price", Number(e.target.value))} className="w-24 p-1 border rounded text-sm" step="any" /></td>
                       <td className="p-2 border text-center font-bold">{totalAmount.toLocaleString()}</td>
                       <td className="p-2 border text-center">{insurancePercent}%</td>
-                      <td className="p-2 border text-center text-red-500">{insuranceAmount.toLocaleString()}</td>
+                      <td className="p-2 border text-center text-danger">{insuranceAmount.toLocaleString()}</td>
                       <td className="p-2 border text-center font-bold text-gold">{netAmount.toLocaleString()}</td>
-                      <td className="p-2 border text-center"><button onClick={() => confirmDeleteItem(idx)} className="text-red-500"><Trash2 size={16} /></button></td>
+                      <td className="p-2 border text-center"><button onClick={() => confirmDeleteItem(idx)} className="text-danger"><Trash2 size={16} /></button></td>
                     </tr>
                   );
                 })}
               </tbody>
-              <tfoot className="bg-gray-100 font-bold">
+              <tfoot className="bg-surface-tertiary font-bold">
                 <tr className="border-t">
                   <td colSpan={9} className="p-2 text-left">{isArabic ? "الإجمالي" : "Total"}</td>
                   <td className="p-2 text-center">{totalWorkValue.toLocaleString()}</td>
@@ -352,10 +372,10 @@ function NewStatementPageContent() {
             {deductions.map((ded, idx) => (
               <div key={ded.id} className="flex gap-2 items-center">
                 <input type="text" value={ded.name} onChange={(e) => updateDeduction(idx, "name", e.target.value)} className="flex-1 p-2 border rounded-lg text-sm" placeholder={isArabic ? "اسم الخصم" : "Name"} />
-                {ded.percent > 0 && <span className="text-gray-500">{ded.percent}%</span>}
-                <input type="number" value={ded.amount || ""} onChange={(e) => updateDeduction(idx, "amount", Number(e.target.value))} className="w-32 p-2 border rounded-lg text-sm" placeholder={isArabic ? "المبلغ" : "Amount"} step="any" />
-                <input type="number" value={ded.percent || ""} onChange={(e) => updateDeduction(idx, "percent", Number(e.target.value))} className="w-20 p-2 border rounded-lg text-sm" placeholder="%" step="any" />
-                <button onClick={() => confirmDeleteDeduction(idx)} className="text-red-500"><Trash2 size={16} /></button>
+                {ded.percent > 0 && <span className="text-text-secondary">{ded.percent}%</span>}
+                <input type="number" value={ded.amount ?? ""} onChange={(e) => updateDeduction(idx, "amount", Number(e.target.value))} className="w-32 p-2 border rounded-lg text-sm" placeholder={isArabic ? "المبلغ" : "Amount"} step="any" />
+                <input type="number" value={ded.percent ?? ""} onChange={(e) => updateDeduction(idx, "percent", Number(e.target.value))} className="w-20 p-2 border rounded-lg text-sm" placeholder="%" step="any" />
+                <button onClick={() => confirmDeleteDeduction(idx)} className="text-danger"><Trash2 size={16} /></button>
               </div>
             ))}
           </div>
@@ -364,21 +384,21 @@ function NewStatementPageContent() {
 
         {/* Summary - Last image */}
         <div className="grid md:grid-cols-3 gap-4">
-          <Card className="p-5 bg-green-50">
+          <Card className="p-5 bg-success-light">
             <div className="flex justify-between items-center">
-              <span className="font-bold text-gray-700">{isArabic ? "الإجمالي لقيمة الأعمال" : "Total Work Value"}</span>
+              <span className="font-bold text-text-primary">{isArabic ? "الإجمالي لقيمة الأعمال" : "Total Work Value"}</span>
               <span className="text-2xl font-bold text-primary">{totalWorkValue.toLocaleString()}</span>
             </div>
           </Card>
-          <Card className="p-5 bg-red-50">
+          <Card className="p-5 bg-danger-light">
             <div className="flex justify-between items-center">
-              <span className="font-bold text-gray-700">{isArabic ? "خصم الاستقطاعات" : "Deductions"}</span>
-              <span className="text-2xl font-bold text-red-500">{totalDeductions.toLocaleString()}</span>
+              <span className="font-bold text-text-primary">{isArabic ? "خصم الاستقطاعات" : "Deductions"}</span>
+              <span className="text-2xl font-bold text-danger">{totalDeductions.toLocaleString()}</span>
             </div>
           </Card>
           <Card className="p-5 bg-gold/10 border-gold">
             <div className="flex justify-between items-center">
-              <span className="font-bold text-gray-700">{isArabic ? "المستحق صرفة" : "Net Payable"}</span>
+              <span className="font-bold text-text-primary">{isArabic ? "المستحق صرفة" : "Net Payable"}</span>
               <span className="text-3xl font-bold text-gold">{netPayable.toLocaleString()}</span>
             </div>
           </Card>

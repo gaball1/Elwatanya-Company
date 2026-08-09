@@ -13,6 +13,12 @@ export class PrismaProjectRepository implements IProjectRepository {
     const data = {
       code: project.code.value,
       name: project.name,
+      location: project.location,
+      description: project.description,
+      client: project.client,
+      startDate: project.startDate,
+      status: project.status,
+      progress: project.progress,
       deletedAt: project.deletedAt,
       updatedAt: new Date(),
     };
@@ -61,6 +67,12 @@ export class PrismaProjectRepository implements IProjectRepository {
     id: string;
     code: string;
     name: string;
+    location: string;
+    description: string;
+    client: string;
+    startDate: Date | null;
+    status: string;
+    progress: number;
     deletedAt: Date | null;
     createdAt: Date;
     updatedAt: Date;
@@ -70,6 +82,12 @@ export class PrismaProjectRepository implements IProjectRepository {
       {
         code,
         name: record.name,
+        location: record.location,
+        description: record.description,
+        client: record.client,
+        startDate: record.startDate,
+        status: record.status,
+        progress: record.progress,
         deletedAt: record.deletedAt,
       },
       new UniqueEntityId(record.id),

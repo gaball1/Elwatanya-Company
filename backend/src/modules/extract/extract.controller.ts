@@ -14,6 +14,9 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { RequirePermission } from '../../common/decorators/permissions.decorator';
+import { Permissions } from '../../common/constants/permissions.constant';
 import {
   BuildingApplicationError,
   BuildingErrorCode,
@@ -41,12 +44,14 @@ export class ExtractController {
 
   @Get('buildings/:buildingId/contractors/:contractorId/extracts')
   @ApiOperation({ summary: 'List extracts (mirrors getExtracts)' })
+  @RequirePermission(Permissions.Extracts.Read)
   async list(
     @Param('buildingId', ParseUUIDPipe) buildingId: string,
     @Param('contractorId', ParseUUIDPipe) contractorId: string,
     @Query('meta') meta?: string,
     @Query('runningNumber') runningNumber?: string,
     @Query('status') status?: 'running' | 'final',
+    @CurrentUser('projectId') projectId?: string,
   ) {
     if (meta === '1') {
       const result = await this.getMeta.execute({
@@ -54,24 +59,26 @@ export class ExtractController {
         contractorId,
         status: status ?? 'running',
         runningNumber: runningNumber ? Number(runningNumber) : undefined,
-      });
+      }, projectId);
       if (result.isFailure) throw this.mapError(result.error);
       return result.getValue();
     }
 
-    const result = await this.listExtracts.execute(buildingId, contractorId);
+    const result = await this.listExtracts.execute(buildingId, contractorId, projectId);
     if (result.isFailure) throw this.mapError(result.error);
     return { items: result.getValue() };
   }
 
   @Get('buildings/:buildingId/contractors/:contractorId/extracts/:extractId')
   @ApiOperation({ summary: 'Get extract by id' })
+  @RequirePermission(Permissions.Extracts.Read)
   async getOne(
     @Param('buildingId', ParseUUIDPipe) buildingId: string,
     @Param('contractorId', ParseUUIDPipe) contractorId: string,
     @Param('extractId', ParseUUIDPipe) extractId: string,
+    @CurrentUser('projectId') projectId?: string,
   ) {
-    const result = await this.getById.execute(buildingId, contractorId, extractId);
+    const result = await this.getById.execute(buildingId, contractorId, extractId, projectId);
     if (result.isFailure) throw this.mapError(result.error);
     const value = result.getValue();
     if (!value) throw new NotFoundException('Extract not found');
@@ -81,35 +88,39 @@ export class ExtractController {
   @Post('buildings/:buildingId/contractors/:contractorId/extracts')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Create extract (mirrors saveExtract)' })
+  @RequirePermission(Permissions.Extracts.Write)
   async create(
     @Param('buildingId', ParseUUIDPipe) buildingId: string,
     @Param('contractorId', ParseUUIDPipe) contractorId: string,
     @Body() dto: SaveExtractDto,
+    @CurrentUser('projectId') projectId?: string,
   ) {
     const result = await this.saveExtract.execute({
       ...dto,
       buildingId,
       contractorId,
       manualDeductions: dto.manualDeductions,
-    });
+    }, projectId);
     if (result.isFailure) throw this.mapError(result.error);
     return { extract: result.getValue() };
   }
 
   @Put('buildings/:buildingId/contractors/:contractorId/extracts/:extractId')
   @ApiOperation({ summary: 'Update extract' })
+  @RequirePermission(Permissions.Extracts.Write)
   async update(
     @Param('buildingId', ParseUUIDPipe) buildingId: string,
     @Param('contractorId', ParseUUIDPipe) contractorId: string,
     @Param('extractId', ParseUUIDPipe) extractId: string,
     @Body() dto: SaveExtractDto,
+    @CurrentUser('projectId') projectId?: string,
   ) {
     const result = await this.saveExtract.execute({
       ...dto,
       id: extractId,
       buildingId,
       contractorId,
-    });
+    }, projectId);
     if (result.isFailure) throw this.mapError(result.error);
     return { extract: result.getValue() };
   }
@@ -117,8 +128,13 @@ export class ExtractController {
   @Delete('buildings/:buildingId/contractors/:contractorId/extracts/:extractId')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Delete extract' })
-  async remove(@Param('extractId', ParseUUIDPipe) extractId: string) {
-    const result = await this.deleteExtract.execute(extractId);
+  @RequirePermission(Permissions.Extracts.Delete)
+  async remove(
+    @Param('buildingId', ParseUUIDPipe) buildingId: string,
+    @Param('extractId', ParseUUIDPipe) extractId: string,
+    @CurrentUser('projectId') projectId?: string,
+  ) {
+    const result = await this.deleteExtract.execute(extractId, buildingId, projectId);
     if (result.isFailure) throw this.mapError(result.error);
   }
 

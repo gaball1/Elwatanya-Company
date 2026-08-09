@@ -16,22 +16,22 @@ export default function ExtractSummaryCards({
   netPayable,
 }: Props) {
   return (
-    <div className="overflow-hidden rounded-xl border border-gray-200 shadow-sm">
+    <div className="overflow-hidden rounded-xl border border-border shadow-sm">
       <table className="w-full text-sm">
         <tbody>
-          <tr className="bg-gray-100">
-            <td className="p-4 font-bold text-gray-700">
+          <tr className="bg-surface-tertiary">
+            <td className="p-4 font-bold text-text-primary">
               {isArabic ? "الإجمالي لقيمة الأعمال" : "Total Work Value"}
             </td>
             <td className="p-4 text-left font-bold text-primary text-xl">
               {totalWorkValue.toLocaleString()} ج.م
             </td>
           </tr>
-          <tr className="bg-white border-t">
-            <td className="p-4 font-bold text-gray-700">
+          <tr className="bg-surface border-t">
+            <td className="p-4 font-bold text-text-primary">
               {isArabic ? "خصم الاستقطاعات" : "Total Deductions"}
             </td>
-            <td className="p-4 text-left font-bold text-red-600 text-xl">
+            <td className="p-4 text-left font-bold text-danger text-xl">
               {totalDeductions.toLocaleString()} ج.م
             </td>
           </tr>
@@ -57,24 +57,24 @@ export function ExtractSummaryCardsCompact({
 }: Props) {
   return (
     <div className="grid md:grid-cols-3 gap-4">
-      <Card className="p-5 bg-gray-50 border-r-4 border-primary">
-        <p className="text-gray-500 text-sm mb-1">
+      <Card className="p-5 bg-surface-secondary border-r-4 border-gold">
+        <p className="text-text-secondary text-sm mb-1">
           {isArabic ? "قيمة الأعمال" : "Work Value"}
         </p>
         <p className="text-2xl font-bold text-primary">
           {totalWorkValue.toLocaleString()}
         </p>
       </Card>
-      <Card className="p-5 bg-red-50 border-r-4 border-red-500">
-        <p className="text-gray-500 text-sm mb-1">
+      <Card className="p-5 bg-danger-light border-r-4 border-red-500">
+        <p className="text-text-secondary text-sm mb-1">
           {isArabic ? "الاستقطاعات" : "Deductions"}
         </p>
-        <p className="text-2xl font-bold text-red-600">
+        <p className="text-2xl font-bold text-danger">
           {totalDeductions.toLocaleString()}
         </p>
       </Card>
       <Card className="p-5 bg-teal-50 border-r-4 border-teal-500">
-        <p className="text-gray-500 text-sm mb-1">
+        <p className="text-text-secondary text-sm mb-1">
           {isArabic ? "المستحق صرفة" : "Net Payable"}
         </p>
         <p className="text-3xl font-bold text-teal-700">

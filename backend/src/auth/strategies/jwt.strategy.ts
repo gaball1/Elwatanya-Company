@@ -3,7 +3,16 @@ import { PassportStrategy } from "@nestjs/passport";
 import { ExtractJwt, Strategy } from "passport-jwt";
 import { ConfigService } from "@nestjs/config";
 import { PrismaService } from "../../prisma/prisma.service";
-import { JwtPayload } from "../../common/decorators/current-user.decorator";
+
+export interface JwtPayload {
+  sub: string;
+  email: string;
+  role: string;
+  projectId?: string | null;
+  permissions?: string[];
+  roleNames?: string[];
+  projectIds?: string[];
+}
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
@@ -16,31 +25,47 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(payload: JwtPayload): Promise<JwtPayload> {
-    console.log("========== JWT Strategy ==========");
-    console.log("JWT PAYLOAD:", payload);
-
     const user = await this.prisma.user.findUnique({
       where: { id: payload.sub },
-      select: {
-        id: true,
-        email: true,
-        role: true,
-        status: true,
-        projectId: true,
+      include: {
+        roleAssignments: {
+          include: {
+            role: {
+              include: {
+                permissions: {
+                  include: { permission: true },
+                },
+              },
+            },
+          },
+        },
+        projectAssignments: true,
       },
     });
-
-    console.log("DB USER:", user);
 
     if (!user || user.status !== "ACTIVE") {
       throw new UnauthorizedException("User not found or inactive");
     }
+
+    const permissions = new Set<string>();
+    const roleNames = new Set<string>();
+    for (const assignment of user.roleAssignments) {
+      roleNames.add(assignment.role.name);
+      for (const rp of assignment.role.permissions) {
+        permissions.add(rp.permission.name);
+      }
+    }
+
+    const projectIds = user.projectAssignments.map((a) => a.projectId);
 
     return {
       sub: user.id,
       email: user.email,
       role: user.role,
       projectId: user.projectId,
+      permissions: Array.from(permissions),
+      roleNames: Array.from(roleNames),
+      projectIds,
     };
   }
 }

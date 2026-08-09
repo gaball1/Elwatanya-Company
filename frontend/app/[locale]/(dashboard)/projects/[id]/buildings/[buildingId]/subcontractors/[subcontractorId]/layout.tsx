@@ -3,8 +3,10 @@
 
 import { useParams, usePathname } from "next/navigation";
 import Link from "next/link";
-import { mockSubcontractors } from "@/lib/mockData";
+import { useEffect, useState } from "react";
 import { FileText, DollarSign, Wallet } from "lucide-react";
+import { buildingSubcontractorService } from "@/services/building-subcontractor.service";
+import { shortRef } from "@/lib/formatRef";
 
 export default function SubcontractorLayout({
   children,
@@ -18,8 +20,23 @@ export default function SubcontractorLayout({
   const projectId = params.id as string;
   const buildingId = params.buildingId as string;
   const subcontractorId = params.subcontractorId as string;
-  const sub = mockSubcontractors.find((s) => s.id === subcontractorId);
   const base = `/${locale}/projects/${projectId}/buildings/${buildingId}/subcontractors/${subcontractorId}`;
+  const [contractorName, setContractorName] = useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    buildingSubcontractorService
+      .listByBuilding(buildingId)
+      .then((items) => {
+        if (!mounted) return;
+        const hit = items.find((a) => a.subcontractorId === subcontractorId);
+        setContractorName(hit?.subcontractor?.name ?? null);
+      })
+      .catch(() => {});
+    return () => {
+      mounted = false;
+    };
+  }, [buildingId, subcontractorId]);
 
   const tabs = [
     {
@@ -41,19 +58,21 @@ export default function SubcontractorLayout({
 
   return (
     <div className="space-y-4">
-      {/* Header - نفس أسلوبك الأصلي */}
-      <div className="bg-white p-4 rounded-xl shadow-sm">
+      <div className="bg-surface p-4 rounded-xl shadow-card border border-border">
         <Link
           href={`/${locale}/projects/${projectId}/buildings/${buildingId}/subcontractors`}
-          className="text-sm text-gray-500 hover:text-primary transition inline-flex items-center gap-1"
+          className="text-sm text-text-muted hover:text-gold transition inline-flex items-center gap-1"
         >
           ← {isArabic ? "المقاولين" : "Subcontractors"}
         </Link>
-        <h2 className="text-xl font-bold text-primary mt-1">{sub?.name}</h2>
+        <h2 className="text-xl font-bold text-primary mt-1">
+          {contractorName
+            ? contractorName
+            : `${isArabic ? "مقاول" : "Subcontractor"} ${shortRef(subcontractorId)}`}
+        </h2>
       </div>
 
-      {/* Tabs - نفس أسلوبك الأصلي */}
-      <div className="bg-white px-4 py-2 rounded-xl shadow-sm">
+      <div className="bg-surface px-4 py-2 rounded-xl shadow-card border border-border">
         <div className="flex gap-6 overflow-x-auto">
           {tabs.map((t) => (
             <Link
@@ -62,7 +81,7 @@ export default function SubcontractorLayout({
               className={`flex items-center gap-2 py-2 border-b-2 whitespace-nowrap ${
                 pathname?.startsWith(t.href)
                   ? "border-gold text-gold"
-                  : "border-transparent text-gray-500 hover:text-primary"
+                  : "border-transparent text-text-muted hover:text-gold"
               }`}
             >
               <t.icon size={16} />
@@ -72,8 +91,7 @@ export default function SubcontractorLayout({
         </div>
       </div>
 
-      {/* Content - نفس أسلوبك الأصلي مع إضافة padding */}
-      <div className="bg-white rounded-xl shadow-sm p-4 min-h-[200px]">
+      <div className="bg-surface rounded-xl shadow-card border border-border p-4 min-h-[200px]">
         {children}
       </div>
     </div>

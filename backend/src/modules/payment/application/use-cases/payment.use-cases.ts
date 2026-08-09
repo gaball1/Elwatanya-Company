@@ -1,3 +1,4 @@
+import { Injectable } from '@nestjs/common';
 import { Result } from '@/shared/kernel/result';
 import { UniqueEntityId } from '@/shared/kernel/unique-entity-id.vo';
 import { IBuildingRepository } from '@/modules/building/domain/building.repository';
@@ -5,6 +6,11 @@ import {
   BuildingApplicationError,
   BuildingErrorCode,
 } from '@/modules/building/application/errors/building-application.error';
+import { OwnershipService } from '@/common/services/ownership.service';
+import { FinancialService } from '@/common/services/financial.service';
+import { EventBusImpl } from '@/modules/domain-events/event-bus.impl';
+import { PaymentCreatedEvent, PaymentApprovedEvent } from '@/modules/domain-events/events';
+import { PrismaService } from '@/prisma/prisma.service';
 import { Payment } from '../../domain/payment.entity';
 import { IPaymentRepository } from '../../domain/payment.repository';
 
@@ -16,6 +22,7 @@ export interface PaymentResult {
   amount: number;
   date: string;
   notes: string | null;
+  status: string;
 }
 
 /** Mirrors getPayments */
@@ -23,9 +30,11 @@ export class ListPaymentsUseCase {
   constructor(
     private readonly payments: IPaymentRepository,
     private readonly buildings: IBuildingRepository,
+    private readonly ownership: OwnershipService,
   ) {}
 
-  async execute(buildingId: string, contractorId: string): Promise<Result<PaymentResult[]>> {
+  async execute(buildingId: string, contractorId: string, userProjectId?: string | null): Promise<Result<PaymentResult[]>> {
+    await this.ownership.verifyBuildingAccess(userProjectId, buildingId);
     const building = await this.buildings.findById(new UniqueEntityId(buildingId));
     if (!building) {
       return Result.fail(
@@ -47,8 +56,49 @@ export class ListPaymentsUseCase {
         amount: p.amount,
         date: p.paidAt.toISOString(),
         notes: p.notes,
+        status: p.status,
       })),
     );
+  }
+}
+
+/** Mirrors getPayment */
+export class GetPaymentUseCase {
+  constructor(
+    private readonly payments: IPaymentRepository,
+    private readonly buildings: IBuildingRepository,
+    private readonly ownership: OwnershipService,
+  ) {}
+
+  async execute(
+    buildingId: string,
+    contractorId: string,
+    paymentId: string,
+    userProjectId?: string | null,
+  ): Promise<Result<PaymentResult>> {
+    await this.ownership.verifyBuildingAccess(userProjectId, buildingId);
+    const building = await this.buildings.findById(new UniqueEntityId(buildingId));
+    if (!building) {
+      return Result.fail(
+        new BuildingApplicationError(BuildingErrorCode.NOT_FOUND, 'Building not found'),
+      );
+    }
+
+    const payment = await this.payments.findById(new UniqueEntityId(paymentId));
+    if (!payment) {
+      return Result.fail(new Error('Payment not found'));
+    }
+
+    return Result.ok({
+      id: payment.id.toValue(),
+      buildingId: payment.buildingId?.toValue() ?? null,
+      contractorId: payment.contractorId?.toValue() ?? null,
+      extractId: payment.statementId?.toValue() ?? null,
+      amount: payment.amount,
+      date: payment.paidAt.toISOString(),
+      notes: payment.notes,
+      status: payment.status,
+    });
   }
 }
 
@@ -57,6 +107,10 @@ export class AddPaymentUseCase {
   constructor(
     private readonly payments: IPaymentRepository,
     private readonly buildings: IBuildingRepository,
+    private readonly ownership: OwnershipService,
+    private readonly financialService: FinancialService,
+    private readonly prisma: PrismaService,
+    private readonly eventBus: EventBusImpl,
   ) {}
 
   async execute(input: {
@@ -66,7 +120,9 @@ export class AddPaymentUseCase {
     date: string;
     extractId?: string;
     notes?: string;
-  }): Promise<Result<PaymentResult>> {
+  }, userProjectId?: string | null): Promise<Result<PaymentResult>> {
+    await this.ownership.verifyBuildingAccess(userProjectId, input.buildingId);
+
     const building = await this.buildings.findById(new UniqueEntityId(input.buildingId));
     if (!building) {
       return Result.fail(
@@ -87,7 +143,39 @@ export class AddPaymentUseCase {
       notes: input.notes,
     });
 
-    await this.payments.save(payment);
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        await this.payments.save(payment, tx);
+        const meta = JSON.stringify({ buildingId: input.buildingId, contractorId: input.contractorId });
+        await this.financialService.recordExpense({
+          projectId: building.projectId.toValue(),
+          amount: input.amount,
+          category: 'extract',
+          referenceId: payment.id.toValue(),
+          description: `دفعة مقاول: ${input.notes || ''}`,
+          notes: meta,
+          createdBy: 'system',
+          date: new Date(input.date),
+        }, tx);
+      });
+    } catch (error: any) {
+      return Result.fail(error);
+    }
+
+    await this.eventBus.publish(
+      new PaymentCreatedEvent(
+        payment.id.toValue(),
+        'payment',
+        {
+          id: payment.id.toValue(),
+          extractId: input.extractId,
+          contractorId: input.contractorId,
+          amount: payment.amount,
+          projectId: building.projectId.toValue(),
+          createdBy: undefined,
+        },
+      ),
+    );
 
     return Result.ok({
       id: payment.id.toValue(),
@@ -97,6 +185,174 @@ export class AddPaymentUseCase {
       amount: payment.amount,
       date: payment.paidAt.toISOString(),
       notes: payment.notes,
+      status: payment.status,
     });
+  }
+}
+
+/** Mirrors updatePayment */
+export class UpdatePaymentUseCase {
+  constructor(
+    private readonly payments: IPaymentRepository,
+    private readonly buildings: IBuildingRepository,
+    private readonly ownership: OwnershipService,
+    private readonly financialService: FinancialService,
+    private readonly prisma: PrismaService,
+    private readonly eventBus: EventBusImpl,
+  ) {}
+
+  async execute(
+    input: {
+      buildingId: string;
+      contractorId: string;
+      paymentId: string;
+      amount?: number;
+      date?: string;
+      notes?: string;
+      status?: 'pending' | 'approved';
+      approvedBy?: string;
+    },
+    userProjectId?: string | null,
+  ): Promise<Result<PaymentResult>> {
+    await this.ownership.verifyBuildingAccess(userProjectId, input.buildingId);
+
+    const building = await this.buildings.findById(new UniqueEntityId(input.buildingId));
+    if (!building) {
+      return Result.fail(
+        new BuildingApplicationError(BuildingErrorCode.NOT_FOUND, 'Building not found'),
+      );
+    }
+
+    const payment = await this.payments.findById(new UniqueEntityId(input.paymentId));
+    if (!payment) {
+      return Result.fail(new Error('Payment not found'));
+    }
+
+    if (input.amount !== undefined && (!Number.isFinite(input.amount) || input.amount <= 0)) {
+      return Result.fail(new Error('Payment amount must be a positive number'));
+    }
+
+    const wasApproved = payment.status === 'approved';
+    const originalAmount = payment.amount;
+    const newAmount = input.amount ?? originalAmount;
+    const amountDelta = newAmount - originalAmount;
+
+    payment.update({
+      amount: input.amount,
+      paidAt: input.date !== undefined ? new Date(input.date) : undefined,
+      notes: input.notes !== undefined ? input.notes : undefined,
+    });
+
+    const becameApproved = !wasApproved && input.status === 'approved';
+    if (becameApproved) {
+      payment.markApproved();
+    }
+
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        await this.payments.update(payment, tx);
+        if (amountDelta > 0) {
+          await this.financialService.recordExpense({
+            projectId: building.projectId.toValue(),
+            amount: amountDelta,
+            category: 'extract',
+            referenceId: payment.id.toValue(),
+            description: `زيادة دفعة مقاول: ${input.notes ?? payment.notes ?? ''}`,
+            createdBy: 'system',
+            date: new Date(),
+          }, tx);
+        } else if (amountDelta < 0) {
+          await this.financialService.reverseExpense({
+            projectId: building.projectId.toValue(),
+            amount: -amountDelta,
+            category: 'extract',
+            referenceId: payment.id.toValue(),
+            description: `تخفيض دفعة مقاول: ${input.notes ?? payment.notes ?? ''}`,
+            createdBy: 'system',
+            date: new Date(),
+          }, tx);
+        }
+      });
+    } catch (error: any) {
+      return Result.fail(error);
+    }
+
+    if (becameApproved) {
+      await this.eventBus.publish(
+        new PaymentApprovedEvent(
+          payment.id.toValue(),
+          'payment',
+          {
+            id: payment.id.toValue(),
+            amount: payment.amount,
+            approvedBy: input.approvedBy ?? 'system',
+          },
+        ),
+      );
+    }
+
+    return Result.ok({
+      id: payment.id.toValue(),
+      buildingId: input.buildingId,
+      contractorId: input.contractorId,
+      extractId: payment.statementId?.toValue() ?? null,
+      amount: payment.amount,
+      date: payment.paidAt.toISOString(),
+      notes: payment.notes,
+      status: payment.status,
+    });
+  }
+}
+
+/** Mirrors deletePayment */
+export class DeletePaymentUseCase {
+  constructor(
+    private readonly payments: IPaymentRepository,
+    private readonly buildings: IBuildingRepository,
+    private readonly ownership: OwnershipService,
+    private readonly financialService: FinancialService,
+    private readonly prisma: PrismaService,
+  ) {}
+
+  async execute(
+    input: {
+      buildingId: string;
+      contractorId: string;
+      paymentId: string;
+    },
+    userProjectId?: string | null,
+  ): Promise<Result<void>> {
+    await this.ownership.verifyBuildingAccess(userProjectId, input.buildingId);
+
+    const building = await this.buildings.findById(new UniqueEntityId(input.buildingId));
+    if (!building) {
+      return Result.fail(
+        new BuildingApplicationError(BuildingErrorCode.NOT_FOUND, 'Building not found'),
+      );
+    }
+
+    const payment = await this.payments.findById(new UniqueEntityId(input.paymentId));
+    if (!payment) {
+      return Result.fail(new Error('Payment not found'));
+    }
+
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        await this.payments.softDelete(new UniqueEntityId(input.paymentId), tx);
+        await this.financialService.reverseExpense({
+          projectId: building.projectId.toValue(),
+          amount: payment.amount,
+          category: 'extract',
+          referenceId: payment.id.toValue(),
+          description: `حذف دفعة مقاول: ${payment.notes ?? ''}`,
+          createdBy: 'system',
+          date: new Date(),
+        }, tx);
+      });
+    } catch (error: any) {
+      return Result.fail(error);
+    }
+
+    return Result.ok();
   }
 }

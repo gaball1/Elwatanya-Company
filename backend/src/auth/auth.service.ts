@@ -3,10 +3,12 @@ import {
   ConflictException,
   Injectable,
   UnauthorizedException,
+  InternalServerErrorException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
-import { randomBytes } from 'crypto';
+import { randomBytes, createHash } from 'crypto';
+import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoginDto, RegisterDto } from './dto/auth.dto';
 import { UserRole } from '@prisma/client';
@@ -27,7 +29,7 @@ export class AuthService {
     private authenticateUserUseCase: AuthenticateUserUseCase,
   ) {}
 
-  async login(dto: LoginDto) {
+  async login(dto: LoginDto, ip?: string) {
     const result = await this.authenticateUserUseCase.execute({
       email: dto.email,
       password: dto.password,
@@ -45,13 +47,11 @@ export class AuthService {
     }
 
     const user = result.getValue();
-    return this.generateTokens({
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      role: user.role as UserRole,
-      projectId: user.projectId,
-    });
+    const tokens = await this.generateTokens(user.id, user.email, user.name, user.role as UserRole, user.projectId);
+
+    await this.auditLog(user.id, 'LOGIN', 'auth', user.id, { ip });
+
+    return tokens;
   }
 
   async register(dto: RegisterDto) {
@@ -73,101 +73,269 @@ export class AuthService {
     }
 
     const user = result.getValue();
-    return this.generateTokens({
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      role: user.role as UserRole,
-      projectId: user.projectId,
-    });
+    return this.generateTokens(user.id, user.email, user.name, user.role as UserRole, user.projectId);
   }
 
   async refresh(refreshToken: string) {
     const stored = await this.prisma.refreshToken.findUnique({
       where: { token: refreshToken },
-      include: { user: true },
+      include: {
+        user: {
+          include: {
+            roleAssignments: {
+              include: {
+                role: {
+                  include: {
+                    permissions: { include: { permission: true } },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
     });
 
-    if (!stored || stored.expiresAt < new Date()) {
+    if (!stored || stored.expiresAt < new Date() || stored.revokedAt) {
+      // If token is revoked (reuse detected), revoke entire family
+      if (stored?.family) {
+        await this.prisma.refreshToken.updateMany({
+          where: { family: stored.family, revokedAt: null },
+          data: { revokedAt: new Date() },
+        });
+      }
       throw new UnauthorizedException('Invalid or expired refresh token');
     }
 
-    await this.prisma.refreshToken.delete({ where: { id: stored.id } });
+    // Revoke current token (rotation)
+    await this.prisma.refreshToken.update({
+      where: { id: stored.id },
+      data: { revokedAt: new Date() },
+    });
 
-    return this.generateTokens(stored.user);
+    const user = stored.user;
+    const permissions = new Set<string>();
+    for (const assignment of user.roleAssignments) {
+      for (const rp of assignment.role.permissions) {
+        permissions.add(rp.permission.name);
+      }
+    }
+
+    return this.generateTokens(
+      user.id, user.email, user.name, user.role as UserRole, user.projectId,
+      stored.family ?? undefined, Array.from(permissions),
+    );
   }
 
-  async logout(refreshToken: string) {
-    await this.prisma.refreshToken.deleteMany({ where: { token: refreshToken } });
+  async logout(refreshToken: string, userId?: string) {
+    await this.prisma.refreshToken.updateMany({
+      where: { token: refreshToken },
+      data: { revokedAt: new Date() },
+    });
+    if (userId) {
+      await this.auditLog(userId, 'LOGOUT', 'auth', userId);
+    }
     return { success: true };
   }
 
-  private async generateTokens(user: {
-    id: string;
-    email: string;
-    name: string;
-    role: UserRole;
-    projectId: string | null;
-  }) {
-    const payload = {
-      sub: user.id,
-      email: user.email,
-      role: user.role,
-      projectId: user.projectId,
+  async forgotPassword(email: string) {
+    const user = await this.prisma.user.findUnique({ where: { email } });
+    if (!user) {
+      return { success: true, message: 'If the email exists, a reset link has been sent.' };
+    }
+
+    const token = randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+    await this.prisma.passwordResetToken.create({
+      data: { token, userId: user.id, email, expiresAt },
+    });
+
+    if (process.env.NODE_ENV === 'production') {
+      // In production, send email via mail service instead
+      return { success: true, message: 'If the email exists, a reset link has been sent.' };
+    }
+    return { success: true, resetToken: token, message: 'Password reset token generated. (DEV MODE)' };
+  }
+
+  async resetPassword(token: string, newPassword: string) {
+    const stored = await this.prisma.passwordResetToken.findUnique({ where: { token } });
+
+    if (!stored || stored.expiresAt < new Date() || stored.usedAt) {
+      throw new BadRequestException('Invalid or expired reset token');
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+
+    await this.prisma.$transaction([
+      this.prisma.passwordResetToken.update({
+        where: { id: stored.id },
+        data: { usedAt: new Date() },
+      }),
+      this.prisma.user.update({
+        where: { id: stored.userId },
+        data: { passwordHash },
+      }),
+    ]);
+
+    // Revoke all refresh tokens for security
+    await this.prisma.refreshToken.updateMany({
+      where: { userId: stored.userId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+
+    await this.auditLog(stored.userId, 'PASSWORD_RESET', 'auth', stored.userId);
+
+    return { success: true, message: 'Password reset successfully.' };
+  }
+
+  async changePassword(userId: string, currentPassword: string, newPassword: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new UnauthorizedException('User not found');
+
+    const isMatch = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!isMatch) throw new BadRequestException('Current password is incorrect');
+
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash },
+    });
+
+    // Revoke all refresh tokens except current session
+    await this.prisma.refreshToken.updateMany({
+      where: { userId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+
+    await this.auditLog(userId, 'PASSWORD_CHANGE', 'auth', userId);
+
+    return { success: true, message: 'Password changed successfully.' };
+  }
+
+  private async generateTokens(
+    userId: string,
+    email: string,
+    name: string,
+    role: UserRole,
+    projectId: string | null,
+    family?: string,
+    permissions?: string[],
+  ) {
+    const userRecord = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        roleAssignments: {
+          include: {
+            role: {
+              include: {
+                permissions: { include: { permission: true } },
+              },
+            },
+          },
+        },
+        projectAssignments: true,
+      },
+    });
+
+    const roleNames = userRecord?.roleAssignments.map((a) => a.role.name) ?? [];
+    const projectIds = userRecord?.projectAssignments.map((a) => a.projectId) ?? [];
+
+    const payload: any = {
+      sub: userId,
+      email,
+      name,
+      role,
+      projectId,
+      roleNames,
+      projectIds,
     };
 
+    if (permissions) {
+      payload.permissions = permissions;
+    } else {
+      const dbPermissions = new Set<string>();
+      for (const assignment of (userRecord?.roleAssignments ?? [])) {
+        for (const rp of assignment.role.permissions) {
+          dbPermissions.add(rp.permission.name);
+        }
+      }
+      payload.permissions = Array.from(dbPermissions);
+    }
+
     const accessToken = this.jwtService.sign(payload);
+
+    const tokenFamily = family ?? randomBytes(16).toString('hex');
     const refreshToken = randomBytes(40).toString('hex');
-    const refreshExpiresIn = this.configService.get<string>(
-      'JWT_REFRESH_EXPIRES_IN',
-      '7d',
-    );
+    const refreshExpiresIn = this.configService.get<string>('JWT_REFRESH_EXPIRES_IN', '7d');
     const expiresAt = this.addDuration(new Date(), refreshExpiresIn);
 
     await this.prisma.refreshToken.create({
-      data: {
-        token: refreshToken,
-        userId: user.id,
-        expiresAt,
-      },
+      data: { token: refreshToken, userId, family: tokenFamily, expiresAt },
     });
 
     return {
       accessToken,
       refreshToken,
       user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-        projectId: user.projectId,
+        id: userId,
+        email,
+        name,
+        role,
+        projectId,
+        permissions: payload.permissions,
+        roleNames,
+        projectIds,
+        status: userRecord?.status ?? 'ACTIVE',
       },
     };
+  }
+
+  private async auditLog(userId: string, action: string, entity: string, entityId: string, metadata?: any) {
+    try {
+      await this.prisma.auditLog.create({
+        data: { userId, action, entity, entityId, metadata: metadata ?? {} },
+      });
+    } catch {
+      // Audit log failure should not break the main flow
+    }
+  }
+
+  async getFullUser(userId: string) {
+    return this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        status: true,
+        projectId: true,
+        createdAt: true,
+        updatedAt: true,
+        employeeId: true,
+        roleAssignments: {
+          include: { role: true },
+        },
+        projectAssignments: {
+          include: { project: { select: { id: true, name: true, code: true } } },
+        },
+      },
+    });
   }
 
   private addDuration(date: Date, duration: string): Date {
     const match = duration.match(/^(\d+)([dhms])$/);
     if (!match) return new Date(date.getTime() + 7 * 24 * 60 * 60 * 1000);
-
     const value = parseInt(match[1], 10);
     const unit = match[2];
     const result = new Date(date);
-
     switch (unit) {
-      case 'd':
-        result.setDate(result.getDate() + value);
-        break;
-      case 'h':
-        result.setHours(result.getHours() + value);
-        break;
-      case 'm':
-        result.setMinutes(result.getMinutes() + value);
-        break;
-      case 's':
-        result.setSeconds(result.getSeconds() + value);
-        break;
+      case 'd': result.setDate(result.getDate() + value); break;
+      case 'h': result.setHours(result.getHours() + value); break;
+      case 'm': result.setMinutes(result.getMinutes() + value); break;
+      case 's': result.setSeconds(result.getSeconds() + value); break;
     }
-
     return result;
   }
 }

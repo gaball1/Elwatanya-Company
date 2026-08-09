@@ -50,20 +50,63 @@
     "message": "الرسالة",
     "send": "إرسال"
   },
-  "auth": {
+"auth": {
     "login": "تسجيل الدخول",
     "register": "إنشاء حساب",
     "email": "البريد الإلكتروني",
     "password": "كلمة المرور",
     "name": "الاسم الكامل",
+    "fullName": "الاسم الكامل",
     "submit": "إرسال",
     "noAccount": "ليس لديك حساب؟",
-    "hasAccount": "لديك حساب بالفعل؟"
+    "hasAccount": "لديك حساب بالفعل؟",
+    "alreadyHaveAccount": "لديك حساب بالفعل؟",
+    "createAccount": "إنشاء حساب",
+    "backToHome": "العودة إلى الرئيسية",
+    "welcomeMessage": "مرحباً بك في نظام الوطنية للتنمية العمرانية",
+    "registerDescription": "سجل الآن للبدء في إدارة مشاريعك",
+    "forgotPassword": "نسيت كلمة المرور؟",
+    "invalidCredentials": "بيانات الدخول غير صحيحة",
+    "registrationFailed": "فشل إنشاء الحساب",
+    "passwordMismatch": "كلمة المرور غير متطابقة",
+    "passwordTooWeak": "كلمة المرور ضعيفة",
+    "weak": "ضعيف",
+    "medium": "متوسط",
+    "strong": "قوي",
+    "passwordRequirement": "8 أحرف الحد الأدنى",
+    "confirmPassword": "تأكيد كلمة المرور"
   },
   "dashboard": {
     "admin": "لوحة الإدارة",
     "projects": "المشاريع",
+    "ai_agent": "المساعد الذكي",
     "logout": "تسجيل الخروج"
   },
-  "loading": "جاري تحميل النظام..."
+  "loading": "جاري تحميل النظام...",
+  "ai_agent": {
+    "title": "المساعد الذكي ERP",
+    "subtitle": "مدعوم بمحرك ذكاء اصطناعي",
+    "analytics": "تحليلات المساعد الذكي",
+    "total_requests": "إجمالي الطلبات",
+    "error_rate": "نسبة الأخطاء",
+    "unique_intents": "الأنواع الفريدة",
+    "unique_tools": "الأدوات المستخدمة",
+    "uptime": "مدة التشغيل",
+    "top_intents": "أكثر الطلبات شيوعاً",
+    "tool_usage": "استخدام الأدوات",
+    "workflows": "سير العمل",
+    "hourly_traffic": "حركة المرور بالساعة",
+    "no_data": "لا توجد بيانات بعد. ابدأ بالتحدث مع المساعد الذكي.",
+    "greeting": "مرحباً! أنا مساعدك الذكي لنظام ERP. يمكنني مساعدتك في المشاريع، المباني، الموافقات، الموظفين، المخازن، المالية، والمزيد. اسألني عن أي شيء أو جرب أحد الاقتراحات أدناه.",
+    "suggestions": {
+      "create_project": "كيف يمكنني إنشاء مشروع جديد؟",
+      "pending_approvals": "عرض الموافقات المعلقة",
+      "list_subcontractors": "عرض المقاولين النشطين",
+      "explain_boq": "شرح كيفية عمل بنود الكميات"
+    },
+    "input_placeholder": "اسأل عن المشاريع، الموافقات، المخازن...",
+    "data_received": "تم استلام البيانات. اطلب مني التوضيح أو التصفية.",
+    "error_message": "فشل في الحصول على رد. حاول مرة أخرى.",
+    "suggested_questions": "أسئلة مقترحة:"
+  }
 }

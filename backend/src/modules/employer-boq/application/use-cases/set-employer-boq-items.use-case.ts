@@ -10,14 +10,22 @@ import {
   EmployerBoqErrorCode,
 } from '../errors/employer-boq-application.error';
 import { toEmployerBoqItemResult } from './list-employer-boq-items.use-case';
+import { OwnershipService } from '@/common/services/ownership.service';
+import { AuditService } from '@/modules/audit/audit.service';
+import { EventBusImpl } from '@/modules/domain-events/event-bus.impl';
+import { BOQUploadedEvent } from '@/modules/domain-events/events';
 
 export class SetEmployerBoqItemsUseCase {
   constructor(
     private readonly employerBoq: IEmployerBoqRepository,
     private readonly buildings: IBuildingRepository,
+    private readonly ownership: OwnershipService,
+    private readonly audit: AuditService,
+    private readonly eventBus: EventBusImpl,
   ) {}
 
-  async execute(input: SetEmployerBoqItemsInput): Promise<Result<EmployerBoqItemResult[]>> {
+  async execute(input: SetEmployerBoqItemsInput, userProjectId?: string | null, userId?: string): Promise<Result<EmployerBoqItemResult[]>> {
+    await this.ownership.verifyBuildingAccess(userProjectId, input.buildingId);
     const buildingId = new UniqueEntityId(input.buildingId);
     const building = await this.buildings.findById(buildingId);
     if (!building) {
@@ -60,6 +68,22 @@ export class SetEmployerBoqItemsUseCase {
     }
 
     await this.employerBoq.replaceAllForBuilding(buildingId, domainItems);
+    if (userId) {
+      this.audit.log({ userId, entity: 'employer_boq', entityId: input.buildingId, action: 'REPLACE_ALL', before: null, after: { items: domainItems.map(i => ({ itemCode: i.itemCode, description: i.description })) } });
+    }
+    await this.eventBus.publish(
+      new BOQUploadedEvent(
+        input.buildingId,
+        'boq',
+        {
+          id: input.buildingId,
+          buildingId: input.buildingId,
+          boqType: 'employer',
+          itemCount: domainItems.length,
+          uploadedBy: userId,
+        },
+      ),
+    );
     return Result.ok(domainItems.map(toEmployerBoqItemResult));
   }
 }

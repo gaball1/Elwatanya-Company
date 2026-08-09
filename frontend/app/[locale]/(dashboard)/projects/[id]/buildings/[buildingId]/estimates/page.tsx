@@ -55,7 +55,7 @@ export default function BuildingEstimatesPage() {
             <h3 className="text-lg font-bold text-primary mb-2">
               {isArabic ? c.titleAr : c.titleEn}
             </h3>
-            <p className="text-gray-500 text-sm mb-3">
+            <p className="text-text-secondary text-sm mb-3">
               {isArabic ? c.descAr : c.descEn}
             </p>
             <span className="inline-flex items-center gap-1 text-gold text-sm">

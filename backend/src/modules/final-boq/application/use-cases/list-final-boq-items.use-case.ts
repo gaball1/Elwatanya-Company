@@ -15,6 +15,7 @@ import {
   getOrCreateFinalBoq,
   toFinalBoqItemResult,
 } from './final-boq-mappers';
+import { OwnershipService } from '@/common/services/ownership.service';
 
 /** Mirrors getFinalItems + calculateFinalTotals */
 export class ListFinalBoqItemsUseCase {
@@ -22,11 +23,14 @@ export class ListFinalBoqItemsUseCase {
     private readonly finalBoq: IFinalBoqRepository,
     private readonly buildings: IBuildingRepository,
     private readonly allocations: IFinalBoqAllocationReader,
+    private readonly ownership: OwnershipService,
   ) {}
 
   async execute(
     buildingId: string,
+    userProjectId?: string | null,
   ): Promise<Result<{ items: FinalBoqItemResult[]; totals: FinalBoqTotalsResult }>> {
+    await this.ownership.verifyBuildingAccess(userProjectId, buildingId);
     const building = await this.buildings.findById(new UniqueEntityId(buildingId));
     if (!building) {
       return Result.fail(

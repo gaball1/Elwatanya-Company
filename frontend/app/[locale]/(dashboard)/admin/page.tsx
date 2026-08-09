@@ -4,348 +4,410 @@
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useState, useEffect } from "react";
+import { motion } from "framer-motion";
 import { Card } from "@/components/ui";
+import Badge from "@/components/ui/Badge";
+import { cn } from "@/lib/utils";
+import { shortRef } from "@/lib/formatRef";
 import {
-  Building2,
-  TrendingUp,
-  Users,
-  DollarSign,
-  Package,
-  FileText,
-  Bell,
-  X,
+  Building2, TrendingUp, Users, DollarSign, Package,
+  FileText, Bell, ArrowUpRight, ArrowDownRight, Clock,
+  Calendar, CheckCircle2, AlertTriangle, Activity,
+  BarChart3, PieChart, Wallet, ClipboardList, UserCheck,
+  Plus, Eye, ChevronLeft
 } from "lucide-react";
-import {
-  mockProjects,
-  mockSubcontractors,
-  mockProjectFunds,
-  mockInventory,
-} from "@/lib/mockData";
+import { projectService } from "@/services/project.service";
+import { employeeService } from "@/services/employee.service";
+import { attendanceService } from "@/services/attendance.service";
+import { subcontractorService } from "@/services/subcontractor.service";
+import { inventoryItemService } from "@/services/inventory-item.service";
+import { projectFundService } from "@/services/project-fund.service";
+import { notificationService } from "@/services/notification.service";
 
-// نوع الإشعار
-interface Notification {
-  id: string;
-  title: string;
-  message: string;
-  type: "info" | "success" | "warning" | "error";
-  date: string;
-  read: boolean;
+interface KpiCardProps {
+  label: string;
+  value: string | number;
+  icon: React.ReactNode;
+  trend?: { value: string; positive: boolean };
+  color: string;
+  link: string;
+  index: number;
+}
+
+function KpiCard({ label, value, icon, trend, color, link, index }: KpiCardProps) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: index * 0.05, duration: 0.3 }}
+    >
+      <Link href={link}>
+        <Card className="relative overflow-hidden group cursor-pointer p-5">
+          <div className="flex items-start justify-between">
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-text-muted uppercase tracking-wider">{label}</p>
+              <p className="text-2xl font-bold text-text-primary">{value}</p>
+              {trend && (
+                <span className={cn("inline-flex items-center gap-1 text-xs font-medium", trend.positive ? "text-success" : "text-danger")}>
+                  {trend.positive ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
+                  {trend.value}
+                </span>
+              )}
+            </div>
+            <div className={cn("p-3 rounded-xl", color)}>
+              <div className="text-white">{icon}</div>
+            </div>
+          </div>
+          <div className="absolute inset-0 bg-gradient-to-l from-transparent via-transparent to-white/5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
+        </Card>
+      </Link>
+    </motion.div>
+  );
 }
 
 export default function AdminDashboard() {
   const params = useParams();
   const locale = (params.locale as string) ?? "ar";
   const isArabic = locale === "ar";
-
-  // إشعارات تجريبية
-  const [notifications, setNotifications] = useState<Notification[]>([
-    {
-      id: "1",
-      title: isArabic ? "مقايسة جديدة" : "New Estimate",
-      message: isArabic
-        ? "تم إضافة مقايسة تحليلية جديدة لمشروع الأندلس"
-        : "New analytical estimate added for Al-Andalus project",
-      type: "info",
-      date: new Date().toISOString(),
-      read: false,
-    },
-    {
-      id: "2",
-      title: isArabic ? "مستخلص قيد الانتظار" : "Pending Statement",
-      message: isArabic
-        ? "مستخلص المقاول محمد أبو كريم ينتظر الموافقة"
-        : "Subcontractor Mohamed Abu Kareem statement pending approval",
-      type: "warning",
-      date: new Date(Date.now() - 86400000).toISOString(),
-      read: false,
-    },
-    {
-      id: "3",
-      title: isArabic ? "مخزون منخفض" : "Low Stock",
-      message: isArabic
-        ? "الأسمنت المتبقي 50 كيس فقط - أقل من الحد الأدنى"
-        : "Only 50 cement bags remaining - below minimum level",
-      type: "error",
-      date: new Date(Date.now() - 172800000).toISOString(),
-      read: false,
-    },
-    {
-      id: "4",
-      title: isArabic ? "اكتمال مشروع" : "Project Completed",
-      message: isArabic
-        ? "تم الانتهاء من مشروع برج النيل التجاري بنجاح"
-        : "Nile Tower commercial project completed successfully",
-      type: "success",
-      date: new Date(Date.now() - 259200000).toISOString(),
-      read: true,
-    },
-  ]);
-
-  const [showNotifications, setShowNotifications] = useState(false);
-  const [unreadCount, setUnreadCount] = useState(
-    notifications.filter((n) => !n.read).length
-  );
+  const [projects, setProjects] = useState<any[]>([]);
+  const [employees, setEmployees] = useState<any[]>([]);
+  const [attendanceRecords, setAttendanceRecords] = useState<any[]>([]);
+  const [subcontractors, setSubcontractors] = useState<any[]>([]);
+  const [inventoryItems, setInventoryItems] = useState<any[]>([]);
+  const [projectFunds, setProjectFunds] = useState<any[]>([]);
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    setUnreadCount(notifications.filter((n) => !n.read).length);
-  }, [notifications]);
+    setLoading(true);
+    Promise.all([
+      projectService.getProjects(),
+      employeeService.list(),
+      attendanceService.list(),
+      subcontractorService.list(),
+      inventoryItemService.list(),
+      projectFundService.list(),
+      notificationService.list(),
+    ])
+      .then(([p, emp, att, sub, inv, funds, notif]) => {
+        setProjects(p);
+        setEmployees(emp);
+        setAttendanceRecords(att);
+        setSubcontractors(sub);
+        setInventoryItems(inv);
+        setProjectFunds(funds);
+        setNotifications(notif);
+      })
+      .catch((err) => console.error("[AdminDashboard] Failed to load data:", err))
+      .finally(() => setLoading(false));
+  }, []);
 
-  const markAsRead = (id: string) => {
-    setNotifications((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, read: true } : n))
-    );
-  };
+  const totalProjects = projects.length;
+  const activeProjects = projects.filter((p) => p.status === "active").length;
+  const totalSubcontractors = subcontractors.length;
+  const totalFunds = projectFunds.reduce((s, f) => s + f.currentBalance, 0);
+  const totalQty = inventoryItems.reduce((s, i) => s + i.quantity, 0);
+  const progressAvg = projects.length ? Math.round(projects.reduce((s, p) => s + (p.progress || 0), 0) / projects.length) : 0;
+  const totalEmployees = employees.length;
+  const todayDate = new Date().toISOString().split("T")[0];
+  const todayAttendance = attendanceRecords.filter((a) => a.date === todayDate).length;
+  const lowStockItems = inventoryItems.filter((i) => i.quantity <= i.minQuantity).length;
 
-  const markAllAsRead = () => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
-  };
-
-  const deleteNotification = (id: string) => {
-    setNotifications((prev) => prev.filter((n) => n.id !== id));
-  };
-
-  const getTypeStyles = (type: string) => {
-    switch (type) {
-      case "success":
-        return "bg-green-50 border-green-200 text-green-800";
-      case "warning":
-        return "bg-yellow-50 border-yellow-200 text-yellow-800";
-      case "error":
-        return "bg-red-50 border-red-200 text-red-800";
-      default:
-        return "bg-blue-50 border-blue-200 text-blue-800";
-    }
-  };
-
-  const totalProjects = mockProjects.length;
-  const activeProjects = mockProjects.filter(
-    (p) => p.status === "active"
-  ).length;
-  const totalSubcontractors = mockSubcontractors.length;
-  const totalFunds = mockProjectFunds.reduce(
-    (sum, f) => sum + f.currentBalance,
-    0
-  );
-  const totalInventory = mockInventory.reduce((sum, i) => sum + i.quantity, 0);
-
-  const stats = [
-    {
-      label: isArabic ? "إجمالي المشاريع" : "Total Projects",
-      value: totalProjects,
-      icon: <Building2 className="w-6 h-6" />,
-      color: "bg-blue-500",
-      link: `/${locale}/projects`,
-    },
-    {
-      label: isArabic ? "مشاريع نشطة" : "Active Projects",
-      value: activeProjects,
-      icon: <TrendingUp className="w-6 h-6" />,
-      color: "bg-green-500",
-      link: `/${locale}/projects`,
-    },
-    {
-      label: isArabic ? "المقاولين" : "Subcontractors",
-      value: totalSubcontractors,
-      icon: <Users className="w-6 h-6" />,
-      color: "bg-gold",
-      link: `/${locale}/subcontractors`,
-    },
-    {
-      label: isArabic ? "إجمالي العهد" : "Total Funds",
-      value: `${(totalFunds / 1000).toFixed(0)}k ج.م`,
-      icon: <DollarSign className="w-6 h-6" />,
-      color: "bg-purple-500",
-      link: `/${locale}/projects`,
-    },
-    {
-      label: isArabic ? "أصناف المخازن" : "Inventory Items",
-      value: totalInventory,
-      icon: <Package className="w-6 h-6" />,
-      color: "bg-orange-500",
-      link: `/${locale}/inventory`,
-    },
-    {
-      label: isArabic ? "المستخلصات" : "Statements",
-      value: "3",
-      icon: <FileText className="w-6 h-6" />,
-      color: "bg-red-500",
-      link: `/${locale}/statements`,
-    },
+  const kpiCards = [
+    { label: isArabic ? "إجمالي المشاريع" : "Total Projects", value: totalProjects, icon: <Building2 size={20} />, color: "bg-primary", link: `/${locale}/projects`, trend: undefined, index: 0 },
+    { label: isArabic ? "مشاريع نشطة" : "Active Projects", value: activeProjects, icon: <Activity size={20} />, color: "bg-success", link: `/${locale}/projects`, trend: undefined, index: 1 },
+    { label: isArabic ? "المقاولين" : "Subcontractors", value: totalSubcontractors, icon: <Users size={20} />, color: "bg-gold", link: `/${locale}/subcontractors`, trend: undefined, index: 2 },
+    { label: isArabic ? "إجمالي العهد" : "Total Funds", value: `${(totalFunds / 1000000).toFixed(1)}M ${isArabic ? "ج.م" : "EGP"}`, icon: <Wallet size={20} />, color: "bg-info", link: `/${locale}/projects`, trend: undefined, index: 3 },
+    { label: isArabic ? "أصناف المخازن" : "Inventory Items", value: totalQty, icon: <Package size={20} />, color: "bg-warning", link: `/${locale}/inventory`, trend: undefined, index: 4 },
+    { label: isArabic ? "متوسط الإنجاز" : "Avg Progress", value: `${progressAvg}%`, icon: <TrendingUp size={20} />, color: "bg-danger", link: `/${locale}/projects`, trend: undefined, index: 5 },
   ];
 
+  const quickActions = [
+    { label: isArabic ? "مشروع جديد" : "New Project", icon: <Plus size={18} />, href: `/${locale}/projects`, color: "bg-gold/10 text-gold" },
+    { label: isArabic ? "مقاول جديد" : "New Subcontractor", icon: <Users size={18} />, href: `/${locale}/subcontractors`, color: "bg-primary/10 text-primary" },
+    { label: isArabic ? "مستخلص جديد" : "New Statement", icon: <FileText size={18} />, href: `/${locale}/statements/new`, color: "bg-success/10 text-success" },
+    { label: isArabic ? "حركة مخزون" : "Stock Movement", icon: <Package size={18} />, href: `/${locale}/inventory`, color: "bg-warning/10 text-warning" },
+  ];
+
+  const recentProjects = projects.slice(0, 4);
+
+  const notificationIcons: Record<string, React.ReactNode> = {
+    info: <FileText size={16} />,
+    warning: <Clock size={16} />,
+    error: <AlertTriangle size={16} />,
+    success: <CheckCircle2 size={16} />,
+  };
+
+  const timeAgo = (date: string) => {
+    const diff = Date.now() - new Date(date).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 60) return `${mins}m`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h`;
+    return `${Math.floor(hrs / 24)}d`;
+  };
+
+  const liveNotifications = notifications.slice(0, 4).map((n) => ({
+    type: n.type as "info" | "warning" | "error" | "success",
+    title: isArabic ? n.title : (n as any).titleEn || n.title,
+    message: isArabic ? n.message : (n as any).messageEn || n.message,
+    time: timeAgo(n.createdAt),
+    icon: notificationIcons[n.type] || <FileText size={16} />,
+  }));
+
+  const iconColors: Record<string, string> = {
+    info: "bg-info/10 text-info",
+    warning: "bg-warning/10 text-warning",
+    error: "bg-danger/10 text-danger",
+    success: "bg-success/10 text-success",
+  };
+
+  if (loading) {
+    return (
+      <div className="space-y-6 animate-pulse">
+        <div className="h-8 w-48 bg-gray-200 rounded" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="h-28 bg-gray-200 rounded-xl" />
+          ))}
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2 space-y-6">
+            <div className="h-40 bg-gray-200 rounded-xl" />
+            <div className="h-64 bg-gray-200 rounded-xl" />
+          </div>
+          <div className="h-80 bg-gray-200 rounded-xl" />
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-gray-light">
-      {/* Header with Notifications */}
-      <div className="bg-white border-b px-6 py-4">
-        <div className="flex justify-between items-center">
-          <div>
-            <h1 className="text-2xl font-bold text-primary">
-              {isArabic ? "لوحة التحكم" : "Dashboard"}
-            </h1>
-            <p className="text-gray-500 mt-1">
-              {isArabic
-                ? "مرحباً بك في نظام الوطنية للتنمية العمرانية"
-                : "Welcome to El Wataniya Urban Development System"}
-            </p>
-          </div>
-
-          {/* Notifications Button */}
-          <div className="relative">
-            <button
-              onClick={() => setShowNotifications(!showNotifications)}
-              className="relative p-2 text-gray-500 hover:text-primary transition rounded-full hover:bg-gray-100"
-            >
-              <Bell size={22} />
-              {unreadCount > 0 && (
-                <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
-                  {unreadCount}
-                </span>
-              )}
-            </button>
-
-            {/* Notifications Dropdown */}
-            {showNotifications && (
-              <div className="absolute left-0 mt-2 w-80 bg-white rounded-xl shadow-lg border z-50 overflow-hidden">
-                <div className="flex justify-between items-center p-3 border-b bg-gray-50">
-                  <h3 className="font-bold text-primary">
-                    {isArabic ? "الإشعارات" : "Notifications"}
-                  </h3>
-                  {unreadCount > 0 && (
-                    <button
-                      onClick={markAllAsRead}
-                      className="text-xs text-gold hover:underline"
-                    >
-                      {isArabic ? "تحديد الكل كمقروء" : "Mark all as read"}
-                    </button>
-                  )}
-                </div>
-                <div className="max-h-96 overflow-y-auto">
-                  {notifications.length === 0 ? (
-                    <div className="p-6 text-center text-gray-500">
-                      <Bell size={32} className="mx-auto text-gray-300 mb-2" />
-                      <p>{isArabic ? "لا توجد إشعارات" : "No notifications"}</p>
-                    </div>
-                  ) : (
-                    notifications.map((notif) => (
-                      <div
-                        key={notif.id}
-                        className={`p-3 border-b hover:bg-gray-50 transition relative ${
-                          !notif.read ? "bg-blue-50/30" : ""
-                        }`}
-                        onClick={() => markAsRead(notif.id)}
-                      >
-                        <div className="flex justify-between items-start">
-                          <div className="flex-1">
-                            <p className="font-medium text-sm text-gray-800">
-                              {notif.title}
-                            </p>
-                            <p className="text-xs text-gray-500 mt-1">
-                              {notif.message}
-                            </p>
-                            <p className="text-xs text-gray-400 mt-1">
-                              {new Date(notif.date).toLocaleDateString(
-                                isArabic ? "ar" : "en"
-                              )}
-                            </p>
-                          </div>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              deleteNotification(notif.id);
-                            }}
-                            className="text-gray-400 hover:text-red-500"
-                          >
-                            <X size={14} />
-                          </button>
-                        </div>
-                        {!notif.read && (
-                          <div className="absolute right-2 top-1/2 transform -translate-y-1/2">
-                            <div className="w-2 h-2 bg-blue-500 rounded-full" />
-                          </div>
-                        )}
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
+    <div className="space-y-6 animate-fade-in">
+      {/* Header */}
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-text-primary tracking-tight">
+            {isArabic ? "لوحة التحكم" : "Dashboard"}
+          </h1>
+          <p className="text-text-secondary mt-1 text-sm">
+            {isArabic ? "مرحباً بك في نظام الوطنية للتنمية العمرانية" : "Welcome to El Wataniya Urban Development System"}
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <Badge variant="success" size="sm">
+            <span className="flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" />
+              {isArabic ? "النظام يعمل" : "System Online"}
+            </span>
+          </Badge>
         </div>
       </div>
 
-      {/* Stats Cards */}
-      <div className="p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-        {stats.map((stat, i) => (
-          <Link key={i} href={stat.link}>
-            <Card hover className="p-4 cursor-pointer">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-gray-500 text-xs">{stat.label}</p>
-                  <p className="text-xl font-bold text-primary mt-1">
-                    {stat.value}
-                  </p>
-                </div>
-                <div className={`${stat.color} p-2 rounded-full text-white`}>
-                  {stat.icon}
-                </div>
-              </div>
-            </Card>
-          </Link>
+      {/* KPI Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+        {kpiCards.map((kpi) => (
+          <KpiCard key={kpi.label} {...kpi} />
         ))}
       </div>
 
-      {/* Projects Analysis */}
-      <div className="px-6 pb-6">
-        <h2 className="text-lg font-bold text-primary mb-4">
-          {isArabic ? "تحليل المشاريع" : "Projects Analysis"}
-        </h2>
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {mockProjects.map((project) => (
-            <Link key={project.id} href={`/${locale}/projects/${project.id}`}>
-              <Card hover className="p-5 cursor-pointer">
-                <div className="flex justify-between items-start mb-3">
-                  <h3 className="font-bold text-primary">{project.name}</h3>
-                  <span
-                    className={`text-xs px-2 py-1 rounded-full font-medium ${
-                      project.status === "active"
-                        ? "bg-green-100 text-green-800"
-                        : "bg-blue-100 text-blue-800"
-                    }`}
-                  >
-                    {project.status === "active"
-                      ? isArabic
-                        ? "نشط"
-                        : "Active"
-                      : isArabic
-                      ? "مكتمل"
-                      : "Completed"}
-                  </span>
+      {/* Main Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Projects Progress */}
+        <div className="lg:col-span-2 space-y-6">
+          {/* Quick Actions */}
+          <Card className="p-5">
+            <h2 className="text-sm font-semibold text-text-primary mb-4">
+              {isArabic ? "إجراءات سريعة" : "Quick Actions"}
+            </h2>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {quickActions.map((action) => (
+                <Link key={action.label} href={action.href} className={cn("flex flex-col items-center gap-2 p-3 rounded-xl transition-all duration-200 hover:scale-[1.02]", action.color)}>
+                  {action.icon}
+                  <span className="text-xs font-medium text-center">{action.label}</span>
+                </Link>
+              ))}
+            </div>
+          </Card>
+
+          {/* Recent Projects */}
+          <Card className="p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-sm font-semibold text-text-primary">
+                {isArabic ? "آخر المشاريع" : "Recent Projects"}
+              </h2>
+              <Link href={`/${locale}/projects`} className="text-xs text-gold hover:underline flex items-center gap-1">
+                {isArabic ? "عرض الكل" : "View all"} <ChevronLeft size={14} />
+              </Link>
+            </div>
+            <div className="space-y-3">
+              {recentProjects.length === 0 ? (
+                <div className="text-center py-8 text-text-muted">
+                  <Building2 size={32} className="mx-auto mb-2 opacity-50" />
+                  <p className="text-sm">{isArabic ? "لا توجد مشاريع" : "No projects yet"}</p>
                 </div>
-                <p className="text-gray-500 text-sm mb-3">{project.location}</p>
-                <div className="mb-2">
-                  <div className="flex justify-between text-xs text-gray-500 mb-1">
-                    <span>{isArabic ? "نسبة الإنجاز" : "Progress"}</span>
-                    <span>{project.progress}%</span>
+              ) : (
+                recentProjects.map((project) => (
+                  <Link key={project.id} href={`/${locale}/projects/${project.id}`} className="flex items-center gap-4 p-3 rounded-xl hover:bg-surface-secondary transition-colors group">
+                    <div className={cn("p-2.5 rounded-lg", project.status === "active" ? "bg-success/10" : "bg-info/10")}>
+                      <Building2 size={18} className={project.status === "active" ? "text-success" : "text-info"} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-text-primary truncate group-hover:text-gold transition-colors">{project.name}</p>
+                      <p className="text-xs text-text-muted truncate">{project.location}</p>
+                    </div>
+                    <div className="text-right">
+                      <Badge variant={project.status === "active" ? "success" : "info"} size="sm">
+                        {project.status === "active" ? (isArabic ? "نشط" : "Active") : (isArabic ? "مكتمل" : "Completed")}
+                      </Badge>
+                    </div>
+                    <div className="w-24">
+                      <div className="flex justify-between text-xs text-text-muted mb-1">
+                        <span>{project.progress || 0}%</span>
+                      </div>
+                      <div className="w-full h-1.5 bg-surface-tertiary rounded-full overflow-hidden">
+                        <div className="h-full bg-gold rounded-full transition-all duration-500" style={{ width: `${project.progress || 0}%` }} />
+                      </div>
+                    </div>
+                  </Link>
+                ))
+              )}
+            </div>
+          </Card>
+
+          {/* Treasury & Inventory Summary */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Card className="p-5">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="p-2 rounded-lg bg-success/10">
+                  <Wallet size={18} className="text-success" />
+                </div>
+                <h2 className="text-sm font-semibold text-text-primary">
+                  {isArabic ? "العهد" : "Treasury"}
+                </h2>
+              </div>
+              <div className="space-y-3">
+                {projectFunds.slice(0, 3).map((fund) => {
+                  const proj = projects.find((p) => p.id === fund.projectId);
+                  return (
+                    <div key={fund.id} className="flex items-center justify-between text-sm">
+                      <span className="text-text-secondary truncate">{proj?.name || `Project ${shortRef(fund.projectId)}`}</span>
+                      <span className="font-medium text-text-primary">{fund.currentBalance.toLocaleString()} {isArabic ? "ج.م" : "EGP"}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </Card>
+            <Card className="p-5">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="p-2 rounded-lg bg-warning/10">
+                  <Package size={18} className="text-warning" />
+                </div>
+                <h2 className="text-sm font-semibold text-text-primary">
+                  {isArabic ? "المخزون" : "Inventory"}
+                </h2>
+              </div>
+              <div className="space-y-3">
+                {inventoryItems.slice(0, 3).map((item) => (
+                  <div key={item.id} className="flex items-center justify-between text-sm">
+                    <span className="text-text-secondary truncate">{item.name}</span>
+                    <span className="font-medium text-text-primary">{item.quantity} {item.unit}</span>
                   </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div
-                      className="bg-gold rounded-full h-2"
-                      style={{ width: `${project.progress}%` }}
-                    />
+                ))}
+              </div>
+            </Card>
+          </div>
+        </div>
+
+        {/* Right Sidebar — Activity & Notifications */}
+        <div className="space-y-6">
+          {/* Stats Summary */}
+          <Card className="p-5">
+            <h2 className="text-sm font-semibold text-text-primary mb-4">
+              {isArabic ? "ملخص سريع" : "Quick Summary"}
+            </h2>
+            <div className="space-y-4">
+              {[
+                { label: isArabic ? "الموظفين" : "Employees", value: totalEmployees, icon: <UserCheck size={16} />, color: "text-primary", bg: "bg-primary/5" },
+                { label: isArabic ? "الحضور اليوم" : "Today Attendance", value: todayAttendance, icon: <Calendar size={16} />, color: "text-success", bg: "bg-success/5" },
+                { label: isArabic ? "المواد منخفضة" : "Low Stock Items", value: lowStockItems, icon: <AlertTriangle size={16} />, color: "text-danger", bg: "bg-danger/5" },
+              ].map((stat, i) => (
+                <div key={i} className="flex items-center gap-3">
+                  <div className={cn("p-2 rounded-lg", stat.bg)}>
+                    <span className={stat.color}>{stat.icon}</span>
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-xs text-text-muted">{stat.label}</p>
+                    <p className="text-sm font-semibold text-text-primary">{stat.value}</p>
                   </div>
                 </div>
-                <div className="flex justify-between text-sm text-gray-500 mt-3">
-                  <span>
-                    {isArabic ? "تاريخ البدء" : "Start Date"}:{" "}
-                    {project.startDate}
-                  </span>
-                  <span>
-                    {isArabic ? "الميزانية" : "Budget"}: 2,000,000 ج.م
-                  </span>
+              ))}
+            </div>
+          </Card>
+
+          {/* Notifications Feed */}
+          <Card className="p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-sm font-semibold text-text-primary flex items-center gap-2">
+                <Bell size={16} className="text-gold" />
+                {isArabic ? "آخر الإشعارات" : "Latest Updates"}
+              </h2>
+              <Link href={`/${locale}/notifications`} className="text-xs text-gold hover:underline">
+                {isArabic ? "عرض الكل" : "View all"}
+              </Link>
+            </div>
+            <div className="space-y-3">
+              {liveNotifications.map((n, i) => (
+                <motion.div
+                  key={i}
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: i * 0.05 }}
+                  className="flex items-start gap-3 p-2.5 rounded-lg hover:bg-surface-secondary transition-colors cursor-pointer"
+                >
+                  <div className={cn("p-1.5 rounded-lg shrink-0", iconColors[n.type])}>
+                    {n.icon}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-text-primary">{n.title}</p>
+                    <p className="text-xs text-text-muted truncate">{n.message}</p>
+                  </div>
+                  <span className="text-[11px] text-text-muted whitespace-nowrap">{n.time}</span>
+                </motion.div>
+              ))}
+            </div>
+          </Card>
+
+          {/* Attendance Summary */}
+          <Card className="p-5">
+            <h2 className="text-sm font-semibold text-text-primary mb-4 flex items-center gap-2">
+              <UserCheck size={16} className="text-success" />
+              {isArabic ? "الحضور اليوم" : "Today's Attendance"}
+            </h2>
+            <div className="flex items-center justify-center py-4">
+              <div className="relative w-28 h-28">
+                <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36">
+                  <circle cx="18" cy="18" r="15.5" fill="none" stroke="var(--color-surface-tertiary)" strokeWidth="3" />
+                  <circle cx="18" cy="18" r="15.5" fill="none" stroke="var(--color-gold)" strokeWidth="3"
+                    strokeDasharray="97.4" strokeDashoffset={97.4 - (97.4 * (totalEmployees ? Math.round((todayAttendance / totalEmployees) * 100) : 0)) / 100} strokeLinecap="round" />
+                </svg>
+                <div className="absolute inset-0 flex items-center justify-center flex-col">
+                  <span className="text-xl font-bold text-text-primary">{totalEmployees ? Math.round((todayAttendance / totalEmployees) * 100) : 0}%</span>
+                  <span className="text-[10px] text-text-muted">{todayAttendance}/{totalEmployees}</span>
                 </div>
-              </Card>
-            </Link>
-          ))}
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-center text-xs">
+              <div className="p-2 rounded-lg bg-success/5">
+                <p className="font-semibold text-success">{todayAttendance}</p>
+                <p className="text-text-muted">{isArabic ? "موجود" : "Present"}</p>
+              </div>
+              <div className="p-2 rounded-lg bg-danger/5">
+                <p className="font-semibold text-danger">{totalEmployees - todayAttendance}</p>
+                <p className="text-text-muted">{isArabic ? "غائب" : "Absent"}</p>
+              </div>
+            </div>
+          </Card>
         </div>
       </div>
     </div>
