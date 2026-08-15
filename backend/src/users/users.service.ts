@@ -15,6 +15,7 @@ export class UsersService {
         role: true,
         status: true,
         projectId: true,
+        employeeId: true,
         createdAt: true,
         updatedAt: true,
       },

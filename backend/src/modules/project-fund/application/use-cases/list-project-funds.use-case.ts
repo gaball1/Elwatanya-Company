@@ -8,6 +8,7 @@ export function toResult(f: ProjectFund): ProjectFundResult {
     projectId: f.projectId,
     initialBalance: f.initialBalance,
     currentBalance: f.currentBalance,
+    pettyCashBalance: f.pettyCashBalance,
     lastUpdated: f.lastUpdated,
     createdAt: f.createdAt,
     updatedAt: f.updatedAt,

@@ -5,9 +5,10 @@ import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
 import { Logger as PinoLogger } from "nestjs-pino";
 import { AppModule } from "./app.module";
 import { LoggerModule } from "nestjs-pino";
+import { json, urlencoded } from "express";
 async function bootstrap() {
   const logger = new Logger("Bootstrap");
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { bodyParser: false });
 
   // Use nestjs-pino logger
   //app.useLogger(app.get(PinoLogger));
@@ -23,6 +24,12 @@ async function bootstrap() {
     "CORS_ORIGIN",
     "http://localhost:3000"
   );
+
+  // Allow inline invoice uploads (base64 JSON) up to 30 MB. The default
+  // 100kb JSON body limit silently rejected real invoices (413), which the
+  // frontend surfaced as a generic "فشل إضافة/حفظ المشتريات" message.
+  app.use(json({ limit: "30mb" }));
+  app.use(urlencoded({ extended: true, limit: "30mb" }));
 
   app.enableCors({
     origin: corsOrigin.split(",").map((o) => o.trim()),

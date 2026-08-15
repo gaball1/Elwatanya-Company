@@ -3,6 +3,7 @@ import { BaseTool } from './base.tool';
 import { AgentHttpClient } from './http-client';
 import { ToolResult } from '../dto/agent-response.dto';
 import { pickBest, formatMoney } from './resolution.utils';
+import { schema, contractorSchema, projectSchema, statusProps } from './tool-schemas';
 
 export interface ResolvedContractor {
   id: string;
@@ -313,6 +314,10 @@ export class FindProjectTool extends BaseTool {
   readonly description = 'Find a project by code or name (partial, Arabic, case-insensitive).';
   readonly requiresPermission = 'projects.read';
   readonly requiredEntity = 'project';
+  readonly parameters = schema({
+    ...projectSchema().properties,
+    query: { type: 'string', description: 'Project code or name, e.g. NCM-2026.' },
+  });
 
   constructor(private readonly api: AgentHttpClient) { super(); }
 
@@ -345,6 +350,7 @@ export class ListProjectBuildingsTool extends BaseTool {
   readonly description = 'List the buildings of a project, resolving the project from context or name if needed.';
   readonly requiresPermission = 'buildings.read';
   readonly requiredEntity = 'building';
+  readonly parameters = projectSchema();
 
   constructor(private readonly api: AgentHttpClient) { super(); }
 
@@ -373,6 +379,12 @@ export class FindBuildingTool extends BaseTool {
   readonly description = 'Find a building by name within a project (partial/Arabic/case-insensitive).';
   readonly requiresPermission = 'buildings.read';
   readonly requiredEntity = 'building';
+  readonly parameters = schema({
+    ...projectSchema().properties,
+    buildingId: { type: 'string', description: 'Building UUID (rarely needed).' },
+    buildingName: { type: 'string', description: 'Building name, e.g. عمارة أ.' },
+    query: { type: 'string', description: 'Free-text building name to match.' },
+  });
 
   constructor(private readonly api: AgentHttpClient) { super(); }
 
@@ -424,6 +436,7 @@ export class FindContractorTool extends BaseTool {
   readonly description = 'Find a subcontractor by name (partial, Arabic, English, case-insensitive).';
   readonly requiresPermission = 'subcontractors.read';
   readonly requiredEntity = 'contractor';
+  readonly parameters = contractorSchema({ query: { type: 'string', description: 'Free-text contractor name to match.' } });
 
   constructor(private readonly api: AgentHttpClient) { super(); }
 
@@ -456,6 +469,7 @@ export class ListContractorExtractsTool extends BaseTool {
   readonly description: string = 'List the extract history of a contractor across all of the contractor\'s buildings (multi-building merged), auto-resolving the project and contractor from context or names.';
   readonly requiresPermission: string | null = 'extracts.read';
   readonly requiredEntity: string | null = 'extract';
+  readonly parameters = contractorSchema({ ...statusProps });
 
   constructor(private readonly api: AgentHttpClient) { super(); }
 
@@ -503,6 +517,9 @@ export class ListExtractPaymentsTool extends BaseTool {
   readonly description: string = 'List the payment records made to a contractor across all of the contractor\'s buildings, optionally filtered by extract.';
   readonly requiresPermission: string | null = 'payments.read';
   readonly requiredEntity: string | null = 'payment';
+  readonly parameters = contractorSchema({
+    extractId: { type: 'string', description: 'Extract UUID to filter payments for a single extract.' },
+  });
 
   constructor(private readonly api: AgentHttpClient) { super(); }
 
@@ -539,6 +556,7 @@ export class ListExtractApprovalsTool extends BaseTool {
   readonly description = 'List approval records for a contractor\'s extracts (approved / rejected / pending).';
   readonly requiresPermission = 'approvals.read';
   readonly requiredEntity = 'approval';
+  readonly parameters = contractorSchema({ ...statusProps });
 
   constructor(private readonly api: AgentHttpClient) { super(); }
 
@@ -587,6 +605,13 @@ export class FindExtractTool extends BaseTool {
   readonly description = 'Find a specific extract of a contractor: latest, unpaid, approved or rejected.';
   readonly requiresPermission = 'extracts.read';
   readonly requiredEntity = 'extract';
+  readonly parameters = contractorSchema({
+    status: statusProps.status,
+    latest: { type: 'boolean', description: 'Return the latest extract.' },
+    unpaid: { type: 'boolean', description: 'Return an unpaid/partially paid extract.' },
+    approved: { type: 'boolean', description: 'Return an approved extract.' },
+    rejected: { type: 'boolean', description: 'Return a rejected extract.' },
+  });
 
   constructor(private readonly api: AgentHttpClient) { super(); }
 
@@ -667,6 +692,7 @@ export class GetContractorDuesTool extends BaseTool {
   readonly description = 'Compute a contractor\'s financial position: total work value, net payable, total paid, remaining dues and outstanding extracts.';
   readonly requiresPermission = 'extracts.read';
   readonly requiredEntity = 'contractor';
+  readonly parameters = contractorSchema();
 
   constructor(private readonly api: AgentHttpClient) { super(); }
 

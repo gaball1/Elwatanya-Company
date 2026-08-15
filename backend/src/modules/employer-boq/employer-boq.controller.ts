@@ -15,13 +15,14 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { RequirePermission } from '../../common/decorators/permissions.decorator';
-import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
 import { Permissions } from '../../common/constants/permissions.constant';
 import { BuildingApplicationError, BuildingErrorCode } from '@/modules/building/application/errors/building-application.error';
 import { ListEmployerBoqItemsUseCase } from './application/use-cases/list-employer-boq-items.use-case';
 import { SetEmployerBoqItemsUseCase } from './application/use-cases/set-employer-boq-items.use-case';
 import { UpsertEmployerBoqItemUseCase } from './application/use-cases/upsert-employer-boq-item.use-case';
 import { DeleteEmployerBoqItemUseCase } from './application/use-cases/delete-employer-boq-item.use-case';
+import { ClearEmployerBoqItemsUseCase } from './application/use-cases/clear-employer-boq-items.use-case';
 import {
   EmployerBoqApplicationError,
   EmployerBoqErrorCode,
@@ -40,13 +41,14 @@ export class EmployerBoqController {
     private readonly setEmployerBoqItems: SetEmployerBoqItemsUseCase,
     private readonly upsertEmployerBoqItem: UpsertEmployerBoqItemUseCase,
     private readonly deleteEmployerBoqItem: DeleteEmployerBoqItemUseCase,
+    private readonly clearEmployerBoqItems: ClearEmployerBoqItemsUseCase,
   ) {}
 
   @Get('buildings/:buildingId/boq/employer')
   @ApiOperation({ summary: 'List employer BOQ items for a building' })
   @RequirePermission(Permissions.EmployerBoq.Read)
-  async list(@Param('buildingId', ParseUUIDPipe) buildingId: string, @CurrentUser('projectId') projectId?: string) {
-    const result = await this.listEmployerBoqItems.execute(buildingId, projectId);
+  async list(@Param('buildingId', ParseUUIDPipe) buildingId: string, @CurrentUser() user?: JwtPayload) {
+    const result = await this.listEmployerBoqItems.execute(buildingId, user);
     if (result.isFailure) {
       throw this.mapError(result.error);
     }
@@ -60,7 +62,7 @@ export class EmployerBoqController {
   async upsert(
     @Param('buildingId', ParseUUIDPipe) buildingId: string,
     @Body() dto: UpsertEmployerBoqItemDto,
-    @CurrentUser('projectId') projectId?: string,
+    @CurrentUser() user?: JwtPayload,
     @CurrentUser('sub') userId?: string,
   ) {
     const result = await this.upsertEmployerBoqItem.execute({
@@ -70,7 +72,7 @@ export class EmployerBoqController {
       unit: dto.unit,
       quantity: dto.quantity,
       unitPrice: dto.unitPrice,
-    }, projectId, userId);
+    }, user, userId);
     if (result.isFailure) {
       throw this.mapError(result.error);
     }
@@ -83,7 +85,7 @@ export class EmployerBoqController {
   async replaceAll(
     @Param('buildingId', ParseUUIDPipe) buildingId: string,
     @Body() dto: SetEmployerBoqItemsDto,
-    @CurrentUser('projectId') projectId?: string,
+    @CurrentUser() user?: JwtPayload,
     @CurrentUser('sub') userId?: string,
   ) {
     const result = await this.setEmployerBoqItems.execute({
@@ -96,11 +98,26 @@ export class EmployerBoqController {
         unitPrice: item.unitPrice,
         totalValue: item.totalValue ?? 0,
       })),
-    }, projectId, userId);
+    }, user, userId);
     if (result.isFailure) {
       throw this.mapError(result.error);
     }
     return { items: result.getValue() };
+  }
+
+  @Delete('buildings/:buildingId/boq/employer/items')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Delete all employer BOQ items (cascades to analytical/final)' })
+  @RequirePermission(Permissions.EmployerBoq.Write)
+  async deleteAll(
+    @Param('buildingId', ParseUUIDPipe) buildingId: string,
+    @CurrentUser() user?: JwtPayload,
+    @CurrentUser('sub') userId?: string,
+  ) {
+    const result = await this.clearEmployerBoqItems.execute(buildingId, user, userId);
+    if (result.isFailure) {
+      throw this.mapError(result.error);
+    }
   }
 
   @Delete('buildings/:buildingId/boq/employer/items/:itemCode')
@@ -110,10 +127,10 @@ export class EmployerBoqController {
   async delete(
     @Param('buildingId', ParseUUIDPipe) buildingId: string,
     @Param('itemCode') itemCode: string,
-    @CurrentUser('projectId') projectId?: string,
+    @CurrentUser() user?: JwtPayload,
     @CurrentUser('sub') userId?: string,
   ) {
-    const result = await this.deleteEmployerBoqItem.execute(buildingId, itemCode, projectId, userId);
+    const result = await this.deleteEmployerBoqItem.execute(buildingId, itemCode, user, userId);
     if (result.isFailure) {
       throw this.mapError(result.error);
     }

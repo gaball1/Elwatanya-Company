@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   HttpCode,
   HttpStatus,
   NotFoundException,
@@ -11,7 +12,7 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { RequirePermission } from '../../common/decorators/permissions.decorator';
-import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
 import { Permissions } from '../../common/constants/permissions.constant';
 import {
   BuildingApplicationError,
@@ -22,13 +23,19 @@ import {
   FinalBoqErrorCode,
 } from '@/modules/final-boq/application/errors/final-boq-application.error';
 import { DistributeComponentUseCase } from './application/use-cases/distribute-component.use-case';
-import { DistributeComponentDto } from './dto/distribution.dto';
+import { DistributeItemUseCase } from './application/use-cases/distribute-item.use-case';
+import { RemoveDistributionUseCase } from './application/use-cases/remove-distribution.use-case';
+import { DistributeComponentDto, DistributeItemDto } from './dto/distribution.dto';
 
 @ApiTags('Distribution')
 @ApiBearerAuth()
 @Controller()
 export class DistributionController {
-  constructor(private readonly distributeComponent: DistributeComponentUseCase) {}
+  constructor(
+    private readonly distributeComponent: DistributeComponentUseCase,
+    private readonly distributeItem: DistributeItemUseCase,
+    private readonly removeDistribution: RemoveDistributionUseCase,
+  ) {}
 
   @Post('buildings/:buildingId/boq/final/items/:itemCode/components/:componentId/distribute')
   @HttpCode(HttpStatus.OK)
@@ -39,7 +46,7 @@ export class DistributionController {
     @Param('itemCode') itemCode: string,
     @Param('componentId', ParseUUIDPipe) componentId: string,
     @Body() dto: DistributeComponentDto,
-    @CurrentUser('projectId') projectId?: string,
+    @CurrentUser() user?: JwtPayload,
     @CurrentUser('sub') userId?: string,
   ) {
     const result = await this.distributeComponent.execute({
@@ -47,7 +54,69 @@ export class DistributionController {
       itemCode,
       componentId,
       distribution: dto.distribution,
-    }, projectId, userId);
+    }, user, userId);
+    if (result.isFailure) throw this.mapError(result.error);
+    return { item: result.getValue() };
+  }
+
+  @Post('buildings/:buildingId/boq/final/items/:itemCode/distribute')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Distribute non-analyzed final item to contractors (item-level)' })
+  @RequirePermission(Permissions.Distribution.Write)
+  async distributeItemEndpoint(
+    @Param('buildingId', ParseUUIDPipe) buildingId: string,
+    @Param('itemCode') itemCode: string,
+    @Body() dto: DistributeItemDto,
+    @CurrentUser() user?: JwtPayload,
+    @CurrentUser('sub') userId?: string,
+  ) {
+    const result = await this.distributeItem.execute({
+      buildingId,
+      itemCode,
+      distribution: dto.distribution,
+    }, user, userId);
+    if (result.isFailure) throw this.mapError(result.error);
+    return { item: result.getValue() };
+  }
+
+  @Delete('buildings/:buildingId/boq/final/items/:itemCode/components/:componentId/contractors/:contractorId')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Remove a contractor allocation for a component (undo distribution)' })
+  @RequirePermission(Permissions.Distribution.Write)
+  async removeComponentDistribution(
+    @Param('buildingId', ParseUUIDPipe) buildingId: string,
+    @Param('itemCode') itemCode: string,
+    @Param('componentId', ParseUUIDPipe) componentId: string,
+    @Param('contractorId', ParseUUIDPipe) contractorId: string,
+    @CurrentUser() user?: JwtPayload,
+    @CurrentUser('sub') userId?: string,
+  ) {
+    const result = await this.removeDistribution.execute({
+      buildingId,
+      itemCode,
+      componentId,
+      contractorId,
+    }, user, userId);
+    if (result.isFailure) throw this.mapError(result.error);
+    return { item: result.getValue() };
+  }
+
+  @Delete('buildings/:buildingId/boq/final/items/:itemCode/contractors/:contractorId')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Remove a contractor allocation for a final item (undo distribution)' })
+  @RequirePermission(Permissions.Distribution.Write)
+  async removeItemDistribution(
+    @Param('buildingId', ParseUUIDPipe) buildingId: string,
+    @Param('itemCode') itemCode: string,
+    @Param('contractorId', ParseUUIDPipe) contractorId: string,
+    @CurrentUser() user?: JwtPayload,
+    @CurrentUser('sub') userId?: string,
+  ) {
+    const result = await this.removeDistribution.execute({
+      buildingId,
+      itemCode,
+      contractorId,
+    }, user, userId);
     if (result.isFailure) throw this.mapError(result.error);
     return { item: result.getValue() };
   }

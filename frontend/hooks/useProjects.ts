@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { Project } from "@/types/project";
+import { safeFetch } from "@/lib/api/fetchTransport";
 
 const MOCK_PROJECTS: Project[] = [
   {
@@ -11,6 +12,7 @@ const MOCK_PROJECTS: Project[] = [
     location: "الرياض",
     status: "active",
     startDate: "2024-01-15",
+    plannedDurationMonths: 24,
     budget: 5000000,
     createdAt: "2024-01-01",
   },
@@ -21,6 +23,7 @@ const MOCK_PROJECTS: Project[] = [
     location: "جدة",
     status: "completed",
     startDate: "2023-06-01",
+    plannedDurationMonths: 18,
     endDate: "2025-03-01",
     budget: 12000000,
     createdAt: "2023-05-01",
@@ -32,6 +35,7 @@ const MOCK_PROJECTS: Project[] = [
     location: "الدمام",
     status: "planning",
     startDate: "2025-09-01",
+    plannedDurationMonths: 36,
     budget: 25000000,
     createdAt: "2025-01-01",
   },
@@ -40,13 +44,11 @@ const MOCK_PROJECTS: Project[] = [
 export function useProjects() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error] = useState<string | null>(null);
 
   const fetchProjects = useCallback(async () => {
-    setLoading(true);
-    setError(null);
     try {
-      const res = await fetch("/api/projects");
+      const res = await safeFetch("/api/projects");
       if (res.ok) {
         const data = await res.json();
         setProjects(data.items ?? MOCK_PROJECTS);
@@ -61,7 +63,10 @@ export function useProjects() {
   }, []);
 
   useEffect(() => {
-    fetchProjects();
+    const run = async () => {
+      await fetchProjects();
+    };
+    run();
   }, [fetchProjects]);
 
   return { projects, loading, error, refetch: fetchProjects };

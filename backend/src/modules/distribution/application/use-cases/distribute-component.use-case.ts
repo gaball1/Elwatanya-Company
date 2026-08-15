@@ -7,7 +7,7 @@ import {
 } from '@/modules/building/application/errors/building-application.error';
 import { IFinalBoqRepository } from '@/modules/final-boq/domain/final-boq.repository';
 import {
-  validateComponentDistribution,
+  validatePartialComponentDistribution,
   calcTotal,
 } from '@/modules/final-boq/domain/final-boq-rules';
 import {
@@ -23,7 +23,7 @@ import { ContractorBoq } from '@/modules/contractor-boq/domain/contractor-boq.en
 import { IContractorBoqRepository } from '@/modules/contractor-boq/domain/contractor-boq.repository';
 import { ContractorItemState } from '@/modules/contractor-boq/domain/contractor-boq-rules';
 import { FinalItemStatus } from '@/modules/final-boq/domain/final-boq-rules';
-import { OwnershipService } from '@/common/services/ownership.service';
+import { OwnershipActor, OwnershipService } from '@/common/services/ownership.service';
 import { AuditService } from '@/modules/audit/audit.service';
 import { PrismaService } from '@/prisma/prisma.service';
 
@@ -50,8 +50,8 @@ export class DistributeComponentUseCase {
     private readonly prisma: PrismaService,
   ) {}
 
-  async execute(input: DistributeComponentInput, userProjectId?: string | null, userId?: string): Promise<Result<FinalBoqItemResult>> {
-    await this.ownership.verifyBuildingAccess(userProjectId, input.buildingId);
+  async execute(input: DistributeComponentInput, user?: OwnershipActor, userId?: string): Promise<Result<FinalBoqItemResult>> {
+    await this.ownership.verifyBuildingAccess(user, input.buildingId);
     const buildingId = new UniqueEntityId(input.buildingId);
     const building = await this.buildings.findById(buildingId);
     if (!building) {
@@ -75,17 +75,34 @@ export class DistributeComponentUseCase {
       );
     }
 
-    const validation = validateComponentDistribution(component.quantity, input.distribution);
-    if (!validation.ok) {
-      return Result.fail(
-        new FinalBoqApplicationError(FinalBoqErrorCode.INVALID_DISTRIBUTION, validation.error),
-      );
-    }
-
     const allBoqs = await this.contractorBoq.findByBuildingId(buildingId);
     const boqMap = new Map<string, ContractorBoq>(
       allBoqs.map((b) => [b.subcontractorId.toValue(), b]),
     );
+
+    const alreadyAllocated = allBoqs.reduce(
+      (sum, b) =>
+        sum +
+        b.items
+          .filter(
+            (i) =>
+              i.itemCode === input.itemCode &&
+              (i.componentId?.toValue() ?? null) === input.componentId,
+          )
+          .reduce((s, i) => s + i.assignedQuantity, 0),
+      0,
+    );
+
+    const partialValidation = validatePartialComponentDistribution(
+      component.quantity,
+      alreadyAllocated,
+      input.distribution,
+    );
+    if (!partialValidation.ok) {
+      return Result.fail(
+        new FinalBoqApplicationError(FinalBoqErrorCode.INVALID_DISTRIBUTION, partialValidation.error),
+      );
+    }
 
     await this.prisma.$transaction(async (tx) => {
       for (const d of input.distribution) {

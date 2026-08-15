@@ -8,6 +8,8 @@ import { Card } from "@/components/ui";
 import { Plus, Trash2, Save } from "lucide-react";
 import { clientStatementService } from "@/services/client-statement.service";
 import BackButton from "@/components/shared/BackButton";
+import { employerBoqService } from '@/services/employerBoq.service';
+import { employerBoqToStatementItems } from '@/lib/statementItems';
 
 interface Item {
   id: string;
@@ -42,6 +44,12 @@ export default function EditClientStatementPage() {
 
   const [existingStatement, setExistingStatement] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [showDeleteItemConfirm, setShowDeleteItemConfirm] = useState<
+    number | null
+  >(null);
+  const [showDeleteDeductionConfirm, setShowDeleteDeductionConfirm] = useState<
+    number | null
+  >(null);
 
   useEffect(() => {
     clientStatementService.get(statementId).then((data) => {
@@ -55,23 +63,62 @@ export default function EditClientStatementPage() {
   const [deductionPercent, setDeductionPercent] = useState(5);
   const [items, setItems] = useState<Item[]>([]);
   const [deductions, setDeductions] = useState<Deduction[]>([]);
+  const [boqLoading, setBoqLoading] = useState(false);
+
+  const loadBoqItems = async () => {
+    const buildingId = existingStatement?.buildingId;
+    if (!buildingId) return;
+    const ok = confirm(
+      isArabic
+        ? "تحميل بنود مقايسة جهة الإسناد سيستبدل بنود المستخلص الحالية. متابعة؟"
+        : "Loading from employer BOQ will replace current statement items. Continue?"
+    );
+    if (!ok) return;
+    setBoqLoading(true);
+    try {
+      const boqItems = await employerBoqService.list(buildingId);
+      if (boqItems.length > 0) {
+        setItems(employerBoqToStatementItems(boqItems));
+      }
+    } catch {
+      alert(isArabic ? "فشل تحميل المقايسة" : "Failed to load BOQ");
+    } finally {
+      setBoqLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (existingStatement) {
       setStatementNumber(existingStatement.statementNumber);
       setStatementDate(existingStatement.date);
-      setItems(existingStatement.items.map((i: any) => ({
-        ...i,
-        total: i.quantity * i.unitPrice,
-        totalDone: i.previous + i.current,
-        final: ((i.previous + i.current) / i.quantity) * 100,
-        workValue: (i.previous + i.current) * i.unitPrice,
-        deduction:
-          (i.previous + i.current) * i.unitPrice * (deductionPercent / 100),
-        net:
-          (i.previous + i.current) * i.unitPrice * (1 - deductionPercent / 100),
+      setItems((existingStatement.items || []).map((i: any, idx: number) => {
+        const quantity = Number(i?.quantity ?? 0);
+        const unitPrice = Number(i?.unitPrice ?? 0);
+        const previous = Number(i?.previous ?? 0);
+        const current = Number(i?.current ?? 0);
+        const totalDone = previous + current;
+        return {
+          id: i?.id || `item-${idx}`,
+          itemName: i?.itemName || "",
+          unit: i?.unit || "م³",
+          quantity,
+          unitPrice,
+          total: quantity * unitPrice,
+          previous,
+          current,
+          totalDone,
+          final: quantity > 0 ? (totalDone / quantity) * 100 : 0,
+          workValue: totalDone * unitPrice,
+          deduction: totalDone * unitPrice * (deductionPercent / 100),
+          net: totalDone * unitPrice * (1 - deductionPercent / 100),
+          notes: i?.notes || "",
+        };
+      }));
+      setDeductions((existingStatement.deductions || []).map((d: any, idx: number) => ({
+        id: d?.id || `ded-${idx}`,
+        name: d?.name || "",
+        amount: Number(d?.amount ?? 0),
       })));
-      setDeductions(existingStatement.deductions);
     }
   }, [existingStatement]);
 
@@ -91,12 +138,6 @@ export default function EditClientStatementPage() {
         </p>
       </div>
     );
-  const [showDeleteItemConfirm, setShowDeleteItemConfirm] = useState<
-    number | null
-  >(null);
-  const [showDeleteDeductionConfirm, setShowDeleteDeductionConfirm] = useState<
-    number | null
-  >(null);
 
   const totalWorkValue = items.reduce((sum, item) => sum + item.workValue, 0);
   const totalDeductions = deductions.reduce(
@@ -304,6 +345,21 @@ export default function EditClientStatementPage() {
 
         {/* 13 Columns Table - same as new page */}
         <Card className="overflow-hidden">
+          <div className="p-2 border-b flex items-center justify-between bg-surface-secondary">
+            <h3 className="font-bold text-primary text-sm">
+              {isArabic ? "بنود الأعمال" : "Work Items"}
+            </h3>
+            <button
+              onClick={loadBoqItems}
+              disabled={!existingStatement?.buildingId || boqLoading}
+              className="flex items-center gap-1 text-xs text-gold hover:underline disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <Plus size={12} />
+              {boqLoading
+                ? isArabic ? "جاري التحميل..." : "Loading..."
+                : isArabic ? "تحميل من مقايسة جهة الإسناد" : "Load from employer BOQ"}
+            </button>
+          </div>
           <div className="overflow-x-auto">
             <table className="w-full text-xs border-collapse">
               <thead>

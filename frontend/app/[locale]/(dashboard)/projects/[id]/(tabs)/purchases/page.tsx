@@ -1,7 +1,7 @@
 /* eslint-disable */
 "use client";
 
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { Card } from "@/components/ui";
 import {
@@ -23,6 +23,7 @@ import { projectFundService } from "@/services/project-fund.service";
 import { fundTransactionService } from "@/services/fund-transaction.service";
 import { approvalService } from "@/services/approval.service";
 import { purchaseService, type Purchase } from "@/services/purchase.service";
+import { warehouseService, type Warehouse } from "@/services/warehouse.service";
 import { useToast } from "@/components/ui/Toast";
 import { sanitizeInput, isValidAmount } from "@/lib/security";
 import { shortRef } from "@/lib/formatRef";
@@ -39,6 +40,8 @@ export default function ProjectPurchasesPage() {
   const locale = (params.locale as string) ?? "ar";
   const isArabic = locale === "ar";
   const projectId = params.id as string;
+  const searchParams = useSearchParams();
+  const purchaseIdParam = searchParams.get("purchaseId");
   const { user } = useAuth();
   const { showToast, ToastComponent } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -46,21 +49,31 @@ export default function ProjectPurchasesPage() {
   // ✅ State - جلب البيانات من الـ API
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [projectFund, setProjectFund] = useState<ProjectFund | undefined>();
+  const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // ✅ تحميل البيانات من الـ API
+  // ✅ تحميل البيانات من الـ API — كل طلب مستقل حتى لو فيه خطأ
   useEffect(() => {
-    Promise.all([
-      purchaseService.list(projectId),
-      projectFundService.list(),
-    ])
-      .then(([purchasesData, funds]) => {
-        setPurchases(purchasesData);
+    setLoading(true);
+
+    // Load fund independently — must always succeed
+    projectFundService.list()
+      .then((funds) => {
         const fund = funds.find((f) => f.projectId === projectId);
         if (fund) setProjectFund({ ...fund, transactions: [] } as ProjectFund);
       })
+      .catch(() => {}); // silent
+
+    // Load warehouses independently (may be empty for new projects)
+    warehouseService.list(projectId)
+      .then((whData) => setWarehouses(whData))
+      .catch(() => setWarehouses([])); // silent — no warehouses yet is OK
+
+    // Load purchases
+    purchaseService.list(projectId)
+      .then((purchasesData) => setPurchases(purchasesData))
       .catch(() => {
-        showToast(isArabic ? "فشل تحميل البيانات" : "Failed to load data", "error");
+        showToast(isArabic ? "فشل تحميل بيانات المشتريات" : "Failed to load purchases", "error");
       })
       .finally(() => setLoading(false));
   }, [projectId, showToast, isArabic]);
@@ -72,6 +85,9 @@ export default function ProjectPurchasesPage() {
   const [showRequestModal, setShowRequestModal] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<Purchase | null>(null);
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
+  const [showReceiveModal, setShowReceiveModal] = useState(false);
+  const [receivingPurchase, setReceivingPurchase] = useState<Purchase | null>(null);
+  const [selectedWarehouseId, setSelectedWarehouseId] = useState("");
 
   // ✅ Form State
   const [formData, setFormData] = useState({
@@ -88,6 +104,9 @@ export default function ProjectPurchasesPage() {
 
   const filteredPurchases = useMemo(() => {
     let filtered = [...purchases];
+    if (purchaseIdParam) {
+      filtered = filtered.filter((p) => p.id === purchaseIdParam);
+    }
     if (debouncedSearch) {
       const term = debouncedSearch.toLowerCase();
       filtered = filtered.filter(
@@ -97,7 +116,7 @@ export default function ProjectPurchasesPage() {
       );
     }
     return filtered;
-  }, [purchases, debouncedSearch]);
+  }, [purchases, debouncedSearch, purchaseIdParam]);
 
   const { currentItems, currentPage, totalPages, goToPage } = usePagination(
     filteredPurchases,
@@ -105,7 +124,7 @@ export default function ProjectPurchasesPage() {
   );
 
   const totalSpent = purchases.reduce((sum, p) => sum + p.total, 0);
-  const fundBalance = projectFund?.currentBalance || 0;
+  const fundBalance = projectFund?.pettyCashBalance || 0;
 
   // ✅ معالج رفع الملف
   const handleFileChange = useCallback(
@@ -164,8 +183,8 @@ export default function ProjectPurchasesPage() {
         return;
       }
 
-      // ✅ التحقق من رفع الفاتورة (إجباري)
-      if (!invoiceFile) {
+      // ✅ التحقق من رفع الفاتورة (إجباري عند الإضافة فقط؛ التعديل يحتفظ بالفاتورة القائمة)
+      if (!invoiceFile && !editingItem?.invoiceFile) {
         showToast(
           isArabic
             ? "يرجى رفع الفاتورة (إلزامي)"
@@ -198,7 +217,8 @@ export default function ProjectPurchasesPage() {
             unitPrice: price,
             supplierName: sanitizeInput(supplier),
             notes: sanitizeInput(notes),
-            invoiceFile: invoiceData,
+            // بدون رفع ملف جديد: يُحتفظ بالفاتورة الحالية
+            invoiceFile: invoiceData ?? editingItem.invoiceFile ?? undefined,
             createdBy: user?.id ?? '',
           });
           setPurchases(purchases.map((p) => (p.id === editingItem.id ? updated : p)));
@@ -222,8 +242,15 @@ export default function ProjectPurchasesPage() {
 
         setShowAddModal(false);
         resetForm();
-      } catch {
-        showToast(isArabic ? "فشل حفظ المشتريات" : "Failed to save purchase", "error");
+      } catch (error: any) {
+        showToast(
+          error?.message
+            ? error.message
+            : isArabic
+            ? "فشل حفظ المشتريات"
+            : "Failed to save purchase",
+          "error"
+        );
       }
     },
     [purchases, projectId, fundBalance, formData, editingItem, user, showToast, isArabic, fileToBase64]
@@ -237,13 +264,36 @@ export default function ProjectPurchasesPage() {
           await purchaseService.remove(id);
           setPurchases(purchases.filter((p) => p.id !== id));
           showToast(isArabic ? "تم الحذف" : "Deleted", "success");
-        } catch {
-          showToast(isArabic ? "فشل الحذف" : "Failed to delete", "error");
+        } catch (error: any) {
+          showToast(
+            error?.message
+              ? error.message
+              : isArabic
+              ? "فشل الحذف"
+              : "Failed to delete",
+            "error"
+          );
         }
       }
     },
     [purchases, showToast, isArabic]
   );
+
+  const handleReceiveConfirm = useCallback(async () => {
+    if (!receivingPurchase) return;
+    if (!selectedWarehouseId) {
+      showToast(isArabic ? "يرجى اختيار المخزن" : "Please select a warehouse", "error");
+      return;
+    }
+    try {
+      const updated = await purchaseService.updateStatus(receivingPurchase.id, 'received', selectedWarehouseId);
+      setPurchases(purchases.map((p) => (p.id === receivingPurchase.id ? updated : p)));
+      showToast(isArabic ? "تم استلام المشتريات وإضافتها للمخزون" : "Purchase received and added to inventory", "success");
+      setShowReceiveModal(false);
+      setReceivingPurchase(null);
+      setSelectedWarehouseId("");
+    } catch { showToast(isArabic ? "فشل الاستلام" : "Receive failed", "error"); }
+  }, [receivingPurchase, selectedWarehouseId, purchases, showToast, isArabic]);
 
   // ✅ إعادة تعيين الفورم
   const resetForm = useCallback(() => {
@@ -387,33 +437,24 @@ export default function ProjectPurchasesPage() {
       try {
         const tx = await fundTransactionService.create({
           fundId: projectFund.id,
-          type: "add",
+          type: "transfer",
           category: "purchase",
           amount,
-          description: "زيادة عهدة مشتريات (معتمدة)",
+          description: "تحويل لعهدة الموقع (مشتريات)",
           status: "approved",
         });
-        const updatedFund = {
-          ...projectFund,
-          initialBalance: projectFund.initialBalance + amount,
-          currentBalance: projectFund.currentBalance + amount,
-          lastUpdated: new Date().toISOString().split("T")[0],
-          transactions: [
-            ...projectFund.transactions,
-            {
-              id: tx.id,
-              type: "add" as const,
-              category: "purchase" as const,
-              amount,
-              description: "زيادة عهدة مشتريات (معتمدة)",
-              date: tx.date.split("T")[0],
-              status: "approved" as const,
-            },
-          ],
-        };
-        setProjectFund(updatedFund);
+        setProjectFund((prev) =>
+          prev
+            ? {
+                ...prev,
+                currentBalance: prev.currentBalance - amount,
+                pettyCashBalance: prev.pettyCashBalance + amount,
+                lastUpdated: new Date().toISOString().split('T')[0],
+              }
+            : prev
+        );
         showToast(
-          isArabic ? "تم إضافة الرصيد للعهدة" : "Fund balance added",
+          isArabic ? "تم إضافة الرصيد لعهدة الموقع" : "Fund balance added to petty cash",
           "success"
         );
       } catch (err) {
@@ -430,11 +471,36 @@ export default function ProjectPurchasesPage() {
     <div className="space-y-6" suppressHydrationWarning>
       {ToastComponent}
 
+      {/* No Fund Warning */}
+      {!loading && !projectFund && (
+        <div className="bg-warning-light border border-warning-dark rounded-lg p-4 flex items-center justify-between gap-3">
+          <p className="text-warning-dark text-sm font-medium">
+            {isArabic
+              ? '⚠️ لم يتم إنشاء خزنة لهذا المشروع. اذهب لتبويب الخزنة وأنشئ الخزنة أولاً.'
+              : '⚠️ No treasury found for this project. Please go to the Treasury tab and create one first.'}
+          </p>
+          <button
+            onClick={() => router.push(`/${locale}/projects/${projectId}/treasury`)}
+            className="shrink-0 px-3 py-1.5 bg-warning-dark text-white text-xs rounded-lg hover:opacity-90 transition"
+          >
+            {isArabic ? 'فتح الخزنة' : 'Open Treasury'}
+          </button>
+        </div>
+      )}
+
       {/* Fund Cards */}
-      <div className="grid md:grid-cols-3 gap-4" suppressHydrationWarning>
+      <div className="grid md:grid-cols-4 gap-4" suppressHydrationWarning>
+        <Card className="p-4 border-r-4 border-info" suppressHydrationWarning>
+          <p className="text-text-secondary text-sm">
+            {isArabic ? "رصيد العهدة السابق" : "Previous Petty Cash"}
+          </p>
+          <p className="text-2xl font-bold text-info">
+            {(fundBalance + totalSpent).toLocaleString()} ج.م
+          </p>
+        </Card>
         <Card className="p-4 border-r-4 border-gold" suppressHydrationWarning>
           <p className="text-text-secondary text-sm">
-            {isArabic ? "رصيد العهدة" : "Fund Balance"}
+            {isArabic ? "عهدة الموقع (مشتريات)" : "Site Petty Cash"}
           </p>
           <p className="text-2xl font-bold text-gold">
             {fundBalance.toLocaleString()} ج.م
@@ -484,7 +550,7 @@ export default function ProjectPurchasesPage() {
             {isArabic ? "طلب زيادة عهدة" : "Request Fund Increase"}
           </button>
         </Can>
-        <Can permission="purchases.create">
+        <Can permission="fund-transactions.create">
           <button
             onClick={() => setShowFundModal(true)}
             className="flex items-center gap-2 px-4 py-2 border border-success-dark text-success-dark rounded-lg hover:bg-success-dark hover:text-white transition text-sm font-medium"
@@ -621,12 +687,10 @@ export default function ProjectPurchasesPage() {
                             {item.status === 'approved' && (
                               <Can permission="purchases.update">
                                 <button
-                                  onClick={async () => {
-                                    try {
-                                      const updated = await purchaseService.updateStatus(item.id, 'received');
-                                      setPurchases(purchases.map((p) => (p.id === item.id ? updated : p)));
-                                      showToast(isArabic ? "تم استلام المشتريات وإضافتها للمخزون" : "Purchase received and added to inventory", "success");
-                                    } catch { showToast(isArabic ? "فشل الاستلام" : "Receive failed", "error"); }
+                                  onClick={() => {
+                                    setReceivingPurchase(item);
+                                    setSelectedWarehouseId(warehouses.length > 0 ? warehouses[0].id : "");
+                                    setShowReceiveModal(true);
                                   }}
                                   className="text-info hover:text-info-dark transition p-1"
                                   title={isArabic ? "استلام" : "Receive"}
@@ -1035,7 +1099,7 @@ export default function ProjectPurchasesPage() {
           <div className="bg-surface rounded-2xl w-full max-w-md">
             <div className="p-5 border-b flex justify-between items-center">
               <h2 className="text-xl font-bold text-primary">
-                {isArabic ? "إضافة رصيد للعهدة" : "Add Fund"}
+                {isArabic ? "إضافة رصيد لعهدة المشتريات" : "Add Purchase Fund"}
               </h2>
               <button
                 onClick={() => setShowFundModal(false)}
@@ -1045,30 +1109,48 @@ export default function ProjectPurchasesPage() {
               </button>
             </div>
             <div className="p-5">
-              <p className="text-text-secondary mb-4">
-                {isArabic
-                  ? "المبلغ الحالي في العهدة:"
-                  : "Current fund balance:"}
-                <span className="font-bold text-gold block text-xl">
+              {/* Treasury balance (source) */}
+              <div className="bg-primary/5 border border-primary/20 rounded-xl p-3 mb-3">
+                <p className="text-xs text-text-secondary mb-1">
+                  {isArabic ? "رصيد الخزنة الرئيسية (سيتم التحويل منها):" : "Main Treasury Balance (transfer source):"}
+                </p>
+                <p className="text-2xl font-bold text-primary">
+                  {(projectFund?.currentBalance ?? 0).toLocaleString()} ج.م
+                </p>
+              </div>
+              {/* Petty cash balance (destination) */}
+              <div className="bg-gold/5 border border-gold/30 rounded-xl p-3 mb-4">
+                <p className="text-xs text-text-secondary mb-1">
+                  {isArabic ? "رصيد عهدة الموقع الحالي:" : "Current site petty cash:"}
+                </p>
+                <p className="text-xl font-bold text-gold">
                   {fundBalance.toLocaleString()} ج.م
-                </span>
-              </p>
+                </p>
+              </div>
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
                   const form = e.target as HTMLFormElement;
                   const amount = Number(
-                    (form.elements.namedItem("amount") as HTMLInputElement)
-                      .value
+                    (form.elements.namedItem("amount") as HTMLInputElement).value
                   );
-                  if (isValidAmount(amount)) {
-                    handleAddFund(amount).then(() => setShowFundModal(false));
-                  } else {
+                  if (!isValidAmount(amount)) {
                     showToast(
                       isArabic ? "المبلغ غير صحيح" : "Invalid amount",
                       "error"
                     );
+                    return;
                   }
+                  if (amount > (projectFund?.currentBalance ?? 0)) {
+                    showToast(
+                      isArabic
+                        ? `المبلغ يتجاوز رصيد الخزنة (${(projectFund?.currentBalance ?? 0).toLocaleString()} ج.م)`
+                        : `Amount exceeds treasury balance (${(projectFund?.currentBalance ?? 0).toLocaleString()} EGP)`,
+                      "error"
+                    );
+                    return;
+                  }
+                  handleAddFund(amount).then(() => setShowFundModal(false));
                 }}
                 className="space-y-4"
               >
@@ -1103,6 +1185,60 @@ export default function ProjectPurchasesPage() {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showReceiveModal && receivingPurchase && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-surface rounded-2xl shadow-xl w-full max-w-md p-6">
+            <h3 className="text-xl font-bold mb-4">
+              {isArabic ? "استلام المشتريات" : "Receive Purchase"}
+            </h3>
+            <p className="text-sm text-text-muted mb-4">
+              {isArabic
+                ? `سيتم استلام "${receivingPurchase.itemName}" وإضافتها للمخزون.`
+                : `"${receivingPurchase.itemName}" will be received and added to inventory.`}
+            </p>
+            <div className="mb-4">
+              <label className="block text-sm font-medium mb-1">
+                {isArabic ? "المخزن المستلم" : "Receiving Warehouse"}
+              </label>
+              {warehouses.length === 0 ? (
+                <div className="text-danger text-sm">
+                  {isArabic ? "لا يوجد مخازن مسجلة لهذا المشروع" : "No warehouses registered for this project"}
+                </div>
+              ) : (
+                <select
+                  value={selectedWarehouseId}
+                  onChange={(e) => setSelectedWarehouseId(e.target.value)}
+                  className="w-full bg-surface-secondary border border-border rounded-lg px-4 py-2 focus:outline-none focus:border-gold"
+                >
+                  <option value="">{isArabic ? "اختر المخزن" : "Select Warehouse"}</option>
+                  {warehouses.map((w) => (
+                    <option key={w.id} value={w.id}>{w.name}</option>
+                  ))}
+                </select>
+              )}
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => {
+                  setShowReceiveModal(false);
+                  setReceivingPurchase(null);
+                }}
+                className="px-4 py-2 text-text-muted hover:bg-surface-secondary rounded-lg transition"
+              >
+                {isArabic ? "إلغاء" : "Cancel"}
+              </button>
+              <button
+                onClick={handleReceiveConfirm}
+                disabled={!selectedWarehouseId}
+                className="px-4 py-2 bg-gold text-white rounded-lg hover:bg-gold-light transition disabled:opacity-50"
+              >
+                {isArabic ? "تأكيد الاستلام" : "Confirm Receive"}
+              </button>
             </div>
           </div>
         </div>

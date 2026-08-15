@@ -29,7 +29,6 @@ export default function BuildingSubcontractorsPage() {
 
   const loadData = useCallback(async () => {
     try {
-      setLoading(true);
       const [assigned, allSubs] = await Promise.all([
         buildingSubcontractorService.listByBuilding(buildingId),
         subcontractorService.list(),
@@ -45,7 +44,10 @@ export default function BuildingSubcontractorsPage() {
   }, [buildingId, isArabic, showToast]);
 
   useEffect(() => {
-    loadData();
+    const run = async () => {
+      await loadData();
+    };
+    run();
   }, [loadData]);
 
   const handleAssign = async (e: React.FormEvent) => {

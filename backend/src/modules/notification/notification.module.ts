@@ -4,6 +4,7 @@ import { NOTIFICATION_REPOSITORY } from './domain/notification.repository';
 import { INotificationRepository } from './domain/notification.repository';
 import { PrismaNotificationRepository } from './infrastructure/prisma-notification.repository';
 import { ListNotificationsUseCase } from './application/use-cases/list-notifications.use-case';
+import { CountUnreadNotificationsUseCase } from './application/use-cases/count-unread-notifications.use-case';
 import { CreateNotificationUseCase } from './application/use-cases/create-notification.use-case';
 import { MarkReadNotificationUseCase } from './application/use-cases/mark-read-notification.use-case';
 import { MarkAllReadUseCase } from './application/use-cases/mark-all-read.use-case';
@@ -19,6 +20,11 @@ import { NotificationController } from './notification.controller';
     {
       provide: ListNotificationsUseCase,
       useFactory: (repo: INotificationRepository) => new ListNotificationsUseCase(repo),
+      inject: [NOTIFICATION_REPOSITORY],
+    },
+    {
+      provide: CountUnreadNotificationsUseCase,
+      useFactory: (repo: INotificationRepository) => new CountUnreadNotificationsUseCase(repo),
       inject: [NOTIFICATION_REPOSITORY],
     },
     {

@@ -19,6 +19,7 @@ export interface FinalBoqItem extends BoqItemBase {
   isAnalyzed: boolean;
   components: FinalBoqComponent[];
   status: "pending" | "analyzed" | "partial" | "distributed" | "completed";
+  itemDistribution?: ComponentDistribution[];
 }
 
 // ✅ مكون في التحليل
@@ -66,6 +67,8 @@ export interface ExtractItem {
   executedQuantity: number;
   unitPrice: number;
   workValue: number;
+  /** Id of the exact contractor BOQ item/component this row belongs to (needed for composite items). */
+  contractorBoqItemId?: string;
 }
 
 export interface ExtractDeductionRow {
@@ -91,6 +94,8 @@ export interface ContractorExtract {
   deductions: ExtractDeductionRow[];
   totalWorkValue: number;
   previousPaid: number;
+  otherAmounts?: number;
+  otherAmountItems?: { id: string; name: string; amount: number }[];
   totalDeductions: number;
   netPayable: number;
   signatures?: { id: string; name: string; title: string; date: string }[];

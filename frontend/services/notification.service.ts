@@ -13,6 +13,8 @@ export interface Notification {
   entityType: string | null;
   entityId: string | null;
   link: string | null;
+  targetRoles: string[];
+  targetPermissions: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -29,6 +31,8 @@ export interface CreateNotificationData {
   entityType?: string;
   entityId?: string;
   link?: string;
+  targetRoles?: string[];
+  targetPermissions?: string[];
 }
 
 export interface UpdateNotificationData {
@@ -41,10 +45,23 @@ export interface UpdateNotificationData {
   read?: boolean;
 }
 
+export interface ListNotificationsParams {
+  read?: boolean;
+  limit?: number;
+}
+
 export const notificationService = {
-  async list(): Promise<Notification[]> {
-    const data = await apiClient<{ items: Notification[] }>('/notifications', { method: 'GET' });
+  async list(params?: ListNotificationsParams): Promise<Notification[]> {
+    const query = new URLSearchParams();
+    if (params?.read !== undefined) query.set('read', String(params.read));
+    if (params?.limit !== undefined) query.set('limit', String(params.limit));
+    const qs = query.toString();
+    const data = await apiClient<{ items: Notification[] }>(`/notifications${qs ? `?${qs}` : ''}`, { method: 'GET' });
     return data.items;
+  },
+  async unreadCount(): Promise<number> {
+    const data = await apiClient<{ count: number }>('/notifications/unread-count', { method: 'GET' });
+    return data.count;
   },
   async get(id: string): Promise<Notification> {
     const data = await apiClient<{ notification: Notification }>(`/notifications/${id}`, { method: 'GET' });

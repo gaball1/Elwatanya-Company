@@ -1,13 +1,12 @@
 import { Result } from '@/shared/kernel/result';
 import { IAttendanceRepository } from '../../domain/attendance.repository';
-import { CreateAttendanceInput, AttendanceResult } from '../dto/attendance.dto';
 import { Attendance } from '../../domain/attendance.entity';
-import { toResult } from './list-attendance.use-case';
+import { CreateAttendanceInput, AttendanceResult } from '../dto/attendance.dto';
 import { EventBusImpl } from '@/modules/domain-events/event-bus.impl';
-import { AttendanceCheckedInEvent } from '@/modules/domain-events/events';
 import { PrismaService } from '@/prisma/prisma.service';
 import { evaluateGeofence } from '../geofence.util';
 import { AttendanceOverrideService } from '@/modules/attendance-override/attendance-override.service';
+import { toResult } from './list-attendance.use-case';
 
 export type CreateAttendanceOutcome =
   | { record: AttendanceResult }
@@ -27,87 +26,70 @@ export class CreateAttendanceUseCase {
       return Result.fail(new Error('Attendance record already exists for this employee on this date'));
     }
 
-    const requestedBy = await this.resolveRequestedBy(input.employeeId);
-
     // Server-side geofence enforcement: the backend is the source of truth.
     const breach = await this.evaluateGeofence(input.buildingId, input);
-    if (breach) {
-      const { override } = await this.overrideService.create({
-        requestedBy: requestedBy ?? input.employeeId,
-        reason: breach.reason,
-        type: 'check_in',
-        distance: breach.distance,
-        snapshot: {
-          employeeId: input.employeeId,
-          date: input.date,
-          checkInTime: input.checkInTime,
-          checkInLatitude: input.checkInLatitude ?? null,
-          checkInLongitude: input.checkInLongitude ?? null,
-          checkInAddress: input.checkInAddress ?? null,
-          checkInAccuracy: input.checkInAccuracy ?? null,
-          checkInSelfie: input.checkInSelfie ?? null,
-          deviceInfo: input.deviceInfo ?? null,
-          distanceFromSite: input.distanceFromSite ?? null,
-          projectId: input.projectId ?? null,
-          buildingId: input.buildingId ?? null,
-          notes: input.notes ?? null,
-        },
-      });
+    const hasCoords = input.checkInLatitude != null && input.checkInLongitude != null;
 
-      return Result.ok({
-        override: { id: override.id, reason: override.reason, status: override.status, distance: breach.distance },
-        requiresApproval: true,
+    // Inside the site geofence (or no geofence configured) with valid GPS:
+    // materialize the attendance record immediately so the employee can check
+    // out in the same session (one row per employee + date).
+    if (!breach && hasCoords) {
+      const record = Attendance.create({
+        employeeId: input.employeeId,
+        date: input.date,
+        checkInTime: input.checkInTime,
+        checkInLatitude: input.checkInLatitude,
+        checkInLongitude: input.checkInLongitude,
+        checkInAddress: input.checkInAddress,
+        checkInAccuracy: input.checkInAccuracy,
+        checkInSelfie: input.checkInSelfie,
+        deviceInfo: input.deviceInfo,
+        distanceFromSite: input.distanceFromSite,
+        projectId: input.projectId,
+        buildingId: input.buildingId,
+        notes: input.notes,
       });
+      if (record.isFailure) return Result.fail(record.error as Error);
+      const attendance = record.getValue();
+      await this.attendance.save(attendance);
+      return Result.ok({ record: toResult(attendance) });
     }
 
-    const result = Attendance.create({
-      employeeId: input.employeeId,
-      date: input.date,
-      checkInTime: input.checkInTime,
-      checkInLatitude: input.checkInLatitude,
-      checkInLongitude: input.checkInLongitude,
-      checkInAddress: input.checkInAddress,
-      checkInAccuracy: input.checkInAccuracy,
-      checkInSelfie: input.checkInSelfie,
-      deviceInfo: input.deviceInfo,
-      distanceFromSite: input.distanceFromSite,
-      projectId: input.projectId,
-      buildingId: input.buildingId,
-      notes: input.notes,
+    // Outside the geofence or missing GPS → submit for manager approval.
+    // The attendance record is materialized only after the request is approved.
+    const requestedBy = await this.resolveRequestedBy(input.employeeId);
+
+    const { override } = await this.overrideService.create({
+      requestedBy: requestedBy ?? input.employeeId,
+      reason: breach ? breach.reason : 'Location data missing; check-in requires valid GPS coordinates',
+      type: 'check_in',
+      distance: breach ? breach.distance : input.distanceFromSite ?? null,
+      snapshot: {
+        employeeId: input.employeeId,
+        date: input.date,
+        checkInTime: input.checkInTime,
+        checkInLatitude: input.checkInLatitude ?? null,
+        checkInLongitude: input.checkInLongitude ?? null,
+        checkInAddress: input.checkInAddress ?? null,
+        checkInAccuracy: input.checkInAccuracy ?? null,
+        checkInSelfie: input.checkInSelfie ?? null,
+        deviceInfo: input.deviceInfo ?? null,
+        distanceFromSite: input.distanceFromSite ?? null,
+        projectId: input.projectId ?? null,
+        buildingId: input.buildingId ?? null,
+        notes: input.notes ?? null,
+      },
     });
 
-    if (result.isFailure) return Result.fail(result.error as Error);
-
-    const attendance = result.getValue();
-    await this.attendance.save(attendance);
-
-    if (input.employeeId) {
-      const user = await this.prisma.user.findUnique({
-        where: { employeeId: input.employeeId },
-        select: { id: true },
-      });
-      const employee = await this.prisma.employee.findUnique({
-        where: { id: input.employeeId },
-        select: { fullName: true },
-      });
-      await this.eventBus.publish(
-        new AttendanceCheckedInEvent(
-          attendance.id.toValue(),
-          'attendance',
-          {
-            id: attendance.id.toValue(),
-            employeeId: input.employeeId,
-            employeeName: employee?.fullName,
-            checkInTime: input.checkInTime.toISOString(),
-            projectId: input.projectId ?? undefined,
-            buildingId: input.buildingId ?? undefined,
-            recipientIds: user ? [user.id] : [],
-          },
-        ),
-      );
-    }
-
-    return Result.ok({ type: 'attendance', record: toResult(attendance) });
+    return Result.ok({
+      override: {
+        id: override.id,
+        reason: override.reason,
+        status: override.status,
+        distance: breach ? breach.distance : input.distanceFromSite ?? null,
+      },
+      requiresApproval: true,
+    });
   }
 
   private async evaluateGeofence(

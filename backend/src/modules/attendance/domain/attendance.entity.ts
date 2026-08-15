@@ -176,6 +176,10 @@ export class Attendance extends AggregateRoot {
     return new Attendance(props, id, createdAt, updatedAt);
   }
 
+  public reconcileId(id: UniqueEntityId): void {
+    this.changeId(id);
+  }
+
   public doCheckOut(input: {
     checkOutTime: Date;
     checkOutLatitude?: number | null;

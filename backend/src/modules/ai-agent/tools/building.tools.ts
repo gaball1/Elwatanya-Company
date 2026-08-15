@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { BaseTool } from './base.tool';
 import { AgentHttpClient } from './http-client';
 import { ToolResult } from '../dto/agent-response.dto';
+import { schema, projectSchema } from './tool-schemas';
 
 @Injectable()
 export class ListBuildingsTool extends BaseTool {
@@ -9,6 +10,7 @@ export class ListBuildingsTool extends BaseTool {
   readonly description = 'List all buildings, optionally filtered by project';
   readonly requiresPermission = 'buildings.read';
   readonly requiredEntity = 'building';
+  readonly parameters = projectSchema();
 
   constructor(private readonly api: AgentHttpClient) {
     super();
@@ -29,6 +31,10 @@ export class GetBuildingTool extends BaseTool {
   readonly description = 'Get building details by ID';
   readonly requiresPermission = 'buildings.read';
   readonly requiredEntity = 'building';
+  readonly parameters = schema({
+    buildingId: { type: 'string', description: 'Building UUID (rarely needed — a name works).' },
+    buildingName: { type: 'string', description: 'Building name.' },
+  });
 
   constructor(private readonly api: AgentHttpClient) {
     super();

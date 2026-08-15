@@ -48,7 +48,7 @@ export default function ProjectAnalyticsPage() {
               {isArabic ? "تاريخ البدء" : "Start Date"}
             </span>
             <span className="font-medium">
-              {project.startDate ? new Date(project.startDate).toLocaleDateString() : "—"}
+              {project.startDate ? new Date(project.startDate).toLocaleDateString(isArabic ? "ar-EG" : "en-US") : "—"}
             </span>
           </div>
           <div className="flex justify-between">

@@ -13,6 +13,8 @@ export interface NotificationResult {
   entityType: string | null;
   entityId: string | null;
   link: string | null;
+  targetRoles: string[];
+  targetPermissions: string[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -28,9 +30,17 @@ export interface CreateNotificationInput {
   entityType?: string | null;
   entityId?: string | null;
   link?: string | null;
+  targetRoles?: string[];
+  targetPermissions?: string[];
 }
 
 export interface ListNotificationsQuery {
   type?: NotificationType;
   read?: boolean;
+  /** Roles held by the requesting user (JWT). */
+  roleNames?: string[];
+  /** Permissions held by the requesting user (JWT). */
+  permissionNames?: string[];
+  /** Maximum number of notifications to return. */
+  limit?: number;
 }

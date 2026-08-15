@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { useParams, usePathname } from "next/navigation";
+import { useParams, usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { Search, Bell, ChevronDown, LogOut, User, Menu, Globe } from "lucide-react";
@@ -10,6 +10,8 @@ import ThemeToggle from "@/components/ui/ThemeToggle";
 import { useTheme } from "@/components/ThemeProvider";
 import { notificationService, type Notification } from "@/services/notification.service";
 import { useUnreadCount, refreshUnreadCount } from "@/hooks/useNotifications";
+import { useAuth } from "@/hooks/useAuth";
+import { resolveNotificationHref } from "@/lib/notificationLink";
 
 interface TopbarProps {
   isArabic: boolean;
@@ -19,12 +21,14 @@ interface TopbarProps {
 export default function Topbar({ isArabic, onMenuToggle }: TopbarProps) {
   const params = useParams();
   const pathname = usePathname();
+  const router = useRouter();
   const locale = (params.locale as string) ?? "ar";
   const [searchOpen, setSearchOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const [notifItems, setNotifItems] = useState<Notification[]>([]);
   const { unreadCount, refresh } = useUnreadCount();
+  const { user } = useAuth();
   const profileRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
   const { resolved } = useTheme();
@@ -39,12 +43,8 @@ export default function Topbar({ isArabic, onMenuToggle }: TopbarProps) {
   }, []);
 
   useEffect(() => {
-    notificationService.list().then(setNotifItems).catch(() => {});
-  }, []);
-
-  useEffect(() => {
     if (!notifOpen) return;
-    const load = () => notificationService.list().then(setNotifItems).catch(() => {});
+    const load = () => notificationService.list({ limit: 20 }).then(setNotifItems).catch(() => {});
     load();
     refresh();
     const interval = setInterval(load, 30_000);
@@ -67,9 +67,9 @@ export default function Topbar({ isArabic, onMenuToggle }: TopbarProps) {
         setNotifItems((prev) => prev.map((it) => (it.id === n.id ? { ...it, read: true } : it)));
       }
     } catch {}
-    if (n.link) {
-      window.open(n.link, "_blank", "noopener,noreferrer");
-    }
+    const href = resolveNotificationHref(n, locale);
+    setNotifOpen(false);
+    if (href) router.push(href);
   };
 
   const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -210,7 +210,7 @@ export default function Topbar({ isArabic, onMenuToggle }: TopbarProps) {
             <button onClick={() => setNotifOpen(!notifOpen)} className="relative p-2 rounded-lg text-text-muted hover:text-text-primary hover:bg-surface-secondary transition-colors">
               <Bell size={18} />
               {unreadCount > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-danger text-white text-[10px] font-bold rounded-full flex items-center justify-center shadow-sm">
+                <span className="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 bg-danger text-white text-[10px] font-bold rounded-full flex items-center justify-center shadow-sm">
                   {unreadCount}
                 </span>
               )}
@@ -250,16 +250,24 @@ export default function Topbar({ isArabic, onMenuToggle }: TopbarProps) {
           {/* Profile */}
           <div ref={profileRef} className="relative">
             <button onClick={() => setProfileOpen(!profileOpen)} className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-surface-secondary transition-colors">
-              <div className="w-7 h-7 rounded-full bg-gold/20 flex items-center justify-center text-xs font-bold text-gold">
-                {isArabic ? "م" : "E"}
-              </div>
+              {user?.avatarUrl ? (
+                <img
+                  src={user.avatarUrl}
+                  alt={user.name}
+                  className="w-7 h-7 rounded-full object-cover"
+                />
+              ) : (
+                <div className="w-7 h-7 rounded-full bg-gold/20 flex items-center justify-center text-xs font-bold text-gold">
+                  {user?.name?.charAt(0).toUpperCase() ?? (isArabic ? "م" : "U")}
+                </div>
+              )}
               <ChevronDown size={14} className="text-text-muted hidden sm:block" />
             </button>
             {profileOpen && (
               <div className="absolute left-0 top-full mt-2 w-56 bg-surface border border-border rounded-xl shadow-dropdown py-1 animate-fade-in-down">
                 <div className="px-4 py-3 border-b border-border">
-                  <p className="text-sm font-medium text-text-primary">{isArabic ? "مدير النظام" : "System Admin"}</p>
-                  <p className="text-xs text-text-muted">admin@elwataniya.com</p>
+                  <p className="text-sm font-medium text-text-primary truncate">{user?.name ?? "—"}</p>
+                  <p className="text-xs text-text-muted truncate">{user?.email ?? ""}</p>
                 </div>
                 <Link href={`/${locale}/profile`} className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-text-secondary hover:bg-surface-secondary transition-colors">
                   <User size={16} /> {isArabic ? "الملف الشخصي" : "Profile"}

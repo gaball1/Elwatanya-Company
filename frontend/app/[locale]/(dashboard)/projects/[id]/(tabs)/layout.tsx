@@ -122,7 +122,7 @@ export default function ProjectTabsLayout({
                 <span>
                   {isArabic ? "بداية:" : "Start:"}{" "}
                   {project.startDate
-                    ? new Date(project.startDate).toLocaleDateString()
+                    ? new Date(project.startDate).toLocaleDateString(isArabic ? "ar-EG" : "en-US")
                     : "—"}
                 </span>
               </div>

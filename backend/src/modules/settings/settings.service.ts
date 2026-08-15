@@ -184,17 +184,6 @@ export class SettingsService implements OnModuleInit {
         time: { value: '02:00', type: 'string', label: 'Backup Time' },
         retentionDays: { value: 30, type: 'number', label: 'Backup Retention (days)' },
       },
-      documentNumber: {
-        purchase_order: { value: { prefix: 'PO', padding: 5, resetStrategy: 'yearly', nextNumber: 1 }, type: 'json', label: 'Purchase Order', description: 'PO-YYYY-NNNNN' },
-        extract: { value: { prefix: 'EX', padding: 5, resetStrategy: 'yearly', nextNumber: 1 }, type: 'json', label: 'Extract', description: 'EX-YYYY-NNNNN' },
-        payment: { value: { prefix: 'PAY', padding: 5, resetStrategy: 'yearly', nextNumber: 1 }, type: 'json', label: 'Payment', description: 'PAY-YYYY-NNNNN' },
-        invoice: { value: { prefix: 'INV', padding: 5, resetStrategy: 'yearly', nextNumber: 1 }, type: 'json', label: 'Invoice', description: 'INV-YYYY-NNNNN' },
-        project: { value: { prefix: 'PRJ', padding: 4, resetStrategy: 'none', nextNumber: 1 }, type: 'json', label: 'Project', description: 'PRJ-NNNN' },
-        report: { value: { prefix: 'RPT', padding: 4, resetStrategy: 'yearly', nextNumber: 1 }, type: 'json', label: 'Report', description: 'RPT-YYYY-NNNN' },
-        fund_transaction: { value: { prefix: 'FT', padding: 5, resetStrategy: 'monthly', nextNumber: 1 }, type: 'json', label: 'Fund Transaction', description: 'FT-YYYYMM-NNNNN' },
-        client_statement: { value: { prefix: 'CS', padding: 5, resetStrategy: 'monthly', nextNumber: 1 }, type: 'json', label: 'Client Statement', description: 'CS-YYYYMM-NNNNN' },
-        subcontractor_statement: { value: { prefix: 'SS', padding: 5, resetStrategy: 'monthly', nextNumber: 1 }, type: 'json', label: 'Subcontractor Statement', description: 'SS-YYYYMM-NNNNN' },
-      },
     };
 
     for (const [group, settings] of Object.entries(defaultGroups)) {

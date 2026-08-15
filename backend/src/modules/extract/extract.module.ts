@@ -5,6 +5,8 @@ import { OwnershipService } from '@/common/services/ownership.service';
 import { EventBusImpl } from '@/modules/domain-events/event-bus.impl';
 import { BuildingModule } from '@/modules/building/building.module';
 import { ContractorBoqModule } from '@/modules/contractor-boq/contractor-boq.module';
+import { PaymentModule } from '@/modules/payment/payment.module';
+import { PAYMENT_REPOSITORY, IPaymentRepository } from '@/modules/payment/domain/payment.repository';
 import { BUILDING_REPOSITORY } from '@/modules/building/domain/building.repository';
 import { IBuildingRepository } from '@/modules/building/domain/building.repository';
 import { CONTRACTOR_BOQ_REPOSITORY } from '@/modules/contractor-boq/domain/contractor-boq.repository';
@@ -12,6 +14,7 @@ import { IContractorBoqRepository } from '@/modules/contractor-boq/domain/contra
 import { EXTRACT_REPOSITORY, IExtractRepository } from './domain/extract.repository';
 import { PrismaExtractRepository } from './infrastructure/prisma-extract.repository';
 import {
+  ListAllExtractsUseCase,
   ListExtractsUseCase,
   GetExtractMetaUseCase,
   SaveExtractUseCase,
@@ -21,7 +24,7 @@ import {
 import { ExtractController } from './extract.controller';
 
 @Module({
-  imports: [PrismaModule, BuildingModule, ContractorBoqModule],
+  imports: [PrismaModule, BuildingModule, ContractorBoqModule, PaymentModule],
   controllers: [ExtractController],
   providers: [
     { provide: EXTRACT_REPOSITORY, useClass: PrismaExtractRepository },
@@ -29,6 +32,11 @@ import { ExtractController } from './extract.controller';
       provide: OwnershipService,
       useFactory: (prisma: PrismaService) => new OwnershipService(prisma),
       inject: [PrismaService],
+    },
+    {
+      provide: ListAllExtractsUseCase,
+      useFactory: (extracts: IExtractRepository) => new ListAllExtractsUseCase(extracts),
+      inject: [EXTRACT_REPOSITORY],
     },
     {
       provide: ListExtractsUseCase,
@@ -46,8 +54,9 @@ import { ExtractController } from './extract.controller';
         extracts: IExtractRepository,
         contractorBoq: IContractorBoqRepository,
         ownership: OwnershipService,
-      ) => new GetExtractMetaUseCase(extracts, contractorBoq, ownership),
-      inject: [EXTRACT_REPOSITORY, CONTRACTOR_BOQ_REPOSITORY, OwnershipService],
+        payments: IPaymentRepository,
+      ) => new GetExtractMetaUseCase(extracts, contractorBoq, ownership, payments),
+      inject: [EXTRACT_REPOSITORY, CONTRACTOR_BOQ_REPOSITORY, OwnershipService, PAYMENT_REPOSITORY],
     },
     {
       provide: SaveExtractUseCase,
@@ -58,8 +67,9 @@ import { ExtractController } from './extract.controller';
         prisma: PrismaService,
         ownership: OwnershipService,
         eventBus: EventBusImpl,
-      ) => new SaveExtractUseCase(extracts, contractorBoq, buildings, prisma, ownership, eventBus),
-      inject: [EXTRACT_REPOSITORY, CONTRACTOR_BOQ_REPOSITORY, BUILDING_REPOSITORY, PrismaService, OwnershipService, EventBusImpl],
+        payments: IPaymentRepository,
+      ) => new SaveExtractUseCase(extracts, contractorBoq, buildings, prisma, ownership, eventBus, payments),
+      inject: [EXTRACT_REPOSITORY, CONTRACTOR_BOQ_REPOSITORY, BUILDING_REPOSITORY, PrismaService, OwnershipService, EventBusImpl, PAYMENT_REPOSITORY],
     },
     {
       provide: GetExtractByIdUseCase,

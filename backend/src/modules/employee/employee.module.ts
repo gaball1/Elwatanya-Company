@@ -1,11 +1,13 @@
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '@/prisma/prisma.module';
+import { PrismaService } from '@/prisma/prisma.service';
 import { EventBusImpl } from '@/modules/domain-events/event-bus.impl';
 import { EMPLOYEE_REPOSITORY } from './domain/employee.repository';
 import { IEmployeeRepository } from './domain/employee.repository';
 import { PrismaEmployeeRepository } from './infrastructure/prisma-employee.repository';
 import { ListEmployeesUseCase } from './application/use-cases/list-employees.use-case';
 import { GetEmployeeUseCase } from './application/use-cases/get-employee.use-case';
+import { GetCurrentEmployeeUseCase } from './application/use-cases/get-current-employee.use-case';
 import { CreateEmployeeUseCase } from './application/use-cases/create-employee.use-case';
 import { UpdateEmployeeUseCase } from './application/use-cases/update-employee.use-case';
 import { DeleteEmployeeUseCase } from './application/use-cases/delete-employee.use-case';
@@ -25,6 +27,12 @@ import { EmployeeController } from './employee.controller';
       provide: GetEmployeeUseCase,
       useFactory: (repo: IEmployeeRepository) => new GetEmployeeUseCase(repo),
       inject: [EMPLOYEE_REPOSITORY],
+    },
+    {
+      provide: GetCurrentEmployeeUseCase,
+      useFactory: (prisma: PrismaService, repo: IEmployeeRepository) =>
+        new GetCurrentEmployeeUseCase(prisma, repo),
+      inject: [PrismaService, EMPLOYEE_REPOSITORY],
     },
     {
       provide: CreateEmployeeUseCase,

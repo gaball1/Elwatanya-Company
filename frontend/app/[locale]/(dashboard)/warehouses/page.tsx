@@ -2,6 +2,7 @@
 "use client";
 
 import { useParams } from "next/navigation";
+import Link from "next/link";
 import { useState, useMemo, useCallback, useEffect } from "react";
 import { Card } from "@/components/ui";
 import { Can } from '@/components/Can';
@@ -271,7 +272,9 @@ export default function WarehousesPage() {
                         <Warehouse className="w-6 h-6 text-primary" />
                       </div>
                       <div>
-                        <h3 className="text-lg font-bold text-primary">{warehouse.name}</h3>
+                        <Link href={`/${locale}/warehouses/${warehouse.id}`}>
+                          <h3 className="text-lg font-bold text-primary hover:text-gold transition">{warehouse.name}</h3>
+                        </Link>
                         <p className="text-sm text-gold">{warehouse.code}</p>
                       </div>
                     </div>

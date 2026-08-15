@@ -216,7 +216,7 @@ export default function TreasuryPage() {
                     {t.type === "add" ? <TrendingUp size={14} className="text-success" /> : <TrendingDown size={14} className="text-danger" />}
                     <div>
                       <p className="text-text-primary font-medium">{t.description || t.type}</p>
-                      <p className="text-xs text-text-muted">{new Date(t.date).toLocaleDateString()}</p>
+                      <p className="text-xs text-text-muted">{new Date(t.date).toLocaleDateString(isArabic ? "ar-EG" : "en-US")}</p>
                     </div>
                   </div>
                   <span className={`font-medium ${t.type === "add" ? "text-success" : "text-danger"}`}>

@@ -17,7 +17,7 @@ import {
   FinalBoqErrorCode,
 } from '../errors/final-boq-application.error';
 import { getOrCreateFinalBoq, toFinalBoqItemResult } from './final-boq-mappers';
-import { OwnershipService } from '@/common/services/ownership.service';
+import { OwnershipActor, OwnershipService } from '@/common/services/ownership.service';
 import { AuditService } from '@/modules/audit/audit.service';
 
 /** Mirrors importFinalFromEmployer */
@@ -31,8 +31,8 @@ export class ImportFinalFromEmployerUseCase {
     private readonly audit: AuditService,
   ) {}
 
-  async execute(input: ImportFinalFromEmployerInput, userProjectId?: string | null, userId?: string): Promise<Result<FinalBoqItemResult | null>> {
-    await this.ownership.verifyBuildingAccess(userProjectId, input.buildingId);
+  async execute(input: ImportFinalFromEmployerInput, user?: OwnershipActor, userId?: string): Promise<Result<FinalBoqItemResult | null>> {
+    await this.ownership.verifyBuildingAccess(user, input.buildingId);
     const buildingId = new UniqueEntityId(input.buildingId);
     const building = await this.buildings.findById(buildingId);
     if (!building) {

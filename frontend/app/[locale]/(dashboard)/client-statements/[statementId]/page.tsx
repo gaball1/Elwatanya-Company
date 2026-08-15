@@ -30,7 +30,25 @@ export default function ClientStatementDetailsPage() {
 
   useEffect(() => {
     clientStatementService.get(statementId).then((data) => {
-      setStatement(data);
+      setStatement({
+        ...data,
+        items: (data.items || []).map((item: any, idx: number) => ({
+          ...item,
+          id: item?.id || `item-${idx}`,
+          quantity: Number(item?.quantity ?? 0),
+          unitPrice: Number(item?.unitPrice ?? 0),
+          previous: Number(item?.previous ?? 0),
+          current: Number(item?.current ?? 0),
+          totalDone: Number(item?.totalDone ?? 0),
+          final: Number(item?.final ?? 0),
+          workValue: Number(item?.workValue ?? 0),
+          deduction: Number(item?.deduction ?? 0),
+          net: Number(item?.net ?? 0),
+        })),
+        totalWorkValue: Number(data.totalWorkValue ?? 0),
+        totalDeductions: Number(data.totalDeductions ?? 0),
+        netPayable: Number(data.netPayable ?? 0),
+      });
       setLoading(false);
     }).catch(() => setLoading(false));
   }, [statementId]);

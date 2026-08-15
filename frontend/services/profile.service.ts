@@ -1,5 +1,15 @@
 import { apiClient } from '@/lib/api/apiClient';
 
+export interface ProfileRoleRef {
+  id: string;
+  name: string;
+}
+
+export interface ProfileProjectRef {
+  id: string;
+  name: string;
+}
+
 export interface Profile {
   id: string;
   email: string;
@@ -7,9 +17,9 @@ export interface Profile {
   role: string;
   status: string;
   signatureUrl: string;
-  employee?: any;
-  roles?: any[];
-  projects?: any[];
+  employee?: unknown;
+  roles?: ProfileRoleRef[];
+  projects?: ProfileProjectRef[];
   createdAt: string;
   updatedAt: string;
 }

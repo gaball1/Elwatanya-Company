@@ -2,13 +2,15 @@ import { Injectable } from '@nestjs/common';
 import { BaseTool } from './base.tool';
 import { AgentHttpClient } from './http-client';
 import { ToolResult } from '../dto/agent-response.dto';
+import { schema, statusProps } from './tool-schemas';
 
 @Injectable()
 export class ListProjectsTool extends BaseTool {
   readonly name = 'list_projects';
-  readonly description = 'List all active projects. Supports filtering by status.';
+  readonly description = 'List all projects with their code, name, status and progress. Supports filtering by status.';
   readonly requiresPermission = 'projects.read';
   readonly requiredEntity = 'project';
+  readonly parameters = schema({ ...statusProps });
 
   constructor(private readonly api: AgentHttpClient) {
     super();
@@ -28,9 +30,13 @@ export class ListProjectsTool extends BaseTool {
 @Injectable()
 export class GetProjectTool extends BaseTool {
   readonly name = 'get_project';
-  readonly description = 'Get project details by ID';
+  readonly description = 'Get project details by ID or name/code';
   readonly requiresPermission = 'projects.read';
   readonly requiredEntity = 'project';
+  readonly parameters = schema({
+    projectId: { type: 'string', description: 'Project UUID (rarely needed — a name or code works).' },
+    projectName: { type: 'string', description: 'Project name or code, e.g. NCM-2026.' },
+  });
 
   constructor(private readonly api: AgentHttpClient) {
     super();

@@ -14,6 +14,7 @@ export class UpdateProjectFundUseCase {
     const updateResult = fund.update({
       initialBalance: input.initialBalance,
       currentBalance: input.currentBalance,
+      pettyCashBalance: input.pettyCashBalance,
     });
 
     if (updateResult.isFailure) return Result.fail(updateResult.error as Error);

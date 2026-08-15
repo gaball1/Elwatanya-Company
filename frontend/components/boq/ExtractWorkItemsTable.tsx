@@ -31,6 +31,7 @@ export default function ExtractWorkItemsTable({
               <th className="p-2 border">{isArabic ? "وحدة" : "Unit"}</th>
               <th className="p-2 border">{isArabic ? "تعاقدي" : "Contract"}</th>
               <th className="p-2 border">{isArabic ? "سابق" : "Prev."}</th>
+              <th className="p-2 border">{isArabic ? "متبقي" : "Remaining"}</th>
               <th className="p-2 border">{isArabic ? "حالي" : "Current"}</th>
               <th className="p-2 border">{isArabic ? "إجمالي" : "Total"}</th>
               <th className="p-2 border">%</th>
@@ -55,6 +56,17 @@ export default function ExtractWorkItemsTable({
                   </td>
                   <td className="p-2 border text-center bg-info-light font-medium">
                     {r.previous}
+                  </td>
+                  <td className="p-2 border text-center font-medium">
+                    <span
+                      className={
+                        r.contractQuantity - r.previous <= 0
+                          ? "text-danger font-bold"
+                          : "text-success"
+                      }
+                    >
+                      {r.contractQuantity - r.previous}
+                    </span>
                   </td>
                   <td className="p-2 border text-center">
                     {editable && onUpdateRow ? (
@@ -106,7 +118,7 @@ export default function ExtractWorkItemsTable({
           </tbody>
           <tfoot>
             <tr className="bg-surface-tertiary font-bold border-t-2">
-              <td colSpan={11} className="p-2.5 border text-left">
+              <td colSpan={12} className="p-2.5 border text-left">
                 {isArabic ? "إجمالي قيمة الأعمال" : "Total Work Value"}
               </td>
               <td className="p-2.5 border text-center text-primary text-base">

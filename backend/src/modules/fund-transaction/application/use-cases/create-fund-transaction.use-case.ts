@@ -5,9 +5,9 @@ import { FundTransaction } from '../../domain/fund-transaction.entity';
 import { toResult } from './list-fund-transactions.use-case';
 import { NotificationService } from '@/common/services/notification.service';
 import { PrismaService } from '@/prisma/prisma.service';
-import { Prisma } from '@prisma/client';
 import { EventBusImpl } from '@/modules/domain-events/event-bus.impl';
 import { FundTransactionCreatedEvent } from '@/modules/domain-events/events';
+import { applyFundBalanceEffects, balanceEffectsFor } from '../fund-balance.util';
 
 export class CreateFundTransactionUseCase {
   constructor(
@@ -18,6 +18,10 @@ export class CreateFundTransactionUseCase {
   ) {}
 
   async execute(input: CreateFundTransactionInput): Promise<Result<FundTransactionResult>> {
+    if (!input.description || !input.description.trim()) {
+      return Result.fail(new Error('وصف (سبب) المعاملة المالية مطلوب'));
+    }
+
     const result = FundTransaction.create({
       fundId: input.fundId,
       type: input.type,
@@ -34,29 +38,38 @@ export class CreateFundTransactionUseCase {
     if (result.isFailure) return Result.fail(result.error as Error);
 
     const transaction = result.getValue();
-    await this.transactions.save(transaction);
 
-    // Apply fund balance effect for approved add/deduct transactions (إضافة/خصم عهدة)
-    if ((transaction.type === 'add' || transaction.type === 'deduct') && transaction.status === 'approved') {
-      try {
-        const sign = transaction.type === 'add' ? 1 : -1;
-        await this.prisma.$transaction(async (tx) => {
-          const fund = await tx.projectFund.findFirst({
-            where: { id: input.fundId, deletedAt: null },
-          });
-          if (!fund) return;
-          const newBalance = new Prisma.Decimal(fund.currentBalance).plus(
-            new Prisma.Decimal(transaction.amount).mul(sign),
-          );
-          await tx.projectFund.update({
-            where: { id: fund.id },
-            data: { currentBalance: newBalance, lastUpdated: new Date(), updatedAt: new Date() },
-          });
-        });
-      } catch {
-        // balance update failure should not block recording the transaction
+    const fund = await this.prisma.projectFund.findUnique({
+      where: { id: input.fundId },
+    });
+    if (!fund) return Result.fail(new Error('العهدة غير موجودة'));
+
+    if (transaction.type === 'deduct') {
+      if (transaction.category === 'purchase' || transaction.category === 'miscellaneous') {
+        if (Number(fund.pettyCashBalance) < transaction.amount) {
+          return Result.fail(new Error('رصيد عهدة الموقع غير كافٍ'));
+        }
+      } else {
+        if (Number(fund.currentBalance) < transaction.amount) {
+          return Result.fail(new Error('رصيد الخزنة غير كافٍ'));
+        }
+      }
+    } else if (transaction.type === 'transfer') {
+      if (Number(fund.currentBalance) < transaction.amount) {
+        return Result.fail(new Error('رصيد الخزنة غير كافٍ للتحويل'));
       }
     }
+
+    // Persist the transaction and apply its fund balance effect atomically so a failed
+    // balance update can never leave the ledger out of sync with the transaction row.
+    await this.prisma.$transaction(async (tx) => {
+      await this.transactions.save(transaction, tx);
+      await applyFundBalanceEffects(
+        tx,
+        transaction.fundId,
+        balanceEffectsFor(transaction.type, transaction.category, transaction.status as any, transaction.amount),
+      );
+    });
 
     try {
       const fund = await this.prisma.projectFund.findUnique({

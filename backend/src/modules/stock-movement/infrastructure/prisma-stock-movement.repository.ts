@@ -15,6 +15,7 @@ export class PrismaStockMovementRepository implements IStockMovementRepository {
       quantity: stockMovement.quantity,
       date: stockMovement.date,
       reference: stockMovement.reference,
+      reason: stockMovement.reason,
       notes: stockMovement.notes,
       createdBy: stockMovement.createdBy,
       issuedTo: stockMovement.issuedTo,
@@ -58,6 +59,7 @@ export class PrismaStockMovementRepository implements IStockMovementRepository {
     quantity: import('decimal.js').Decimal;
     date: Date;
     reference: string;
+    reason: string;
     notes: string;
     createdBy: string;
     issuedTo: string;
@@ -75,6 +77,7 @@ export class PrismaStockMovementRepository implements IStockMovementRepository {
         quantity: Number(record.quantity),
         date: record.date,
         reference: record.reference,
+        reason: record.reason,
         notes: record.notes,
         createdBy: record.createdBy,
         issuedTo: record.issuedTo,

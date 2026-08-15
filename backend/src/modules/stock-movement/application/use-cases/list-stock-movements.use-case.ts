@@ -10,6 +10,7 @@ export function toResult(c: StockMovement): StockMovementResult {
     quantity: c.quantity,
     date: c.date,
     reference: c.reference,
+    reason: c.reason,
     notes: c.notes,
     createdBy: c.createdBy,
     issuedTo: c.issuedTo,

@@ -3,7 +3,7 @@ import { apiClient } from '@/lib/api/apiClient';
 export interface AgentResponse {
   success: boolean;
   message: string;
-  data?: any;
+  data?: unknown;
   intent?: string;
   requiresFollowUp?: boolean;
   followUpQuestion?: string;
@@ -13,7 +13,7 @@ export interface AgentResponse {
 export interface ChatMessage {
   message: string;
   conversationId?: string;
-  context?: Record<string, any>;
+  context?: Record<string, unknown>;
 }
 
 export interface ConversationSummary {
@@ -38,6 +38,45 @@ export interface ConversationDetail extends ConversationSummary {
   messages: ConversationMessage[];
 }
 
+export interface IntentStat {
+  intent: string;
+  count: number;
+}
+
+export interface ToolStat {
+  tool: string;
+  count: number;
+  success: number;
+  failed: number;
+}
+
+export interface WorkflowStat {
+  workflow: string;
+  started: number;
+  completed: number;
+  failed: number;
+}
+
+export interface HourlyTraffic {
+  hour: string;
+  count: number;
+}
+
+export interface AgentAnalytics {
+  summary: {
+    totalRequests: number;
+    totalErrors: number;
+    uniqueIntents: number;
+    uniqueTools: number;
+    uptimeSeconds: number;
+    errorRate: number;
+  };
+  topIntents: IntentStat[];
+  toolStats: ToolStat[];
+  workflowStats: WorkflowStat[];
+  hourly: HourlyTraffic[];
+}
+
 export const aiAgentService = {
   async chat(body: ChatMessage): Promise<AgentResponse> {
     const data = await apiClient<AgentResponse>('/ai-agent/chat', {
@@ -52,8 +91,8 @@ export const aiAgentService = {
     const data = await apiClient<{ topics: string[] }>('/ai-agent/topics', { method: 'GET' });
     return data.topics;
   },
-  async getAnalytics(): Promise<any> {
-    const data = await apiClient<{ success: boolean; data: any }>('/ai-agent/analytics', { method: 'GET' });
+  async getAnalytics(): Promise<AgentAnalytics> {
+    const data = await apiClient<{ success: boolean; data: AgentAnalytics }>('/ai-agent/analytics', { method: 'GET' });
     return data.data;
   },
   async listConversations(search?: string): Promise<ConversationSummary[]> {

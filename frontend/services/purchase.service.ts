@@ -71,8 +71,8 @@ export const purchaseService = {
     return data.purchase;
   },
 
-  async updateStatus(id: string, status: 'approved' | 'received' | 'cancelled'): Promise<Purchase> {
-    const data = await apiClient<{ purchase: Purchase }>(`/purchases/${id}/status`, { method: 'PUT', body: { status } });
+  async updateStatus(id: string, status: 'approved' | 'received' | 'cancelled', warehouseId?: string): Promise<Purchase> {
+    const data = await apiClient<{ purchase: Purchase }>(`/purchases/${id}/status`, { method: 'PUT', body: { status, warehouseId } });
     return data.purchase;
   },
 

@@ -30,13 +30,15 @@ import { FundTransactionController } from './fund-transaction.controller';
     },
     {
       provide: UpdateFundTransactionUseCase,
-      useFactory: (repo: IFundTransactionRepository) => new UpdateFundTransactionUseCase(repo),
-      inject: [FUND_TRANSACTION_REPOSITORY],
+      useFactory: (repo: IFundTransactionRepository, prisma: PrismaService) =>
+        new UpdateFundTransactionUseCase(repo, prisma),
+      inject: [FUND_TRANSACTION_REPOSITORY, PrismaService],
     },
     {
       provide: DeleteFundTransactionUseCase,
-      useFactory: (repo: IFundTransactionRepository) => new DeleteFundTransactionUseCase(repo),
-      inject: [FUND_TRANSACTION_REPOSITORY],
+      useFactory: (repo: IFundTransactionRepository, prisma: PrismaService) =>
+        new DeleteFundTransactionUseCase(repo, prisma),
+      inject: [FUND_TRANSACTION_REPOSITORY, PrismaService],
     },
   ],
   exports: [FUND_TRANSACTION_REPOSITORY],

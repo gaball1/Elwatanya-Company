@@ -1,6 +1,7 @@
 import { API_BASE_URL } from "./env";
 import { attachAuthHeader, refreshAccessToken } from "./authInterceptor";
 import { debugLog } from "./debug";
+import { safeFetch } from "./fetchTransport";
 
 export class ApiError extends Error {
   readonly status: number;
@@ -49,7 +50,7 @@ function parseErrorMessage(data: unknown, status: number): string {
 function unwrapResponse<T>(raw: unknown): T {
   debugLog("[API_CLIENT] unwrapResponse - ENTERED, raw type:", typeof raw, raw !== null ? "keys:" + Object.keys(raw as object).join(",") : "null");
   if (typeof raw === "object" && raw !== null && "success" in raw) {
-    const resp = raw as { success: boolean; data?: T; code?: string; message?: string; errors?: any[] };
+    const resp = raw as { success: boolean; data?: T; code?: string; message?: string; errors?: unknown[] };
     debugLog("[API_CLIENT] unwrapResponse - has success field, success:", resp.success, "has data:", resp.data !== undefined);
     if (resp.success && resp.data !== undefined) {
       debugLog("[API_CLIENT] unwrapResponse - returning resp.data");
@@ -84,17 +85,22 @@ async function executeRequest(
   const timeoutId = setTimeout(() => controller.abort(), timeout);
 
   const requestHeaders = new Headers(headers);
-  if (body !== undefined && !requestHeaders.has("Content-Type")) {
+  const isFormData = typeof FormData !== "undefined" && body instanceof FormData;
+  if (body !== undefined && !requestHeaders.has("Content-Type") && !isFormData) {
     requestHeaders.set("Content-Type", "application/json");
   }
 
-  debugLog("[API_CLIENT] executeRequest - ENTERED, url:", url, "method:", (options as any).method, "has body:", body !== undefined, "content-type:", requestHeaders.get("Content-Type"));
+  debugLog("[API_CLIENT] executeRequest - ENTERED, url:", url, "method:", options.method, "has body:", body !== undefined, "content-type:", requestHeaders.get("Content-Type"), "isFormData:", isFormData);
 
   try {
-    const fetchResult = await fetch(url, {
+    const fetchResult = await safeFetch(url, {
       ...rest,
       headers: requestHeaders,
-      body: body !== undefined ? JSON.stringify(body) : undefined,
+      body: isFormData
+        ? (body as FormData)
+        : body !== undefined
+          ? JSON.stringify(body)
+          : undefined,
       signal: controller.signal,
     });
     debugLog("[API_CLIENT] executeRequest - fetch COMPLETED, status:", fetchResult.status, "ok:", fetchResult.ok);
@@ -119,7 +125,7 @@ export async function apiClient<T>(
   const url = buildUrl(path);
   const { skipAuth = false, skipAuthRetry = false, skipUnwrap = false, ...requestOptions } =
     options;
-  debugLog("[API_CLIENT] apiClient - ENTERED, path:", path, "method:", (options as any).method, "skipAuth:", skipAuth, "skipAuthRetry:", skipAuthRetry);
+  debugLog("[API_CLIENT] apiClient - ENTERED, path:", path, "method:", options.method, "skipAuth:", skipAuth, "skipAuthRetry:", skipAuthRetry);
 
   const headers = skipAuth
     ? requestOptions.headers
@@ -166,6 +172,6 @@ export async function apiClient<T>(
     return data as T;
   }
   const result = unwrapResponse<T>(data);
-  debugLog("[API_CLIENT] apiClient - RETURNING result type:", typeof result, "has accessToken:", (result as any)?.accessToken ? "yes" : "no");
+  debugLog("[API_CLIENT] apiClient - RETURNING result type:", typeof result, "has accessToken:", (result as { accessToken?: unknown } | null)?.accessToken ? "yes" : "no");
   return result;
 }

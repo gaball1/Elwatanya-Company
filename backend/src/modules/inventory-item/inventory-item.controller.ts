@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Delete, Get, HttpCode, HttpStatus, NotFoundException, Param, ParseUUIDPipe, Patch, Post } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, HttpCode, HttpStatus, NotFoundException, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
 import { handleError } from '../../common/utils/handle-error';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { RequirePermission } from '../../common/decorators/permissions.decorator';
@@ -7,7 +7,8 @@ import { ListInventoryItemsUseCase } from './application/use-cases/list-inventor
 import { CreateInventoryItemUseCase } from './application/use-cases/create-inventory-item.use-case';
 import { UpdateInventoryItemUseCase } from './application/use-cases/update-inventory-item.use-case';
 import { DeleteInventoryItemUseCase } from './application/use-cases/delete-inventory-item.use-case';
-import { CreateInventoryItemDto, UpdateInventoryItemDto } from './dto/inventory-item.dto';
+import { IncreaseInventoryItemUseCase } from './application/use-cases/increase-inventory-item.use-case';
+import { CreateInventoryItemDto, IncreaseInventoryItemDto, UpdateInventoryItemDto } from './dto/inventory-item.dto';
 
 @ApiTags('Inventory Items')
 @ApiBearerAuth()
@@ -18,13 +19,14 @@ export class InventoryItemController {
     private readonly createItem: CreateInventoryItemUseCase,
     private readonly updateItem: UpdateInventoryItemUseCase,
     private readonly deleteItem: DeleteInventoryItemUseCase,
+    private readonly increaseItem: IncreaseInventoryItemUseCase,
   ) {}
 
   @Get()
-  @ApiOperation({ summary: 'List inventory items' })
+  @ApiOperation({ summary: 'List inventory items (optional filters by categoryId, warehouseId, or projectId)' })
   @RequirePermission(Permissions.Inventory.Read)
-  async list() {
-    const result = await this.listItems.execute();
+  async list(@Query('categoryId') categoryId?: string, @Query('warehouseId') warehouseId?: string, @Query('projectId') projectId?: string) {
+    const result = await this.listItems.execute(categoryId, warehouseId, projectId);
     return { items: result.getValue() };
   }
 
@@ -43,7 +45,7 @@ export class InventoryItemController {
   @ApiOperation({ summary: 'Create an inventory item' })
   @RequirePermission(Permissions.Inventory.Create)
   async create(@Body() dto: CreateInventoryItemDto) {
-    const result = await this.createItem.execute({ code: dto.code, name: dto.name, description: dto.description, categoryId: dto.categoryId, warehouseId: dto.warehouseId, unit: dto.unit, quantity: dto.quantity, minQuantity: dto.minQuantity, price: dto.price, status: dto.status });
+    const result = await this.createItem.execute({ code: dto.code, name: dto.name, description: dto.description, categoryId: dto.categoryId, warehouseId: dto.warehouseId, projectId: dto.projectId, unit: dto.unit, quantity: dto.quantity, reason: dto.reason, minQuantity: dto.minQuantity, price: dto.price, status: dto.status });
     if (result.isFailure) handleError(result.error?.message, 'Failed to create inventory item');
     return { item: result.getValue() };
   }
@@ -52,8 +54,18 @@ export class InventoryItemController {
   @ApiOperation({ summary: 'Update inventory item' })
   @RequirePermission(Permissions.Inventory.Update)
   async update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateInventoryItemDto) {
-    const result = await this.updateItem.execute({ id, code: dto.code, name: dto.name, description: dto.description, categoryId: dto.categoryId, warehouseId: dto.warehouseId, unit: dto.unit, quantity: dto.quantity, minQuantity: dto.minQuantity, price: dto.price, status: dto.status });
+    const result = await this.updateItem.execute({ id, code: dto.code, name: dto.name, description: dto.description, categoryId: dto.categoryId, warehouseId: dto.warehouseId, projectId: dto.projectId, unit: dto.unit, quantity: dto.quantity, minQuantity: dto.minQuantity, price: dto.price, status: dto.status });
     if (result.isFailure) handleError(result.error?.message, 'Failed to update inventory item');
+    return { item: result.getValue() };
+  }
+
+  @Post(':id/increase')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Increase item quantity ("توريد") with an optional reason' })
+  @RequirePermission(Permissions.Inventory.Update)
+  async increase(@Param('id', ParseUUIDPipe) id: string, @Body() dto: IncreaseInventoryItemDto) {
+    const result = await this.increaseItem.execute({ id, quantity: dto.quantity, reason: dto.reason, unitCost: dto.unitCost });
+    if (result.isFailure) handleError(result.error?.message, 'Failed to increase inventory item quantity');
     return { item: result.getValue() };
   }
 

@@ -1,11 +1,17 @@
 import {
+  ArrayMaxSize,
+  IsArray,
   IsBoolean,
   IsIn,
+  IsInt,
   IsNotEmpty,
   IsOptional,
   IsString,
+  Max,
   MaxLength,
+  Min,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateNotificationDto {
@@ -58,6 +64,28 @@ export class CreateNotificationDto {
   @IsOptional()
   @IsString()
   link?: string;
+
+  @ApiPropertyOptional({
+    description: 'Role names this notification is dedicated to (broadcast when no userId). Empty = everyone.',
+    example: ['TECHNICAL_OFFICE'],
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(50)
+  @IsString({ each: true })
+  @MaxLength(100, { each: true })
+  targetRoles?: string[];
+
+  @ApiPropertyOptional({
+    description: 'Permission names this notification is dedicated to (broadcast when no userId). Empty = everyone.',
+    example: ['approvals.approve'],
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(200)
+  @IsString({ each: true })
+  @MaxLength(150, { each: true })
+  targetPermissions?: string[];
 }
 
 export class ListNotificationsQueryDto {
@@ -71,4 +99,12 @@ export class ListNotificationsQueryDto {
   @IsOptional()
   @IsBoolean()
   read?: boolean;
+
+  @ApiPropertyOptional({ description: 'Maximum number of notifications to return' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit?: number;
 }

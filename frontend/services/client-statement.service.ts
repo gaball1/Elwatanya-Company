@@ -1,5 +1,35 @@
 import { apiClient } from '@/lib/api/apiClient';
 
+export interface ClientStatementItem {
+  id?: string;
+  itemName?: string;
+  unit?: string;
+  quantity: number;
+  unitPrice: number;
+  previous: number;
+  current: number;
+  totalDone: number;
+  final: number;
+  workValue: number;
+  deduction: number;
+  net: number;
+  notes?: string;
+}
+
+export interface ClientStatementDeduction {
+  id?: string;
+  name?: string;
+  amount?: number;
+  percent?: number;
+}
+
+export interface ClientStatementSignature {
+  id: string;
+  name: string;
+  title: string;
+  date: string;
+}
+
 export interface ClientStatement {
   id: string;
   statementNumber: string;
@@ -14,9 +44,9 @@ export interface ClientStatement {
   totalWorkValue: number;
   totalDeductions: number;
   netPayable: number;
-  items: any[];
-  deductions: any[];
-  signatures: any[];
+  items: ClientStatementItem[];
+  deductions: ClientStatementDeduction[];
+  signatures: ClientStatementSignature[];
   createdAt: string;
   updatedAt: string;
 }
@@ -30,11 +60,11 @@ export const clientStatementService = {
     const data = await apiClient<{ statement: ClientStatement }>(`/client-statements/${id}`, { method: 'GET' });
     return data.statement;
   },
-  async create(body: any): Promise<ClientStatement> {
+  async create(body: unknown): Promise<ClientStatement> {
     const data = await apiClient<{ statement: ClientStatement }>('/client-statements', { method: 'POST', body });
     return data.statement;
   },
-  async update(id: string, body: any): Promise<ClientStatement> {
+  async update(id: string, body: unknown): Promise<ClientStatement> {
     const data = await apiClient<{ statement: ClientStatement }>(`/client-statements/${id}`, { method: 'PATCH', body });
     return data.statement;
   },

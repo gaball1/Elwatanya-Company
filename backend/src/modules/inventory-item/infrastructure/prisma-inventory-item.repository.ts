@@ -10,6 +10,7 @@ export class PrismaInventoryItemRepository implements IInventoryItemRepository {
 
   async save(item: InventoryItem): Promise<void> {
     const data = {
+      projectId: item.projectId,
       code: item.code,
       name: item.name,
       nameNorm: item.nameNorm,
@@ -44,9 +45,16 @@ export class PrismaInventoryItemRepository implements IInventoryItemRepository {
     return record ? this.toDomain(record) : null;
   }
 
-  async findAll(): Promise<InventoryItem[]> {
+  async findAll(projectId?: string): Promise<InventoryItem[]> {
+    const whereClause: any = { deletedAt: null };
+    if (projectId !== undefined) {
+      whereClause.projectId = projectId;
+    } else {
+      whereClause.projectId = null;
+    }
+
     const records = await this.prisma.inventoryItem.findMany({
-      where: { deletedAt: null },
+      where: whereClause,
       orderBy: { createdAt: 'desc' },
     });
     return records.map((r) => this.toDomain(r));
@@ -66,11 +74,10 @@ export class PrismaInventoryItemRepository implements IInventoryItemRepository {
     return record ? this.toDomain(record) : null;
   }
 
-  async findNameConflict(nameNorm: string, categoryId: string, excludeId?: string): Promise<InventoryItem | null> {
+  async findNameConflict(nameNorm: string, excludeId?: string): Promise<InventoryItem | null> {
     const record = await this.prisma.inventoryItem.findFirst({
       where: {
         nameNorm,
-        ...(categoryId ? { categoryId } : { categoryId: null }),
         deletedAt: null,
         ...(excludeId ? { NOT: { id: excludeId } } : {}),
       },
@@ -80,6 +87,7 @@ export class PrismaInventoryItemRepository implements IInventoryItemRepository {
 
   private toDomain(record: {
     id: string;
+    projectId: string | null;
     code: string;
     name: string;
     nameNorm: string;
@@ -98,6 +106,7 @@ export class PrismaInventoryItemRepository implements IInventoryItemRepository {
   }): InventoryItem {
     return InventoryItem.reconstitute(
       {
+        projectId: record.projectId,
         code: record.code,
         name: record.name,
         nameNorm: record.nameNorm,

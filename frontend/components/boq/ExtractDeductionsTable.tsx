@@ -23,7 +23,7 @@ export default function ExtractDeductionsTable({
 
   const updateManual = (idx: number, field: keyof ExtractDeduction, value: string | number) => {
     const realIdx = deductions.findIndex(
-      (d, i) => d.type === "manual" && manualRows.indexOf(d) === idx
+      (d) => d.type === "manual" && manualRows.indexOf(d) === idx
     );
     if (realIdx < 0) return;
     const next = [...deductions];
@@ -99,21 +99,8 @@ export default function ExtractDeductionsTable({
                   />
                 )}
               </td>
-              <td className="p-2 border text-center">
-                {readOnly ? (
-                  ded.percent ? `${ded.percent}%` : "—"
-                ) : (
-                  <input
-                    type="number"
-                    value={ded.percent ?? ""}
-                    onChange={(e) =>
-                      updateManual(idx, "percent", Number(e.target.value))
-                    }
-                    className="w-full p-1.5 border rounded text-sm text-center"
-                    placeholder="%"
-                    step="any"
-                  />
-                )}
+              <td className="p-2 border text-center text-text-muted">
+                —
               </td>
               <td className="p-2 border text-center font-bold text-danger">
                 {readOnly ? (

@@ -37,6 +37,10 @@ export interface ErpContext {
   lastEntityId?: string;
   lastAction?: string;
   lastResult?: any;
+  // Last list tool that ran, so a "show the full list" follow-up can re-run it.
+  _lastListIntent?: any;
+  // Set when the user confirms they want the full list (prints every item).
+  _showFullList?: boolean;
 }
 
 @Injectable()

@@ -7,6 +7,7 @@ export interface Project {
   location: string;
   status: ProjectStatus;
   startDate: string;
+  plannedDurationMonths?: number;
   endDate?: string;
   budget?: number;
   createdAt: string;

@@ -47,9 +47,9 @@ export class CreatePurchaseUseCase {
         if (!fund) {
           throw new Error('لا توجد عهدة لهذا المشروع. برجاء إنشاء عهدة أولاً');
         }
-        if (new Prisma.Decimal(purchase.total).gt(fund.currentBalance)) {
+        if (new Prisma.Decimal(purchase.total).gt(fund.pettyCashBalance)) {
           throw new Error(
-            `رصيد العهدة غير كافٍ. المتاح: ${Number(fund.currentBalance).toLocaleString('en-EG')}، المطلوب: ${Number(purchase.total).toLocaleString('en-EG')}`,
+            `رصيد عهدة الموقع غير كافٍ. المتاح: ${Number(fund.pettyCashBalance).toLocaleString('en-EG')}، المطلوب: ${Number(purchase.total).toLocaleString('en-EG')}`,
           );
         }
 

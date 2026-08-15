@@ -61,6 +61,14 @@ export default function EditStatementPage() {
   const [items, setItems] = useState<Item[]>([]);
   const [deductions, setDeductions] = useState<Deduction[]>([]);
 
+  // Delete confirmation modals
+  const [showDeleteItemConfirm, setShowDeleteItemConfirm] = useState<
+    number | null
+  >(null);
+  const [showDeleteDeductionConfirm, setShowDeleteDeductionConfirm] = useState<
+    number | null
+  >(null);
+
   // Populate form fields when data loads
   useEffect(() => {
     if (existingStatement) {
@@ -85,8 +93,8 @@ export default function EditStatementPage() {
         insuranceAmount: item.insuranceAmount || 0,
         netAmount: item.netAmount || 0,
       })) || []);
-      setDeductions(existingStatement.deductions?.map((d: any) => ({
-        id: d.id || Date.now().toString(),
+      setDeductions(existingStatement.deductions?.map((d: any, idx: number) => ({
+        id: d.id || Date.now().toString() + idx,
         name: d.name ?? "",
         amount: d.amount || 0,
         percent: d.percent || 0,
@@ -111,14 +119,6 @@ export default function EditStatementPage() {
       </div>
     );
   }
-
-  // Delete confirmation modals
-  const [showDeleteItemConfirm, setShowDeleteItemConfirm] = useState<
-    number | null
-  >(null);
-  const [showDeleteDeductionConfirm, setShowDeleteDeductionConfirm] = useState<
-    number | null
-  >(null);
 
   // حساب الإجماليات
   const calculateItemTotals = (itemsList: Item[]) => {
@@ -585,16 +585,16 @@ export default function EditStatementPage() {
                         />
                       </td>
                       <td className="p-2 border text-center font-bold">
-                        {totalAmount.toLocaleString()}
+                        {totalAmount.toLocaleString(isArabic ? "ar-EG" : "en-US")}
                       </td>
                       <td className="p-2 border text-center">
                         {insurancePercent}%
                       </td>
                       <td className="p-2 border text-center text-danger">
-                        {insuranceAmount.toLocaleString()}
+                        {insuranceAmount.toLocaleString(isArabic ? "ar-EG" : "en-US")}
                       </td>
                       <td className="p-2 border text-center font-bold text-gold">
-                        {netAmount.toLocaleString()}
+                        {netAmount.toLocaleString(isArabic ? "ar-EG" : "en-US")}
                       </td>
                       <td className="p-2 border text-center">
                         <button
@@ -614,14 +614,14 @@ export default function EditStatementPage() {
                     {isArabic ? "الإجمالي" : "Total"}
                   </td>
                   <td className="p-2 text-center">
-                    {totalWorkValue.toLocaleString()}
+                    {totalWorkValue.toLocaleString(isArabic ? "ar-EG" : "en-US")}
                   </td>
                   <td className="p-2 text-center"></td>
                   <td className="p-2 text-center">
-                    {totalInsurance.toLocaleString()}
+                    {totalInsurance.toLocaleString(isArabic ? "ar-EG" : "en-US")}
                   </td>
                   <td className="p-2 text-center text-gold">
-                    {(totalWorkValue - totalInsurance).toLocaleString()}
+                    {(totalWorkValue - totalInsurance).toLocaleString(isArabic ? "ar-EG" : "en-US")}
                   </td>
                 </tr>
               </tfoot>
@@ -700,7 +700,7 @@ export default function EditStatementPage() {
                 {isArabic ? "الإجمالي لقيمة الأعمال" : "Total Work Value"}
               </span>
               <span className="text-2xl font-bold text-primary">
-                {totalWorkValue.toLocaleString()}
+                {totalWorkValue.toLocaleString(isArabic ? "ar-EG" : "en-US")}
               </span>
             </div>
           </Card>
@@ -710,7 +710,7 @@ export default function EditStatementPage() {
                 {isArabic ? "خصم الاستقطاعات" : "Deductions"}
               </span>
               <span className="text-2xl font-bold text-danger">
-                {totalDeductions.toLocaleString()}
+                {totalDeductions.toLocaleString(isArabic ? "ar-EG" : "en-US")}
               </span>
             </div>
           </Card>
@@ -720,7 +720,7 @@ export default function EditStatementPage() {
                 {isArabic ? "المستحق صرفة" : "Net Payable"}
               </span>
               <span className="text-3xl font-bold text-gold">
-                {netPayable.toLocaleString()}
+                {netPayable.toLocaleString(isArabic ? "ar-EG" : "en-US")}
               </span>
             </div>
           </Card>

@@ -5,6 +5,7 @@ export interface CreateProjectInput {
   description?: string;
   client?: string;
   startDate?: Date | null;
+  plannedDurationMonths?: number;
   status?: string;
   progress?: number;
 }

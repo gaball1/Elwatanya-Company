@@ -21,6 +21,7 @@ export interface CreateMiscellaneousData {
   category?: string;
   date?: string;
   notes?: string;
+  invoiceFile?: string;
   createdBy?: string;
 }
 
@@ -31,6 +32,7 @@ export interface UpdateMiscellaneousData {
   category?: string;
   date?: string;
   notes?: string;
+  invoiceFile?: string;
   createdBy?: string;
 }
 

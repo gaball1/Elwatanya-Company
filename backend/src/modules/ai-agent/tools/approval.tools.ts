@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { BaseTool } from './base.tool';
 import { AgentHttpClient } from './http-client';
 import { ToolResult } from '../dto/agent-response.dto';
+import { schema } from './tool-schemas';
 
 @Injectable()
 export class ListPendingApprovalsTool extends BaseTool {
@@ -9,6 +10,9 @@ export class ListPendingApprovalsTool extends BaseTool {
   readonly description = 'List all pending approval requests';
   readonly requiresPermission = 'approvals.read';
   readonly requiredEntity = 'approval';
+  readonly parameters = schema({
+    entityType: { type: 'string', description: 'Optional entity type filter (e.g. extract, purchase, invoice).' },
+  });
 
   constructor(private readonly api: AgentHttpClient) {
     super();

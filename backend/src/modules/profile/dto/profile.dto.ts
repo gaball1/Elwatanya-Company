@@ -30,3 +30,10 @@ export class SaveSignatureDto {
   @IsNotEmpty()
   signatureUrl: string;
 }
+
+export class SaveAvatarDto {
+  @ApiProperty({ description: 'Base64 data URL of profile picture' })
+  @IsString()
+  @IsNotEmpty()
+  avatarUrl: string;
+}

@@ -7,6 +7,7 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RequirePermission } from '../../common/decorators/permissions.decorator';
 import { Permissions } from '../../common/constants/permissions.constant';
 import { FileService } from '../file/file.service';
+import { MAX_FILE_SIZE_BYTES } from '../file/domain/file-security.constants';
 
 @ApiTags('Company')
 @ApiBearerAuth()
@@ -36,7 +37,11 @@ export class CompanyController {
   @ApiOperation({ summary: 'Upload company logo' })
   @ApiConsumes('multipart/form-data')
   @RequirePermission(Permissions.Company.Write)
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: MAX_FILE_SIZE_BYTES, files: 1 },
+    }),
+  )
   async uploadLogo(@UploadedFile() file: any) {
     if (!file) throw new BadRequestException('File is required');
     const uploaded = await this.fileService.upload(file.buffer, {
@@ -52,7 +57,11 @@ export class CompanyController {
   @ApiOperation({ summary: 'Upload small company logo' })
   @ApiConsumes('multipart/form-data')
   @RequirePermission(Permissions.Company.Write)
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: MAX_FILE_SIZE_BYTES, files: 1 },
+    }),
+  )
   async uploadSmallLogo(@UploadedFile() file: any) {
     if (!file) throw new BadRequestException('File is required');
     const uploaded = await this.fileService.upload(file.buffer, {
@@ -68,7 +77,11 @@ export class CompanyController {
   @ApiOperation({ summary: 'Upload watermark image' })
   @ApiConsumes('multipart/form-data')
   @RequirePermission(Permissions.Company.Write)
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: MAX_FILE_SIZE_BYTES, files: 1 },
+    }),
+  )
   async uploadWatermark(@UploadedFile() file: any) {
     if (!file) throw new BadRequestException('File is required');
     const uploaded = await this.fileService.upload(file.buffer, {
@@ -84,7 +97,11 @@ export class CompanyController {
   @ApiOperation({ summary: 'Upload company stamp' })
   @ApiConsumes('multipart/form-data')
   @RequirePermission(Permissions.Company.Write)
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: MAX_FILE_SIZE_BYTES, files: 1 },
+    }),
+  )
   async uploadStamp(@UploadedFile() file: any) {
     if (!file) throw new BadRequestException('File is required');
     const uploaded = await this.fileService.upload(file.buffer, {
@@ -94,5 +111,25 @@ export class CompanyController {
       entityType: 'company',
     });
     return { company: await this.companyService.uploadStamp(uploaded.url) };
+  }
+
+  @Post('upload/signature')
+  @ApiOperation({ summary: 'Upload company signature image' })
+  @ApiConsumes('multipart/form-data')
+  @RequirePermission(Permissions.Company.Write)
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: MAX_FILE_SIZE_BYTES, files: 1 },
+    }),
+  )
+  async uploadSignature(@UploadedFile() file: any) {
+    if (!file) throw new BadRequestException('File is required');
+    const uploaded = await this.fileService.upload(file.buffer, {
+      category: 'company',
+      fileName: file.originalname,
+      mimeType: file.mimetype,
+      entityType: 'company',
+    });
+    return { company: await this.companyService.uploadSignature(uploaded.url) };
   }
 }

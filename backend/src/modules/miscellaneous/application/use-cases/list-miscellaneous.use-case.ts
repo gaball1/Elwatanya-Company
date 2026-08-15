@@ -11,6 +11,7 @@ export function toResult(m: Miscellaneous): MiscellaneousResult {
     category: m.category,
     date: m.date,
     notes: m.notes,
+    invoiceFile: m.invoiceFile,
     createdBy: m.createdBy,
     createdAt: m.createdAt,
     updatedAt: m.updatedAt,

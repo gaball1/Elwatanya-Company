@@ -8,6 +8,7 @@ export interface Project {
   description: string;
   client: string;
   startDate: string | null;
+  plannedDurationMonths: number;
   status: string;
   progress: number;
   createdAt: string;
@@ -21,6 +22,7 @@ export interface CreateProjectData {
   description?: string;
   client?: string;
   startDate?: string;
+  plannedDurationMonths?: number;
   status?: string;
   progress?: number;
 }
@@ -31,6 +33,7 @@ export interface UpdateProjectData {
   description?: string;
   client?: string;
   startDate?: string;
+  plannedDurationMonths?: number;
   status?: string;
   progress?: number;
 }

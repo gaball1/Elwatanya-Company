@@ -11,6 +11,7 @@ export interface ProjectProps {
   description: string;
   client: string;
   startDate: Date | null;
+  plannedDurationMonths: number;
   status: string;
   progress: number;
   deletedAt: Date | null;
@@ -53,6 +54,10 @@ export class Project extends AggregateRoot {
     return this.props.startDate;
   }
 
+  get plannedDurationMonths(): number {
+    return this.props.plannedDurationMonths;
+  }
+
   get status(): string {
     return this.props.status;
   }
@@ -76,6 +81,7 @@ export class Project extends AggregateRoot {
     description?: string;
     client?: string;
     startDate?: Date | null;
+    plannedDurationMonths?: number;
     status?: string;
     progress?: number;
   }): Result<Project> {
@@ -92,6 +98,7 @@ export class Project extends AggregateRoot {
         description: input.description ?? '',
         client: input.client ?? '',
         startDate: input.startDate ?? null,
+        plannedDurationMonths: input.plannedDurationMonths ?? 24,
         status: input.status ?? 'active',
         progress: input.progress ?? 0,
         deletedAt: null,
@@ -114,6 +121,7 @@ export class Project extends AggregateRoot {
     description?: string;
     client?: string;
     startDate?: Date | null;
+    plannedDurationMonths?: number;
     status?: string;
     progress?: number;
   }): Result<void> {
@@ -132,6 +140,7 @@ export class Project extends AggregateRoot {
     if (fields.description !== undefined) this.props.description = fields.description;
     if (fields.client !== undefined) this.props.client = fields.client;
     if (fields.startDate !== undefined) this.props.startDate = fields.startDate;
+    if (fields.plannedDurationMonths !== undefined) this.props.plannedDurationMonths = fields.plannedDurationMonths;
     if (fields.status !== undefined) this.props.status = fields.status;
     if (fields.progress !== undefined) this.props.progress = fields.progress;
 

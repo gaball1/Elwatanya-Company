@@ -30,8 +30,9 @@ import { MiscellaneousController } from './miscellaneous.controller';
     },
     {
       provide: UpdateMiscellaneousUseCase,
-      useFactory: (repo: IMiscellaneousRepository) => new UpdateMiscellaneousUseCase(repo),
-      inject: [MISCELLANEOUS_REPOSITORY],
+      useFactory: (repo: IMiscellaneousRepository, fs: FinancialService, prisma: PrismaService) =>
+        new UpdateMiscellaneousUseCase(repo, fs, prisma),
+      inject: [MISCELLANEOUS_REPOSITORY, FinancialService, PrismaService],
     },
     {
       provide: DeleteMiscellaneousUseCase,

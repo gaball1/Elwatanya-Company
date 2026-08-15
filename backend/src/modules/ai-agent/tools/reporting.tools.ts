@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { BaseTool } from './base.tool';
+import { schema } from './tool-schemas';
 
 @Injectable()
 export class ListReportsTool extends BaseTool {
@@ -7,6 +8,7 @@ export class ListReportsTool extends BaseTool {
   readonly description = 'List all available reports in the system with their supported formats and descriptions';
   readonly requiresPermission = 'reports.read';
   readonly requiredEntity = 'report';
+  readonly parameters = schema({});
 
   async execute(_args: Record<string, any>, user: any): Promise<any> {
     try {

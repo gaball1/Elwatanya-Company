@@ -4,9 +4,11 @@
 import { useParams } from "next/navigation";
 import { useState, useEffect } from "react";
 import { Card } from "@/components/ui";
-import { Image as ImageIcon, Plus, Edit2, Trash2, X } from "lucide-react";
+import { Image as ImageIcon, Plus, Edit2, Trash2, X, FileText, Download, Upload, File, FolderOpen } from "lucide-react";
 import { projectBoardService, type ProjectBoard } from "@/services/project-board.service";
+import { projectBoardDocumentService, type ProjectBoardDocument, formatFileSize } from "@/services/project-board-document.service";
 import { Can } from "@/components/Can";
+import { useToast } from "@/components/ui/Toast";
 
 function EmptyState({ icon, message }: { icon: React.ReactNode; message: string }) {
   return (
@@ -22,8 +24,10 @@ export default function BuildingBoardsPage() {
   const locale = (params.locale as string) ?? "ar";
   const isArabic = locale === "ar";
   const buildingId = params.buildingId as string;
+  const { showToast, ToastComponent } = useToast();
 
   const [boards, setBoards] = useState<ProjectBoard[]>([]);
+  const [documents, setDocuments] = useState<Record<string, ProjectBoardDocument[]>>({});
   const [showModal, setShowModal] = useState(false);
   const [editingBoard, setEditingBoard] = useState<ProjectBoard | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -36,17 +40,37 @@ export default function BuildingBoardsPage() {
     date: new Date().toISOString().split("T")[0],
   });
 
-  useEffect(() => {
-    projectBoardService.list()
-      .then((data) => setBoards(data.filter((b) => b.buildingId === buildingId)))
-      .catch((err) => console.error("[Boards] Failed to load:", err));
-  }, [buildingId]);
+  // Document upload state
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [uploadBoardId, setUploadBoardId] = useState<string | null>(null);
+  const [uploadDescription, setUploadDescription] = useState("");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
 
-  const refreshBoards = () => {
-    projectBoardService.list()
-      .then((data) => setBoards(data.filter((b) => b.buildingId === buildingId)))
-      .catch((err) => console.error("[Boards] Failed to refresh:", err));
+  const refreshDocuments = async (boardIds: string[]) => {
+    try {
+      const entries = await Promise.all(
+        boardIds.map(async (id) => [id, await projectBoardDocumentService.list(id)] as const)
+      );
+      setDocuments(Object.fromEntries(entries));
+    } catch {
+      // ignore
+    }
   };
+
+  const loadAll = () => {
+    projectBoardService.list()
+      .then((data) => {
+        const filtered = data.filter((b) => b.buildingId === buildingId);
+        setBoards(filtered);
+        void refreshDocuments(filtered.map((b) => b.id));
+      })
+      .catch((err) => console.error("[Boards] Failed to load:", err));
+  };
+
+  useEffect(() => {
+    loadAll();
+  }, [buildingId]);
 
   const openAddModal = () => {
     setEditingBoard(null);
@@ -100,7 +124,7 @@ export default function BuildingBoardsPage() {
           date: boardForm.date,
         });
       }
-      refreshBoards();
+      loadAll();
     } catch {
       // ignore
     }
@@ -113,7 +137,7 @@ export default function BuildingBoardsPage() {
     if (deletingBoardId) {
       try {
         await projectBoardService.remove(deletingBoardId);
-        refreshBoards();
+        loadAll();
       } catch {
         // ignore
       }
@@ -122,11 +146,66 @@ export default function BuildingBoardsPage() {
     }
   };
 
+  const openUploadModal = (boardId: string) => {
+    setUploadBoardId(boardId);
+    setUploadDescription("");
+    setSelectedFile(null);
+    setShowUploadModal(true);
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSelectedFile(e.target.files?.[0] ?? null);
+  };
+
+  const handleUploadSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!uploadBoardId || !selectedFile) {
+      showToast(isArabic ? "اختر ملفاً أولاً" : "Please choose a file", "error");
+      return;
+    }
+    setUploading(true);
+    try {
+      await projectBoardDocumentService.uploadFile(uploadBoardId, selectedFile, uploadDescription.trim());
+      showToast(isArabic ? "تم رفع المستند" : "Document uploaded", "success");
+      void refreshDocuments(boards.map((b) => b.id));
+      setShowUploadModal(false);
+      setSelectedFile(null);
+      setUploadDescription("");
+    } catch (err: any) {
+      showToast(err?.message || (isArabic ? "فشل رفع المستند" : "Upload failed"), "error");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleDownload = async (doc: ProjectBoardDocument) => {
+    if (!doc.fileId) {
+      showToast(isArabic ? "لا يوجد ملف مرتبط" : "No file linked", "error");
+      return;
+    }
+    try {
+      await projectBoardDocumentService.download(doc.fileId, doc.fileName);
+    } catch {
+      showToast(isArabic ? "فشل تحميل الملف" : "Download failed", "error");
+    }
+  };
+
+  const handleDeleteDocument = async (doc: ProjectBoardDocument) => {
+    try {
+      await projectBoardDocumentService.remove(doc.id);
+      showToast(isArabic ? "تم حذف المستند" : "Document deleted", "success");
+      void refreshDocuments(boards.map((b) => b.id));
+    } catch {
+      showToast(isArabic ? "فشل حذف المستند" : "Delete failed", "error");
+    }
+  };
+
   return (
     <div>
+      {ToastComponent}
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-lg font-bold text-primary">
-          {isArabic ? "لوحات المشروع" : "Project Boards"}
+          {isArabic ? "لوحات ومستندات المشروع" : "Project Boards & Documents"}
         </h2>
         <Can permission="project-boards.create">
           <button
@@ -176,12 +255,71 @@ export default function BuildingBoardsPage() {
                   </Can>
                 </div>
               </div>
+
+              {/* Documents */}
+              <div className="mt-4 border-t pt-3">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs font-semibold text-text-primary flex items-center gap-1">
+                    <FolderOpen size={13} className="text-gold" />
+                    {isArabic ? "المستندات والرسومات" : "Documents & Drawings"}
+                  </p>
+                  <Can permission="project-boards.create">
+                    <button
+                      onClick={() => openUploadModal(board.id)}
+                      className="flex items-center gap-1 px-2 py-1 text-xs bg-gold text-white rounded-lg hover:bg-gold-dark transition"
+                    >
+                      <Upload size={12} />
+                      {isArabic ? "رفع" : "Upload"}
+                    </button>
+                  </Can>
+                </div>
+                {!documents[board.id] || documents[board.id].length === 0 ? (
+                  <p className="text-xs text-text-muted">{isArabic ? "لا توجد مستندات" : "No documents"}</p>
+                ) : (
+                  <ul className="space-y-1">
+                    {documents[board.id].map((doc) => (
+                      <li key={doc.id} className="flex items-center justify-between gap-2 text-xs bg-surface-secondary rounded-lg px-2 py-1.5">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <FileText size={13} className="text-info shrink-0" />
+                          <div className="min-w-0">
+                            <p className="truncate text-text-primary">{doc.fileName}</p>
+                            <p className="text-[10px] text-text-muted">
+                              {formatFileSize(doc.fileSize)}
+                              {doc.description ? ` • ${doc.description}` : ""}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          {doc.fileId && (
+                            <button
+                              onClick={() => handleDownload(doc)}
+                              className="p-1 text-info hover:bg-info/10 rounded transition"
+                              title={isArabic ? "تحميل" : "Download"}
+                            >
+                              <Download size={13} />
+                            </button>
+                          )}
+                          <Can permission="project-boards.delete">
+                            <button
+                              onClick={() => handleDeleteDocument(doc)}
+                              className="p-1 text-text-muted hover:text-danger rounded transition"
+                              title={isArabic ? "حذف" : "Delete"}
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </Can>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
             </Card>
           ))}
         </div>
       )}
 
-      {/* Add/Edit Modal */}
+      {/* Add/Edit Board Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-surface rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
@@ -244,7 +382,60 @@ export default function BuildingBoardsPage() {
         </div>
       )}
 
-      {/* Delete Confirm */}
+      {/* Upload Document Modal */}
+      {showUploadModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-surface rounded-2xl w-full max-w-md">
+            <div className="flex justify-between items-center p-5 border-b">
+              <h2 className="text-xl font-bold text-primary">
+                {isArabic ? "رفع مستند / رسمة" : "Upload Document / Drawing"}
+              </h2>
+              <button onClick={() => setShowUploadModal(false)} className="text-text-muted hover:text-text-secondary">
+                <X size={24} />
+              </button>
+            </div>
+            <form onSubmit={handleUploadSubmit} className="p-5 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-text-primary mb-1">
+                  {isArabic ? "الملف (PDF / صور / CAD / ملفات هندسية)" : "File (PDF / images / CAD / engineering files)"}
+                </label>
+                <label className="cursor-pointer flex items-center justify-center gap-2 border-2 border-dashed border-border rounded-xl p-6 hover:border-gold transition">
+                  <File size={20} className="text-text-muted" />
+                  <span className="text-sm text-text-primary">
+                    {selectedFile ? selectedFile.name : (isArabic ? "اختر ملف" : "Choose file")}
+                  </span>
+                  <input type="file" onChange={handleFileSelect} className="hidden" />
+                </label>
+                {selectedFile && (
+                  <p className="text-xs text-text-muted mt-1">{formatFileSize(selectedFile.size)}</p>
+                )}
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-text-primary mb-1">
+                  {isArabic ? "وصف المستند" : "Document Description"}
+                </label>
+                <textarea
+                  value={uploadDescription}
+                  onChange={(e) => setUploadDescription(e.target.value)}
+                  rows={3}
+                  className="w-full p-3 border border-border rounded-xl focus:outline-none focus:border-gold resize-none"
+                  placeholder={isArabic ? "مثال: لوحة صب الخرسانة - الدور الأرضي" : "e.g. Concrete pouring drawing - Ground floor"}
+                />
+              </div>
+              <div className="flex gap-3 pt-3">
+                <button type="button" onClick={() => setShowUploadModal(false)} className="flex-1 px-4 py-2 border border-border-dark rounded-xl hover:bg-surface-secondary">
+                  {isArabic ? "إلغاء" : "Cancel"}
+                </button>
+                <button type="submit" disabled={uploading} className="flex-1 px-4 py-2 bg-primary text-white rounded-xl hover:bg-primary-dark disabled:opacity-50">
+                  {uploading ? (isArabic ? "جاري الرفع..." : "Uploading...") : (isArabic ? "رفع" : "Upload")}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Board Confirm */}
       {showDeleteConfirm && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-surface rounded-2xl w-full max-w-md">
@@ -252,7 +443,7 @@ export default function BuildingBoardsPage() {
               <h2 className="text-xl font-bold text-primary">{isArabic ? "تأكيد الحذف" : "Confirm Delete"}</h2>
             </div>
             <div className="p-5">
-              <p className="text-text-secondary">{isArabic ? "هل أنت متأكد من حذف هذه اللوحة؟" : "Are you sure you want to delete this board?"}</p>
+              <p className="text-text-secondary">{isArabic ? "هل أنت متأكد من حذف هذه اللوحة؟ سيتم حذف مستنداتها أيضاً." : "Are you sure you want to delete this board? Its documents will be removed too."}</p>
               <div className="flex gap-3 mt-6">
                 <button onClick={() => setShowDeleteConfirm(false)} className="flex-1 px-4 py-2 border border-border-dark rounded-xl hover:bg-surface-secondary">
                   {isArabic ? "إلغاء" : "Cancel"}

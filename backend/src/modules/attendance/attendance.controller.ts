@@ -14,10 +14,15 @@ import {
 } from '@nestjs/common';
 import { handleError } from '../../common/utils/handle-error';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { UseGuards } from '@nestjs/common';
 import { RequirePermission } from '../../common/decorators/permissions.decorator';
+import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
 import { Permissions } from '../../common/constants/permissions.constant';
+import { SelfAttendance, SelfAttendanceGuard } from '../../common/guards/self-attendance.guard';
+import { PrismaService } from '@/prisma/prisma.service';
 import { GetAttendanceUseCase } from './application/use-cases/get-attendance.use-case';
 import { ListAttendanceUseCase } from './application/use-cases/list-attendance.use-case';
+import { ListMyAttendanceUseCase } from './application/use-cases/list-my-attendance.use-case';
 import { CreateAttendanceUseCase } from './application/use-cases/create-attendance.use-case';
 import { CheckOutUseCase } from './application/use-cases/check-out.use-case';
 import { UpdateAttendanceUseCase } from './application/use-cases/update-attendance.use-case';
@@ -30,8 +35,10 @@ import { CreateAttendanceDto, CheckOutDto, UpdateAttendanceDto } from './dto/att
 @Controller('attendance')
 export class AttendanceController {
   constructor(
+    private readonly prisma: PrismaService,
     private readonly getAttendance: GetAttendanceUseCase,
     private readonly listAttendance: ListAttendanceUseCase,
+    private readonly listMyAttendance: ListMyAttendanceUseCase,
     private readonly createAttendance: CreateAttendanceUseCase,
     private readonly checkOutUseCase: CheckOutUseCase,
     private readonly updateAttendance: UpdateAttendanceUseCase,
@@ -40,8 +47,8 @@ export class AttendanceController {
   ) {}
 
   @Get()
-  @ApiOperation({ summary: 'List attendance records' })
-  @RequirePermission(Permissions.Attendance.Read)
+  @ApiOperation({ summary: 'List attendance records (all employees - management only)' })
+  @RequirePermission(Permissions.Attendance.Update)
   async list() {
     const result = await this.listAttendance.execute();
     return { items: result.getValue() };
@@ -52,6 +59,14 @@ export class AttendanceController {
   @RequirePermission(Permissions.Attendance.Read)
   async dashboard() {
     return this.dashboardUseCase.execute();
+  }
+
+  @Get('me')
+  @ApiOperation({ summary: 'Get the current user\'s own attendance records (self-service)' })
+  async mine(@CurrentUser() user: JwtPayload) {
+    if (!user.employeeId) throw new NotFoundException('No employee is linked to this account');
+    const result = await this.listMyAttendance.execute(user.employeeId);
+    return { items: result.getValue() };
   }
 
   @Get(':id')
@@ -67,10 +82,11 @@ export class AttendanceController {
   @Post('check-in')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Check in for the day' })
-  @RequirePermission(Permissions.Attendance.Create)
-  async checkIn(@Body() dto: CreateAttendanceDto) {
+  @UseGuards(SelfAttendanceGuard)
+  @SelfAttendance(Permissions.Attendance.Create)
+  async checkIn(@CurrentUser() user: JwtPayload | undefined, @Body() dto: CreateAttendanceDto) {
     const result = await this.createAttendance.execute({
-      employeeId: dto.employeeId,
+      employeeId: user?.employeeId ?? dto.employeeId,
       date: new Date(dto.date),
       checkInTime: new Date(dto.checkInTime),
       checkInLatitude: dto.checkInLatitude,
@@ -95,8 +111,21 @@ export class AttendanceController {
   @Post(':id/check-out')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Check out for the day' })
-  @RequirePermission(Permissions.Attendance.Update)
-  async checkOut(@Param('id', ParseUUIDPipe) id: string, @Body() dto: CheckOutDto) {
+  @UseGuards(SelfAttendanceGuard)
+  @SelfAttendance(Permissions.Attendance.Update)
+  async checkOut(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CheckOutDto,
+  ) {
+    // Self-service users may only check out their own attendance records.
+    if (user.employeeId) {
+      const record = await this.prisma.attendance.findFirst({
+        where: { id, employeeId: user.employeeId, deletedAt: null },
+        select: { id: true },
+      });
+      if (!record) throw new NotFoundException('Attendance record not found');
+    }
     const result = await this.checkOutUseCase.execute({
       id,
       checkOutTime: new Date(dto.checkOutTime),
@@ -121,7 +150,7 @@ export class AttendanceController {
   @ApiOperation({ summary: 'Create an attendance record (legacy)' })
   @RequirePermission(Permissions.Attendance.Create)
   async create(@Body() dto: CreateAttendanceDto) {
-    return this.checkIn(dto);
+    return this.checkIn(undefined, dto);
   }
 
   @Patch(':id')

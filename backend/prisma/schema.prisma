@@ -22,47 +22,53 @@ enum DeductionTypeEnum {
 }
 
 model Project {
-  id          String     @id @default(uuid())
-  code        String     @unique
-  name        String
-  location    String     @default("")
-  description String     @default("")
-  client      String     @default("")
-  startDate   DateTime?
-  status      String     @default("active")
-  progress    Int        @default(0)
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
-  deletedAt   DateTime?
-  buildings   Building[]
-  finalBoqs   FinalBoq[]
-  userAssignments UserProjectAssignment[]
-  attendanceRecords Attendance[]
+  id                    String                  @id @default(uuid())
+  code                  String                  @unique
+  name                  String
+  location              String                  @default("")
+  description           String                  @default("")
+  client                String                  @default("")
+  startDate             DateTime?
+  plannedDurationMonths Int                     @default(24) // scheduled execution duration in months
+  status                String                  @default("active")
+  progress              Int                     @default(0)
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
+  deletedAt             DateTime?
+  buildings             Building[]
+  finalBoqs             FinalBoq[]
+  userAssignments       UserProjectAssignment[]
+  attendanceRecords     Attendance[]
+  warehouses            Warehouse[]
+  inventoryItems        InventoryItem[]
+
+  @@index([status])
 }
 
 model Building {
-  id               String             @id @default(uuid())
-  projectId        String
-  name             String
-  code             String             @default("")
-  type             String             @default("")
-  startDate        DateTime?
-  description      String             @default("")
-  status           String             @default("active")
-  latitude         Float?             // Geofencing: site entrance GPS
-  longitude        Float?             // Geofencing: site entrance GPS
-  allowedRadius    Int?               @default(100) // meters
-  createdAt        DateTime           @default(now())
-  updatedAt        DateTime           @updatedAt
-  deletedAt        DateTime?
-  project          Project            @relation(fields: [projectId], references: [id])
-  finalBoqs            FinalBoq[]
-  employerBoqItems     EmployerBoqItem[]
-  analyticalBoqItems   AnalyticalBoqItem[]
+  id                     String                  @id @default(uuid())
+  projectId              String
+  name                   String
+  code                   String                  @default("")
+  type                   String                  @default("")
+  startDate              DateTime?
+  description            String                  @default("")
+  status                 String                  @default("active")
+  latitude               Float? // Geofencing: site entrance GPS
+  longitude              Float? // Geofencing: site entrance GPS
+  allowedRadius          Int?                    @default(100) // meters
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+  deletedAt              DateTime?
+  project                Project                 @relation(fields: [projectId], references: [id])
+  finalBoqs              FinalBoq[]
+  employerBoqItems       EmployerBoqItem[]
+  analyticalBoqItems     AnalyticalBoqItem[]
   buildingSubcontractors BuildingSubcontractor[]
-  contractorBoqs       ContractorBoq[]
-  boqCodeCounter       BoqCodeCounter?
-  attendanceRecords    Attendance[]
+  contractorBoqs         ContractorBoq[]
+  subcontractorContracts SubcontractorContract[]
+  boqCodeCounter         BoqCodeCounter?
+  attendanceRecords      Attendance[]
 }
 
 model BoqCodeCounter {
@@ -151,22 +157,22 @@ model FinalBoqItem {
 }
 
 model Component {
-  id               String            @id @default(uuid())
-  version          Int               @default(1)
-  finalBoqItemId   String
-  businessCode     String // code unique within its owning FinalBoqItem
-  description      String
-  unit             String
-  unitPrice        Decimal           @db.Decimal(12, 2)
-  quantity         Decimal           @db.Decimal(12, 2)
-  totalValue       Decimal           @db.Decimal(12, 2)
-  lifecycleStatus  String            @default("pending")
-  sortOrder        Int // stable ordering of components
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
-  deletedAt        DateTime?
-  finalBoqItem     FinalBoqItem      @relation(fields: [finalBoqItemId], references: [id])
-  distributionRows DistributionRow[]
+  id                 String              @id @default(uuid())
+  version            Int                 @default(1)
+  finalBoqItemId     String
+  businessCode       String // code unique within its owning FinalBoqItem
+  description        String
+  unit               String
+  unitPrice          Decimal             @db.Decimal(12, 2)
+  quantity           Decimal             @db.Decimal(12, 2)
+  totalValue         Decimal             @db.Decimal(12, 2)
+  lifecycleStatus    String              @default("pending")
+  sortOrder          Int // stable ordering of components
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  deletedAt          DateTime?
+  finalBoqItem       FinalBoqItem        @relation(fields: [finalBoqItemId], references: [id])
+  distributionRows   DistributionRow[]
   contractorBoqItems ContractorBoqItem[]
 
   @@unique([finalBoqItemId, businessCode])
@@ -190,6 +196,7 @@ model Subcontractor {
   deletedAt              DateTime?
   contractorBoqs         ContractorBoq[]
   buildingSubcontractors BuildingSubcontractor[]
+  subcontractorContracts SubcontractorContract[]
 }
 
 model BuildingSubcontractor {
@@ -229,25 +236,25 @@ model ContractorBoq {
 }
 
 model ContractorBoqItem {
-  id                String                     @id @default(uuid())
-  contractorBoqId   String
-  itemCode          String
-  description       String
-  unit              String
-  unitPrice         Decimal                    @db.Decimal(12, 2)
-  quantity          Decimal                    @db.Decimal(12, 2)
-  assignedQuantity  Decimal                    @db.Decimal(12, 2)
-  totalValue        Decimal                    @db.Decimal(12, 2)
-  finalItemId       String?
-  componentId       String?
-  version           Int                        @default(1)
-  createdAt         DateTime                   @default(now())
-  updatedAt         DateTime                   @updatedAt
-  deletedAt         DateTime?
-  contractorBoq     ContractorBoq              @relation(fields: [contractorBoqId], references: [id])
-  component         Component?                 @relation(fields: [componentId], references: [id])
-  versions          ContractorBoqItemVersion[]
-  statementItems    StatementItem[]
+  id               String                     @id @default(uuid())
+  contractorBoqId  String
+  itemCode         String
+  description      String
+  unit             String
+  unitPrice        Decimal                    @db.Decimal(12, 2)
+  quantity         Decimal                    @db.Decimal(12, 2)
+  assignedQuantity Decimal                    @db.Decimal(12, 2)
+  totalValue       Decimal                    @db.Decimal(12, 2)
+  finalItemId      String?
+  componentId      String?
+  version          Int                        @default(1)
+  createdAt        DateTime                   @default(now())
+  updatedAt        DateTime                   @updatedAt
+  deletedAt        DateTime?
+  contractorBoq    ContractorBoq              @relation(fields: [contractorBoqId], references: [id])
+  component        Component?                 @relation(fields: [componentId], references: [id])
+  versions         ContractorBoqItemVersion[]
+  statementItems   StatementItem[]
 
   @@unique([contractorBoqId, itemCode, componentId])
   @@index([contractorBoqId])
@@ -264,6 +271,30 @@ model ContractorBoqItemVersion {
   @@id([contractorBoqItemId, version])
 }
 
+model SubcontractorContract {
+  id              String        @id @default(uuid())
+  contractNumber  String
+  buildingId      String
+  subcontractorId String
+  title           String        @default("")
+  startDate       DateTime?
+  endDate         DateTime?
+  totalValue      Decimal       @default(0) @db.Decimal(14, 2)
+  terms           Json? // شروط العقد — مصفوفة نصوص
+  notes           String        @default("")
+  status          String        @default("draft") // draft, active, completed, terminated, cancelled
+  createdBy       String        @default("")
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  deletedAt       DateTime?
+  building        Building      @relation(fields: [buildingId], references: [id])
+  subcontractor   Subcontractor @relation(fields: [subcontractorId], references: [id])
+
+  @@unique([contractNumber])
+  @@index([buildingId])
+  @@index([subcontractorId])
+}
+
 model Statement {
   id               String               @id @default(uuid())
   contractorBoqId  String
@@ -274,6 +305,8 @@ model Statement {
   insurancePercent Decimal              @default(5) @db.Decimal(12, 2)
   extractDate      DateTime             @default(now())
   previousPaid     Decimal              @default(0) @db.Decimal(12, 2)
+  otherAmounts     Decimal              @default(0) @db.Decimal(12, 2) // "أخرى" — مبالغ إضافية تُضاف لقيمة الأعمال قبل الخصومات
+  otherAmountItems Json? // "أخرى" — بنود تفصيلية (اسم + قيمة) قابلة للإضافة قبل الاستقطاعات
   totalWorkValue   Decimal              @default(0) @db.Decimal(12, 2)
   totalDeductions  Decimal              @default(0) @db.Decimal(12, 2)
   netPayable       Decimal              @default(0) @db.Decimal(12, 2)
@@ -290,21 +323,21 @@ model StatementItem {
   statementId         String
   contractorBoqItemId String
   itemCode            String
-  description         String              @default("")
-  unit                String              @default("")
-  contractQuantity    Decimal             @default(0) @db.Decimal(12, 2)
-  previousQuantity    Decimal             @db.Decimal(12, 2)
-  currentQuantity     Decimal             @db.Decimal(12, 2)
-  totalQuantity       Decimal             @default(0) @db.Decimal(12, 2) // previous + current
-  executionPercent    Decimal             @default(100) @db.Decimal(12, 2)
-  totalExecuted       Decimal             @db.Decimal(12, 2) // executedQuantity
-  unitPrice           Decimal             @db.Decimal(12, 2)
-  currentWorkValue    Decimal             @db.Decimal(12, 2) // workValue
-  createdAt           DateTime            @default(now())
-  updatedAt           DateTime            @updatedAt
+  description         String            @default("")
+  unit                String            @default("")
+  contractQuantity    Decimal           @default(0) @db.Decimal(12, 2)
+  previousQuantity    Decimal           @db.Decimal(12, 2)
+  currentQuantity     Decimal           @db.Decimal(12, 2)
+  totalQuantity       Decimal           @default(0) @db.Decimal(12, 2) // previous + current
+  executionPercent    Decimal           @default(100) @db.Decimal(12, 2)
+  totalExecuted       Decimal           @db.Decimal(12, 2) // executedQuantity
+  unitPrice           Decimal           @db.Decimal(12, 2)
+  currentWorkValue    Decimal           @db.Decimal(12, 2) // workValue
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
   deletedAt           DateTime?
-  statement           Statement           @relation(fields: [statementId], references: [id])
-  contractorBoqItem   ContractorBoqItem   @relation(fields: [contractorBoqItemId], references: [id])
+  statement           Statement         @relation(fields: [statementId], references: [id])
+  contractorBoqItem   ContractorBoqItem @relation(fields: [contractorBoqItemId], references: [id])
 
   @@id([statementId, contractorBoqItemId])
 }
@@ -322,18 +355,18 @@ model StatementDeduction {
 }
 
 model Payment {
-  id          String    @id @default(uuid())
-  statementId String?
-  buildingId  String?
+  id           String     @id @default(uuid())
+  statementId  String?
+  buildingId   String?
   contractorId String?
-  amount      Decimal   @db.Decimal(12, 2)
-  paidAt      DateTime  @default(now())
-  notes       String?
-  status      String    @default("pending")
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  deletedAt   DateTime?
-  statement   Statement? @relation(fields: [statementId], references: [id])
+  amount       Decimal    @db.Decimal(12, 2)
+  paidAt       DateTime   @default(now())
+  notes        String?
+  status       String     @default("pending")
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  deletedAt    DateTime?
+  statement    Statement? @relation(fields: [statementId], references: [id])
 }
 
 model Distribution {
@@ -372,24 +405,25 @@ enum UserRole {
 }
 
 model User {
-  id                String               @id @default(uuid())
-  email             String               @unique
-  name              String
-  passwordHash      String
-  role              UserRole             @default(EMPLOYEE)
-  status            String               @default("PENDING")
-  projectId         String?
-  employeeId        String?              @unique
-  employee          Employee?            @relation(fields: [employeeId], references: [id])
-  createdAt         DateTime             @default(now())
-  updatedAt         DateTime             @updatedAt
-  deletedAt         DateTime?
-  refreshTokens     RefreshToken[]
+  id                  String                  @id @default(uuid())
+  email               String                  @unique
+  name                String
+  passwordHash        String
+  role                UserRole                @default(EMPLOYEE)
+  status              String                  @default("PENDING")
+  projectId           String?
+  employeeId          String?                 @unique
+  employee            Employee?               @relation(fields: [employeeId], references: [id])
+  createdAt           DateTime                @default(now())
+  updatedAt           DateTime                @updatedAt
+  deletedAt           DateTime?
+  refreshTokens       RefreshToken[]
   passwordResetTokens PasswordResetToken[]
-  signatureUrl     String?               @default("")
-  roleAssignments   UserRoleAssignment[]
-  projectAssignments UserProjectAssignment[]
-  notifications     Notification[]
+  signatureUrl        String?                 @default("")
+  avatarUrl           String?                 @default("")
+  roleAssignments     UserRoleAssignment[]
+  projectAssignments  UserProjectAssignment[]
+  notifications       Notification[]
 }
 
 model Role {
@@ -453,41 +487,41 @@ model UserProjectAssignment {
 }
 
 model RefreshToken {
-  id        String   @id @default(uuid())
-  token     String   @unique
+  id        String    @id @default(uuid())
+  token     String    @unique
   userId    String
-  family    String?  // Token rotation family
+  family    String? // Token rotation family
   expiresAt DateTime
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
   revokedAt DateTime?
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([family])
 }
 
 model PasswordResetToken {
-  id        String   @id @default(uuid())
-  token     String   @unique
+  id        String    @id @default(uuid())
+  token     String    @unique
   userId    String
   email     String
   expiresAt DateTime
   usedAt    DateTime?
-  createdAt DateTime @default(now())
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([token])
   @@index([email])
 }
 
 model EmployeeRole {
-  id          String   @id @default(uuid())
-  name        String   @unique
-  description String   @default("")
+  id          String     @id @default(uuid())
+  name        String     @unique
+  description String     @default("")
   permissions String[]
-  status      String   @default("active")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  status      String     @default("active")
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
   deletedAt   DateTime?
   employees   Employee[]
 
@@ -495,14 +529,14 @@ model EmployeeRole {
 }
 
 model Department {
-  id          String   @id @default(uuid())
-  code        String   @unique
+  id          String     @id @default(uuid())
+  code        String     @unique
   name        String
-  description String   @default("")
+  description String     @default("")
   managerId   String?
-  status      String   @default("active")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  status      String     @default("active")
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
   deletedAt   DateTime?
   employees   Employee[]
 
@@ -510,29 +544,30 @@ model Department {
 }
 
 model Employee {
-  id           String       @id @default(uuid())
-  code         String       @unique
-  fullName     String
-  nationalId   String       @default("")
-  phone        String       @default("")
-  email        String       @default("")
-  address      String       @default("")
-  birthDate    DateTime?
-  hireDate     DateTime?
-  departmentId String?
-  roleId       String?
-  salary       Decimal      @default(0) @db.Decimal(12, 2)
-  status       String       @default("active")
-  notes        String       @default("")
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
-  deletedAt    DateTime?
-  department   Department?   @relation(fields: [departmentId], references: [id])
-  role         EmployeeRole? @relation(fields: [roleId], references: [id])
-  attendance   Attendance[]
-  leaves       Leave[]
-  user         User?
-  employeeShifts EmployeeShift[]
+  id                  String               @id @default(uuid())
+  code                String               @unique
+  fullName            String
+  nationalId          String               @default("")
+  phone               String               @default("")
+  email               String               @default("")
+  address             String               @default("")
+  birthDate           DateTime?
+  hireDate            DateTime?
+  departmentId        String?
+  roleId              String?
+  salary              Decimal              @default(0) @db.Decimal(12, 2)
+  status              String               @default("active")
+  notes               String               @default("")
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  deletedAt           DateTime?
+  department          Department?          @relation(fields: [departmentId], references: [id])
+  role                EmployeeRole?        @relation(fields: [roleId], references: [id])
+  attendance          Attendance[]
+  attendanceOverrides AttendanceOverride[]
+  leaves              Leave[]
+  user                User?
+  employeeShifts      EmployeeShift[]
 
   @@index([status])
   @@index([departmentId])
@@ -540,44 +575,44 @@ model Employee {
 }
 
 model Client {
-  id            String   @id @default(uuid())
+  id            String    @id @default(uuid())
   name          String
-  email         String   @default("")
-  phone         String   @default("")
-  address       String   @default("")
-  contactPerson String   @default("")
+  email         String    @default("")
+  phone         String    @default("")
+  address       String    @default("")
+  contactPerson String    @default("")
   joinDate      DateTime?
-  status        String   @default("active")
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  status        String    @default("active")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
   deletedAt     DateTime?
 
   @@index([status])
 }
 
 model Supplier {
-  id            String   @id @default(uuid())
+  id            String    @id @default(uuid())
   name          String
-  contactPerson String   @default("")
-  phone         String   @default("")
-  email         String   @default("")
-  address       String   @default("")
+  contactPerson String    @default("")
+  phone         String    @default("")
+  email         String    @default("")
+  address       String    @default("")
   products      String[]
-  paymentTerms  String   @default("")
+  paymentTerms  String    @default("")
   joinDate      DateTime?
-  status        String   @default("active")
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  status        String    @default("active")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
   deletedAt     DateTime?
 
   @@index([status])
 }
 
 model Attendance {
-  id        String   @id @default(uuid())
+  id         String   @id @default(uuid())
   employeeId String
-  date      DateTime
-  employee  Employee @relation(fields: [employeeId], references: [id])
+  date       DateTime
+  employee   Employee @relation(fields: [employeeId], references: [id])
 
   // ---- Legacy fields (kept for backward compatibility) ----
   checkIn     String   @default("")
@@ -604,12 +639,12 @@ model Attendance {
   checkOutSelfie    String?
 
   // ---- Summary fields ----
-  workedMinutes   Int?
+  workedMinutes    Int?
   distanceFromSite Float?
-  attendanceStatus String  @default("pending") // pending, checkedIn, checkedOut, late, absent
+  attendanceStatus String @default("pending") // pending, checkedIn, checkedOut, late, absent
 
   // ---- Device & sync ----
-  deviceInfo String?  // JSON — browser, OS, device type
+  deviceInfo String? // JSON — browser, OS, device type
   isSynced   Boolean? @default(true)
 
   // ---- Assignment context ----
@@ -619,12 +654,12 @@ model Attendance {
   building   Building? @relation(fields: [buildingId], references: [id])
 
   // ---- Misc ----
-  notes     String   @default("")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  notes     String    @default("")
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  override AttendanceOverride?
+  overrides AttendanceOverride[]
 
   @@unique([employeeId, date])
   @@index([employeeId])
@@ -634,19 +669,19 @@ model Attendance {
 }
 
 model Leave {
-  id         String   @id @default(uuid())
+  id         String    @id @default(uuid())
   employeeId String
-  leaveType  String   @default("annual") // annual, sick, emergency, unpaid
+  leaveType  String    @default("annual") // annual, sick, emergency, unpaid
   startDate  DateTime
   endDate    DateTime
-  daysCount  Int      @default(1)
-  reason     String   @default("")
-  status     String   @default("pending") // pending, approved, rejected
-  approvedBy String   @default("")
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  daysCount  Int       @default(1)
+  reason     String    @default("")
+  status     String    @default("pending") // pending, approved, rejected
+  approvedBy String    @default("")
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
   deletedAt  DateTime?
-  employee   Employee @relation(fields: [employeeId], references: [id])
+  employee   Employee  @relation(fields: [employeeId], references: [id])
 
   @@index([employeeId])
   @@index([status])
@@ -654,13 +689,13 @@ model Leave {
 }
 
 model Holiday {
-  id          String   @id @default(uuid())
+  id          String    @id @default(uuid())
   name        String
   date        DateTime
-  description String   @default("")
-  isRecurring Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  description String    @default("")
+  isRecurring Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
   deletedAt   DateTime?
 
   @@unique([name, date])
@@ -670,15 +705,19 @@ model Holiday {
 model Warehouse {
   id        String          @id @default(uuid())
   code      String          @unique
-  name      String
+  name      String          @unique
   location  String          @default("")
   status    String          @default("active")
+  projectId String?
   createdAt DateTime        @default(now())
   updatedAt DateTime        @updatedAt
   deletedAt DateTime?
   items     InventoryItem[]
+  purchases Purchase[]
+  project   Project?        @relation(fields: [projectId], references: [id])
 
   @@index([status])
+  @@index([projectId])
 }
 
 model Category {
@@ -700,50 +739,55 @@ model Category {
 }
 
 model InventoryItem {
-  id           String          @id @default(uuid())
-  code         String          @unique
-  name         String
-  nameNorm     String          @default("") // normalized key for case/AR-insensitive dedupe
-  description  String          @default("")
-  categoryId   String?
-  warehouseId  String?
-  unit         String          @default("")
-  quantity     Decimal         @default(0) @db.Decimal(12, 2)
-  minQuantity  Decimal         @default(0) @db.Decimal(12, 2)
-  price        Decimal         @default(0) @db.Decimal(12, 2)
-  avgCost      Decimal         @default(0) @db.Decimal(12, 2) // weighted-average unit cost
-  status       String          @default("active")
-  createdAt    DateTime        @default(now())
-  updatedAt    DateTime        @updatedAt
-  deletedAt    DateTime?
-  category     Category?       @relation(fields: [categoryId], references: [id])
-  warehouse    Warehouse?      @relation(fields: [warehouseId], references: [id])
-  movements    StockMovement[]
-  purchases    Purchase[]
+  id          String          @id @default(uuid())
+  code        String
+  name        String
+  nameNorm    String          @default("") // normalized key for case/AR-insensitive dedupe
+  description String          @default("")
+  categoryId  String?
+  warehouseId String?
+  projectId   String?
+  unit        String          @default("")
+  quantity    Decimal         @default(0) @db.Decimal(12, 2)
+  minQuantity Decimal         @default(0) @db.Decimal(12, 2)
+  price       Decimal         @default(0) @db.Decimal(12, 2)
+  avgCost     Decimal         @default(0) @db.Decimal(12, 2) // weighted-average unit cost
+  status      String          @default("active")
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  deletedAt   DateTime?
+  category    Category?       @relation(fields: [categoryId], references: [id])
+  warehouse   Warehouse?      @relation(fields: [warehouseId], references: [id])
+  project     Project?        @relation(fields: [projectId], references: [id])
+  movements   StockMovement[]
+  purchases   Purchase[]
 
+  @@unique([code, warehouseId])
+  @@unique([nameNorm, warehouseId])
   @@index([status])
   @@index([categoryId])
   @@index([warehouseId])
-  @@index([nameNorm])
+  @@index([projectId])
 }
 
 model StockMovement {
-  id             String        @id @default(uuid())
-  itemId         String
-  type           String        // ISSUE, RECEIVE, TRANSFER
-  quantity       Decimal       @db.Decimal(12, 2)
-  date           DateTime      @default(now())
-  reference      String        @default("")
-  notes          String        @default("")
-  createdBy      String        @default("")
-  issuedTo       String        @default("")
-  supplier       String        @default("")
-  fromWarehouse  String        @default("")
-  toWarehouse    String        @default("")
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
-  deletedAt      DateTime?
-  item           InventoryItem @relation(fields: [itemId], references: [id])
+  id            String        @id @default(uuid())
+  itemId        String
+  type          String // ISSUE, RECEIVE, TRANSFER
+  quantity      Decimal       @db.Decimal(12, 2)
+  date          DateTime      @default(now())
+  reference     String        @default("")
+  reason        String        @default("") // سبب العملية (إضافة / زيادة / توريد / صرف)
+  notes         String        @default("")
+  createdBy     String        @default("")
+  issuedTo      String        @default("")
+  supplier      String        @default("")
+  fromWarehouse String        @default("")
+  toWarehouse   String        @default("")
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  deletedAt     DateTime?
+  item          InventoryItem @relation(fields: [itemId], references: [id])
 
   @@index([itemId])
   @@index([type])
@@ -751,51 +795,53 @@ model StockMovement {
 }
 
 model ProjectFund {
-  id             String            @id @default(uuid())
-  projectId      String
-  initialBalance Decimal           @default(0) @db.Decimal(12, 2)
-  currentBalance Decimal           @default(0) @db.Decimal(12, 2)
-  lastUpdated    DateTime          @default(now())
-  createdAt      DateTime          @default(now())
-  updatedAt      DateTime          @updatedAt
-  deletedAt      DateTime?
-  transactions   FundTransaction[]
+  id               String            @id @default(uuid())
+  projectId        String
+  initialBalance   Decimal           @default(0) @db.Decimal(12, 2)
+  currentBalance   Decimal           @default(0) @db.Decimal(12, 2)
+  pettyCashBalance Decimal           @default(0) @db.Decimal(12, 2) // عهدة الموقع (المشتريات والنثريات)
+  lastUpdated      DateTime          @default(now())
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  deletedAt        DateTime?
+  transactions     FundTransaction[]
 
   @@unique([projectId])
 }
 
 model FundTransaction {
-  id          String       @id @default(uuid())
+  id          String      @id @default(uuid())
   fundId      String
-  type        String       // add, deduct, request
-  category    String       @default("general") // purchase, miscellaneous, general
-  amount      Decimal      @db.Decimal(12, 2)
-  description String       @default("")
-  date        DateTime     @default(now())
-  status      String       @default("approved") // pending, approved, rejected
-  referenceId String       @default("")
-  notes       String       @default("")
-  createdBy   String       @default("")
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  type        String // add, deduct, request
+  category    String      @default("general") // purchase, miscellaneous, general
+  amount      Decimal     @db.Decimal(12, 2)
+  description String      @default("")
+  date        DateTime    @default(now())
+  status      String      @default("approved") // pending, approved, rejected
+  referenceId String      @default("")
+  notes       String      @default("")
+  createdBy   String      @default("")
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
   deletedAt   DateTime?
-  fund        ProjectFund  @relation(fields: [fundId], references: [id])
+  fund        ProjectFund @relation(fields: [fundId], references: [id])
 
   @@index([fundId])
   @@index([type])
 }
 
 model Miscellaneous {
-  id          String   @id @default(uuid())
+  id          String    @id @default(uuid())
   projectId   String
   description String
-  amount      Decimal  @db.Decimal(12, 2)
-  category    String   @default("other") // food, transport, tools, other
-  date        DateTime @default(now())
-  notes       String   @default("")
-  createdBy   String   @default("")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  amount      Decimal   @db.Decimal(12, 2)
+  category    String    @default("other") // food, transport, tools, other
+  date        DateTime  @default(now())
+  notes       String    @default("")
+  invoiceFile String? // base64 or file path
+  createdBy   String    @default("")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
   deletedAt   DateTime?
 
   @@index([projectId])
@@ -815,41 +861,49 @@ model Purchase {
   date            DateTime       @default(now())
   status          String         @default("pending") // pending, approved, received, cancelled
   notes           String         @default("")
-  invoiceFile     String?        // base64 or file path
+  invoiceFile     String? // base64 or file path
   supplierName    String         @default("")
   createdBy       String         @default("")
-  categoryId      String?        // optional category to create/link the inventory item
-  inventoryItemId String?        // permanently links the purchase to its inventory item
+  categoryId      String? // optional category to create/link the inventory item
+  inventoryItemId String? // permanently links the purchase to its inventory item
+  warehouseId     String? // destination warehouse where the purchase was received
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
   deletedAt       DateTime?
   inventoryItem   InventoryItem? @relation(fields: [inventoryItemId], references: [id])
+  warehouse       Warehouse?     @relation(fields: [warehouseId], references: [id])
 
   @@index([projectId])
   @@index([supplierId])
   @@index([status])
   @@index([date])
   @@index([inventoryItemId])
+  @@index([warehouseId])
 }
 
 model Notification {
-  id         String   @id @default(uuid())
+  id         String    @id @default(uuid())
   userId     String?
-  recipient  User?    @relation(fields: [userId], references: [id])
+  recipient  User?     @relation(fields: [userId], references: [id])
   title      String
-  titleEn    String   @default("")
+  titleEn    String    @default("")
   message    String
-  messageEn  String   @default("")
-  type       String   @default("info") // info, warning, success, error
-  entityType String?  // project, building, extract, payment, employee, etc.
-  entityId   String?  // UUID of related entity
-  createdBy  String?  // userId who triggered this
-  link       String?  // optional frontend route
-  date       DateTime @default(now())
-  read       Boolean  @default(false)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  messageEn  String    @default("")
+  type       String    @default("info") // info, warning, success, error
+  entityType String? // project, building, extract, payment, employee, etc.
+  entityId   String? // UUID of related entity
+  createdBy  String? // userId who triggered this
+  link       String? // optional frontend route
+  date       DateTime  @default(now())
+  read       Boolean   @default(false)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
   deletedAt  DateTime?
+
+  // RBAC delivery targets: a broadcast (userId = null) is shown only to users
+  // whose roles/permissions intersect these arrays. Empty = everyone.
+  targetRoles       String[] @default([])
+  targetPermissions String[] @default([])
 
   @@index([userId])
   @@index([type])
@@ -857,39 +911,64 @@ model Notification {
 }
 
 model ProjectBoard {
-  id          String   @id @default(uuid())
+  id          String    @id @default(uuid())
   buildingId  String
   name        String
-  description String   @default("")
-  image       String   @default("")
-  date        DateTime @default(now())
-  createdBy   String   @default("")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  description String    @default("")
+  image       String    @default("")
+  date        DateTime  @default(now())
+  createdBy   String    @default("")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
   deletedAt   DateTime?
+
+  documents ProjectBoardDocument[]
 
   @@index([buildingId])
 }
 
+/// Files and drawings attached to a project board (لوحات ومستندات المشروع).
+/// Each document references a real file in the FileRecord store so PDF, CAD,
+/// images and other engineering file types keep their original name/type/size
+/// and can be downloaded or previewed.
+model ProjectBoardDocument {
+  id          String    @id @default(uuid())
+  boardId     String
+  fileId      String?
+  fileName    String // original file name, e.g. drawing-2024-A1.pdf
+  mimeType    String    @default("application/octet-stream")
+  fileSize    Int       @default(0)
+  description String    @default("")
+  uploadedBy  String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  board ProjectBoard @relation(fields: [boardId], references: [id], onDelete: Cascade)
+
+  @@index([boardId])
+  @@index([fileId])
+}
+
 model ClientStatement {
-  id              String   @id @default(uuid())
-  statementNumber String   @default("")
+  id              String    @id @default(uuid())
+  statementNumber String    @default("")
   projectId       String
-  projectName     String   @default("")
+  projectName     String    @default("")
   buildingId      String
-  buildingName    String   @default("")
+  buildingName    String    @default("")
   clientId        String
-  clientName      String   @default("")
-  date            DateTime @default(now())
-  status          String   @default("pending")
-  totalWorkValue  Float    @default(0)
-  totalDeductions Float    @default(0)
-  netPayable      Float    @default(0)
-  items           Json     @default("[]")
-  deductions      Json     @default("[]")
-  signatures      Json     @default("[]")
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  clientName      String    @default("")
+  date            DateTime  @default(now())
+  status          String    @default("pending")
+  totalWorkValue  Float     @default(0)
+  totalDeductions Float     @default(0)
+  netPayable      Float     @default(0)
+  items           Json      @default("[]")
+  deductions      Json      @default("[]")
+  signatures      Json      @default("[]")
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
   deletedAt       DateTime?
 
   @@index([projectId])
@@ -898,32 +977,32 @@ model ClientStatement {
 }
 
 model SubcontractorStatement {
-  id                 String   @id @default(uuid())
-  statementNumber    String   @default("")
-  projectId          String
-  projectName        String   @default("")
-  buildingId         String
-  buildingName       String   @default("")
-  subcontractorId    String
-  subcontractorName  String   @default("")
-  workType           String   @default("")
-  date               DateTime @default(now())
-  status             String   @default("pending")
-  blockNumber        String   @default("")
-  formNumber         String   @default("")
-  insurancePercent   Float    @default(0)
-  totalWorkValue     Float    @default(0)
-  totalInsurance     Float    @default(0)
-  totalDeductions    Float    @default(0)
-  previousPaid       Float    @default(0)
-  netPayable         Float    @default(0)
-  runningNumber      Int      @default(0)
-  items              Json     @default("[]")
-  deductions         Json     @default("[]")
-  signatures         Json     @default("[]")
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
-  deletedAt          DateTime?
+  id                String    @id @default(uuid())
+  statementNumber   String    @default("")
+  projectId         String
+  projectName       String    @default("")
+  buildingId        String
+  buildingName      String    @default("")
+  subcontractorId   String
+  subcontractorName String    @default("")
+  workType          String    @default("")
+  date              DateTime  @default(now())
+  status            String    @default("pending")
+  blockNumber       String    @default("")
+  formNumber        String    @default("")
+  insurancePercent  Float     @default(0)
+  totalWorkValue    Float     @default(0)
+  totalInsurance    Float     @default(0)
+  totalDeductions   Float     @default(0)
+  previousPaid      Float     @default(0)
+  netPayable        Float     @default(0)
+  runningNumber     Int       @default(0)
+  items             Json      @default("[]")
+  deductions        Json      @default("[]")
+  signatures        Json      @default("[]")
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  deletedAt         DateTime?
 
   @@index([projectId])
   @@index([subcontractorId])
@@ -931,16 +1010,16 @@ model SubcontractorStatement {
 }
 
 model Approval {
-  id          String   @id @default(uuid())
-  entityType  String   // e.g. 'extract', 'purchase', 'leave', 'fund-transaction', 'client-statement', 'subcontractor-statement'
-  entityId    String   // UUID of the entity being approved
-  status      String   @default("pending") // pending, approved, rejected
-  requestedBy String   // user ID who submitted for approval
-  approvedBy  String?  // user ID who approved/rejected
+  id          String    @id @default(uuid())
+  entityType  String // e.g. 'extract', 'purchase', 'leave', 'fund-transaction', 'client-statement', 'subcontractor-statement'
+  entityId    String // UUID of the entity being approved
+  status      String    @default("pending") // pending, approved, rejected
+  requestedBy String // user ID who submitted for approval
+  approvedBy  String? // user ID who approved/rejected
   approvedAt  DateTime?
-  comment     String   @default("")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  comment     String    @default("")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
   deletedAt   DateTime?
 
   @@unique([entityType, entityId])
@@ -1018,20 +1097,20 @@ model TimelineEvent {
 
 /// Centralized file management
 model FileRecord {
-  id            String   @id @default(uuid())
-  category      String   // branding, attachment, contract, drawing, boq, invoice, extract-pdf, image, knowledge, signature
-  fileName      String
-  originalName  String
-  mimeType      String
-  size          Int
-  path          String
-  entityType    String?
-  entityId      String?
-  metadata      Json?
-  uploadedById  String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  deletedAt     DateTime?
+  id           String    @id @default(uuid())
+  category     String // branding, attachment, contract, drawing, boq, invoice, extract-pdf, image, knowledge, signature
+  fileName     String
+  originalName String
+  mimeType     String
+  size         Int
+  path         String
+  entityType   String?
+  entityId     String?
+  metadata     Json?
+  uploadedById String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
 
   @@index([category])
   @@index([entityType, entityId])
@@ -1041,8 +1120,8 @@ model FileRecord {
 model AuditLog {
   id        String   @id @default(uuid())
   userId    String
-  action    String   // CREATE, UPDATE, DELETE, LOGIN, LOGOUT, PASSWORD_RESET, APPROVE, etc.
-  entity    String   // project, client, employee, statement, etc.
+  action    String // CREATE, UPDATE, DELETE, LOGIN, LOGOUT, PASSWORD_RESET, APPROVE, etc.
+  entity    String // project, client, employee, statement, etc.
   entityId  String
   before    Json?
   after     Json?
@@ -1057,28 +1136,28 @@ model AuditLog {
 }
 
 model Shift {
-  id                  String   @id @default(uuid())
+  id                  String          @id @default(uuid())
   name                String
-  startTime           String   // "08:00"
-  endTime             String   // "17:00"
-  gracePeriod         Int      @default(15)    // minutes after start considered on-time
-  lateThreshold       Int      @default(30)    // minutes after start = late
-  earlyLeaveThreshold Int      @default(15)    // minutes before end = early leave
-  overtimeEnabled     Boolean  @default(true)
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  startTime           String // "08:00"
+  endTime             String // "17:00"
+  gracePeriod         Int             @default(15) // minutes after start considered on-time
+  lateThreshold       Int             @default(30) // minutes after start = late
+  earlyLeaveThreshold Int             @default(15) // minutes before end = early leave
+  overtimeEnabled     Boolean         @default(true)
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
   deletedAt           DateTime?
   employeeShifts      EmployeeShift[]
 }
 
 model EmployeeShift {
-  id         String   @id @default(uuid())
+  id         String    @id @default(uuid())
   employeeId String
   shiftId    String
   startDate  DateTime // when this shift assignment starts
   endDate    DateTime? // null = ongoing
-  employee   Employee @relation(fields: [employeeId], references: [id])
-  shift      Shift    @relation(fields: [shiftId], references: [id])
+  employee   Employee  @relation(fields: [employeeId], references: [id])
+  shift      Shift     @relation(fields: [shiftId], references: [id])
 
   @@index([employeeId])
   @@index([shiftId])
@@ -1086,54 +1165,56 @@ model EmployeeShift {
 }
 
 model AttendanceOverride {
-  id           String     @id @default(uuid())
-  attendanceId String?    @unique // set only after approval materializes the attendance
-  requestedBy  String     // employee ID
-  approvedBy   String?    // manager user ID
-  reason       String     @default("")
-  comment      String     @default("")
-  status       String     @default("pending") // pending, approved, rejected
-  type         String     @default("check_in") // check_in, check_out
+  id           String      @id @default(uuid())
+  attendanceId String? // set after approval materializes the attendance; a check-in and a check-out request may both reference the same attendance record
+  requestedBy  String // employee ID
+  approvedBy   String? // manager user ID
+  reason       String      @default("")
+  comment      String      @default("")
+  status       String      @default("pending") // pending, approved, rejected
+  type         String      @default("check_in") // check_in, check_out
   distance     Float?
-  employeeId   String?    // employee for a check-in override (attendance may not exist yet)
-  date         DateTime?  // attendance date for a check-in override
-  payload      Json?      // snapshot of the original check-in/check-out request
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
+  employeeId   String? // employee for a check-in override (attendance may not exist yet)
+  date         DateTime? // attendance date for a check-in override
+  payload      Json? // snapshot of the original check-in/check-out request
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
   attendance   Attendance? @relation(fields: [attendanceId], references: [id])
+  employee     Employee?   @relation(fields: [employeeId], references: [id])
 
   @@index([attendanceId])
   @@index([status])
   @@index([requestedBy])
+  @@index([employeeId])
 }
 
 /// Configurable multi-step signature workflow definition
 model SignatureWorkflow {
-  id          String   @id @default(uuid())
-  name        String   @unique
+  id          String                  @id @default(uuid())
+  name        String                  @unique
   description String?
-  entityType  String   // document type this workflow applies to (purchase_order, extract, payment, etc.)
-  isActive    Boolean  @default(true)
+  entityType  String // document type this workflow applies to (purchase_order, extract, payment, etc.)
+  isActive    Boolean                 @default(true)
   steps       SignatureWorkflowStep[]
   requests    SignatureRequest[]
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime                @default(now())
+  updatedAt   DateTime                @updatedAt
 
   @@index([entityType])
 }
 
 /// Ordered step within a signature workflow
 model SignatureWorkflowStep {
-  id         String   @id @default(uuid())
+  id         String            @id @default(uuid())
   workflowId String
   stepOrder  Int
-  label      String   // e.g. "Project Manager Approval"
-  roleName   String?  // e.g. "PROJECT_MANAGER" from roles enum
-  userId     String?  // specific user if role is not enough
-  isFinal    Boolean  @default(false)
+  label      String // e.g. "Project Manager Approval"
+  roleName   String? // e.g. "PROJECT_MANAGER" from roles enum
+  userId     String? // specific user if role is not enough
+  isFinal    Boolean           @default(false)
   workflow   SignatureWorkflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
   actions    SignatureAction[]
-  createdAt  DateTime @default(now())
+  createdAt  DateTime          @default(now())
 
   @@unique([workflowId, stepOrder])
   @@index([workflowId])
@@ -1141,14 +1222,14 @@ model SignatureWorkflowStep {
 
 /// A document currently going through a signature workflow
 model SignatureRequest {
-  id          String   @id @default(uuid())
+  id          String            @id @default(uuid())
   workflowId  String
   entityType  String
   entityId    String
-  status      String   @default("pending") // pending, in_progress, completed, rejected, cancelled
-  currentStep Int      @default(0)
-  requestedBy String   // user who submitted
-  requestedAt DateTime @default(now())
+  status      String            @default("pending") // pending, in_progress, completed, rejected, cancelled
+  currentStep Int               @default(0)
+  requestedBy String // user who submitted
+  requestedAt DateTime          @default(now())
   completedAt DateTime?
   workflow    SignatureWorkflow @relation(fields: [workflowId], references: [id])
   actions     SignatureAction[]
@@ -1160,100 +1241,57 @@ model SignatureRequest {
 
 /// Individual signature action within a signature request
 model SignatureAction {
-  id          String   @id @default(uuid())
-  requestId   String
-  stepId      String
-  stepOrder   Int
-  signedBy    String?  // user ID who signed
-  signedAt    DateTime?
-  status      String   @default("pending") // pending, signed, rejected, skipped
-  comment     String   @default("")
-  imageUrl    String?  // uploaded signature image
-  request     SignatureRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  step        SignatureWorkflowStep @relation(fields: [stepId], references: [id])
+  id        String                @id @default(uuid())
+  requestId String
+  stepId    String
+  stepOrder Int
+  signedBy  String? // user ID who signed
+  signedAt  DateTime?
+  status    String                @default("pending") // pending, signed, rejected, skipped
+  comment   String                @default("")
+  imageUrl  String? // uploaded signature image
+  request   SignatureRequest      @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  step      SignatureWorkflowStep @relation(fields: [stepId], references: [id])
 
   @@unique([requestId, stepId])
   @@index([requestId])
   @@index([signedBy])
 }
 
-/// Reusable document template with dynamic placeholders
-model DocumentTemplate {
-  id          String   @id @default(uuid())
-  name        String
-  description String?
-  category    String   @default("general") // contract, report, invoice, letter, etc.
-  content     String   // template HTML/content with {{placeholders}}
-  variables   Json     @default("[]") // array of variable definitions for UI
-  isActive    Boolean  @default(true)
-  version     Int      @default(1)
-  createdById String?
-  documents   Document[]
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  @@index([category])
-  @@index([name])
-}
-
-/// A generated document from a template
-model Document {
-  id             String   @id @default(uuid())
-  title          String
-  templateId     String?
-  template       DocumentTemplate? @relation(fields: [templateId], references: [id])
-  documentNumber String?
-  category       String   @default("general")
-  status         String   @default("draft") // draft, final, archived
-  content        String?  // rendered HTML content
-  variables      Json     @default("{}") // key-value pairs used for generation
-  entityType      String?  // linked entity type (project, extract, etc.)
-  entityId        String?  // linked entity ID
-  version         Int      @default(1)
-  verificationHash String? // SHA-256 fingerprint embedded in the PDF QR verification
-  createdById     String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  @@index([category])
-  @@index([entityType, entityId])
-  @@index([documentNumber])
-}
-
 /// Single company record (singleton) — all branding, identity, and localization
 model Company {
-  id                String   @id @default(uuid())
-  name              String   @default("") // English name
-  arabicName        String   @default("")
-  logo              String   @default("")
-  smallLogo         String   @default("")
-  watermark         String   @default("")
-  stamp             String   @default("")
-  signature         String   @default("")
-  primaryColor      String   @default("#1e40af")
-  secondaryColor    String   @default("#64748b")
-  font              String   @default("Inter")
-  address           String   @default("")
-  taxNumber         String   @default("")
-  commercialRegister String  @default("")
-  phone             String   @default("")
-  email             String   @default("")
-  website           String   @default("")
-  currency          String   @default("EGP")
-  timezone          String   @default("Africa/Cairo")
-  language          String   @default("ar")
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id                 String   @id @default(uuid())
+  name               String   @default("") // English name
+  arabicName         String   @default("")
+  logo               String   @default("")
+  smallLogo          String   @default("")
+  watermark          String   @default("")
+  stamp              String   @default("")
+  signature          String   @default("")
+  primaryColor       String   @default("#1e40af")
+  secondaryColor     String   @default("#64748b")
+  font               String   @default("Inter")
+  address            String   @default("")
+  taxNumber          String   @default("")
+  commercialRegister String   @default("")
+  phone              String   @default("")
+  email              String   @default("")
+  website            String   @default("")
+  currency           String   @default("EGP")
+  timezone           String   @default("Africa/Cairo")
+  language           String   @default("ar")
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 }
 
 /// AI Agent conversation (DB-persisted across server restarts)
 model AiConversation {
-  id        String                 @id @default(uuid())
+  id        String                  @id @default(uuid())
   userId    String
-  title     String                 @default("New conversation")
-  isPinned  Boolean                @default(false)
-  createdAt DateTime               @default(now())
-  updatedAt DateTime               @updatedAt
+  title     String                  @default("New conversation")
+  isPinned  Boolean                 @default(false)
+  createdAt DateTime                @default(now())
+  updatedAt DateTime                @updatedAt
   deletedAt DateTime?
   messages  AiConversationMessage[]
 

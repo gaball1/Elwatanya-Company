@@ -13,7 +13,7 @@ import {
   Post,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
 import { RequirePermission } from '../../common/decorators/permissions.decorator';
 import { Permissions } from '../../common/constants/permissions.constant';
 import {
@@ -47,9 +47,9 @@ export class PaymentController {
   async list(
     @Param('buildingId', ParseUUIDPipe) buildingId: string,
     @Param('contractorId', ParseUUIDPipe) contractorId: string,
-    @CurrentUser('projectId') projectId?: string,
+    @CurrentUser() user?: JwtPayload,
   ) {
-    const result = await this.listPayments.execute(buildingId, contractorId, projectId);
+    const result = await this.listPayments.execute(buildingId, contractorId, user);
     if (result.isFailure) throw this.mapError(result.error);
     return { items: result.getValue() };
   }
@@ -62,7 +62,7 @@ export class PaymentController {
     @Param('buildingId', ParseUUIDPipe) buildingId: string,
     @Param('contractorId', ParseUUIDPipe) contractorId: string,
     @Body() dto: AddPaymentDto,
-    @CurrentUser('projectId') projectId?: string,
+    @CurrentUser() user?: JwtPayload,
   ) {
     const result = await this.addPayment.execute({
       buildingId,
@@ -71,7 +71,7 @@ export class PaymentController {
       date: dto.date,
       extractId: dto.extractId,
       notes: dto.notes,
-    }, projectId);
+    }, user);
     if (result.isFailure) throw this.mapError(result.error);
     return { payment: result.getValue() };
   }
@@ -83,9 +83,9 @@ export class PaymentController {
     @Param('buildingId', ParseUUIDPipe) buildingId: string,
     @Param('contractorId', ParseUUIDPipe) contractorId: string,
     @Param('paymentId', ParseUUIDPipe) paymentId: string,
-    @CurrentUser('projectId') projectId?: string,
+    @CurrentUser() user?: JwtPayload,
   ) {
-    const result = await this.getPayment.execute(buildingId, contractorId, paymentId, projectId);
+    const result = await this.getPayment.execute(buildingId, contractorId, paymentId, user);
     if (result.isFailure) throw this.mapError(result.error);
     return { payment: result.getValue() };
   }
@@ -98,7 +98,7 @@ export class PaymentController {
     @Param('contractorId', ParseUUIDPipe) contractorId: string,
     @Param('paymentId', ParseUUIDPipe) paymentId: string,
     @Body() dto: UpdatePaymentDto,
-    @CurrentUser('projectId') projectId?: string,
+    @CurrentUser() user?: JwtPayload,
     @CurrentUser('sub') userId?: string,
   ) {
     const result = await this.updatePayment.execute({
@@ -110,7 +110,7 @@ export class PaymentController {
       notes: dto.notes,
       status: dto.status,
       approvedBy: userId,
-    }, projectId);
+    }, user);
     if (result.isFailure) throw this.mapError(result.error);
     return { payment: result.getValue() };
   }
@@ -123,13 +123,13 @@ export class PaymentController {
     @Param('buildingId', ParseUUIDPipe) buildingId: string,
     @Param('contractorId', ParseUUIDPipe) contractorId: string,
     @Param('paymentId', ParseUUIDPipe) paymentId: string,
-    @CurrentUser('projectId') projectId?: string,
+    @CurrentUser() user?: JwtPayload,
   ) {
     const result = await this.deletePayment.execute({
       buildingId,
       contractorId,
       paymentId,
-    }, projectId);
+    }, user);
     if (result.isFailure) throw this.mapError(result.error);
   }
 

@@ -269,10 +269,12 @@ body {
 }
 
 /* ─── Legacy compatibility ─── */
-.text-gold { color: var(--color-gold); }
-.bg-gold { background-color: var(--color-gold); }
-.border-gold { border-color: var(--color-gold); }
-.bg-gray-light { background-color: var(--color-background); }
+@layer utilities {
+  .text-gold { color: var(--color-gold); }
+  .bg-gold { background-color: var(--color-gold); }
+  .border-gold { border-color: var(--color-gold); }
+  .bg-gray-light { background-color: var(--color-background); }
+}
 
 /* ─── Animate.css-style utilities ─── */
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }

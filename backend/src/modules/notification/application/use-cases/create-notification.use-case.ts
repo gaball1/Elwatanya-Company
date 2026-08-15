@@ -19,6 +19,8 @@ export class CreateNotificationUseCase {
       entityType: input.entityType,
       entityId: input.entityId,
       link: input.link,
+      targetRoles: input.targetRoles,
+      targetPermissions: input.targetPermissions,
     });
 
     if (result.isFailure) return Result.fail(result.error as Error);

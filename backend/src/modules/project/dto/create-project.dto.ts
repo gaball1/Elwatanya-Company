@@ -50,6 +50,12 @@ export class CreateProjectDto {
   @IsDateString()
   startDate?: string;
 
+  @ApiPropertyOptional({ example: 24, minimum: 1, maximum: 480 })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  plannedDurationMonths?: number;
+
   @ApiPropertyOptional({ example: 'active', enum: ['active', 'completed', 'on_hold'] })
   @IsOptional()
   @IsString()

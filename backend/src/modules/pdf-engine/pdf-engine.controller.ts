@@ -1,20 +1,35 @@
-import { Controller, Post, Body, Res, Headers } from '@nestjs/common';
-import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { Body, Controller, Post, Res, UseGuards } from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Response } from 'express';
 import { PdfEngineService } from './application/pdf-engine.service';
 import { PdfDocument } from './domain/pdf-document.entity';
-import { Public } from '@/common/decorators/auth.decorators';
+import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
+import { RequirePermission } from '@/common/decorators/permissions.decorator';
+import { Permissions } from '@/common/constants/permissions.constant';
 import { sendFileResponse } from '@/common/pdf-header.util';
+import { assertSafeUrl } from '@/common/utils/ssrf-guard.util';
+import { RenderPdfDto } from './dto/render-pdf.dto';
 
 @ApiTags('PDF Engine')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard)
 @Controller('pdf')
 export class PdfEngineController {
   constructor(private readonly service: PdfEngineService) {}
 
-  @Public()
   @Post('render')
   @ApiOperation({ summary: 'Render a PDF document from JSON definition' })
-  async render(@Body() body: any, @Res() res: Response) {
+  @RequirePermission(Permissions.Files.Read)
+  async render(@Body() body: RenderPdfDto, @Res() res: Response) {
+    // SSRF guard: reject any internal/private URL embedded in the document
+    // (logo, signatures, watermark) before it reaches the headless renderer.
+    const urlsToCheck: string[] = [body.logoUrl ?? '', ...(body.signatures ?? []).map((s) => s.imageUrl ?? '')];
+    for (const url of urlsToCheck) {
+      if (/^https?:\/\//.test(url)) {
+        await assertSafeUrl(url);
+      }
+    }
+
     const doc = PdfDocument.create({
       title: body.title,
       arabicTitle: body.arabicTitle,

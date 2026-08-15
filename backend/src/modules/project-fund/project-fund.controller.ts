@@ -41,6 +41,16 @@ export class ProjectFundController {
     return { items: result.getValue() };
   }
 
+  @Get('by-project/:projectId')
+  @ApiOperation({ summary: 'Get project fund by projectId' })
+  @RequirePermission(Permissions.ProjectFunds.Read)
+  async getByProject(@Param('projectId') projectId: string) {
+    const result = await this.listProjectFunds.execute();
+    const fund = result.getValue()?.find((f) => f.projectId === projectId);
+    if (!fund) return { fund: null };
+    return { fund };
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get project fund by id' })
   @RequirePermission(Permissions.ProjectFunds.Read)
@@ -72,6 +82,7 @@ export class ProjectFundController {
       id,
       initialBalance: dto.initialBalance,
       currentBalance: dto.currentBalance,
+      pettyCashBalance: dto.pettyCashBalance,
     });
     if (result.isFailure) handleError(result.error?.message, 'Failed to update project fund');
     return { fund: result.getValue() };

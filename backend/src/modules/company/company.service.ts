@@ -43,6 +43,10 @@ export class CompanyService {
     return this.updateField('stamp', fileId);
   }
 
+  async uploadSignature(fileId: string) {
+    return this.updateField('signature', fileId);
+  }
+
   private async updateField(field: string, value: string) {
     let company = await this.prisma.company.findFirst();
     if (!company) {

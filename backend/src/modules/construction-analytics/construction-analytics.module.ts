@@ -3,6 +3,7 @@ import { ConstructionAnalyticsController } from './construction-analytics.contro
 import { AnalyticsDataService } from './application/analytics-data.service';
 import { AnalyticsService } from './application/analytics.service';
 import { AnalyticsCacheService } from './infrastructure/analytics-cache.service';
+import { AnalyticsCacheSubscriber } from './infrastructure/analytics-cache.subscriber';
 import { ProjectAnalyticsReport } from './handlers/project-analytics.report';
 import { AttendanceReport } from './handlers/attendance-report';
 import { ReportHandlerRegistry } from '../reporting-engine/infrastructure/report-handler.registry';
@@ -13,7 +14,7 @@ import { PrismaModule } from '@/prisma/prisma.module';
 @Module({
   imports: [PrismaModule, ReportingEngineModule],
   controllers: [ConstructionAnalyticsController],
-  providers: [AnalyticsDataService, AnalyticsService, AnalyticsCacheService, ProjectAnalyticsReport, AttendanceReport],
+  providers: [AnalyticsDataService, AnalyticsService, AnalyticsCacheService, AnalyticsCacheSubscriber, ProjectAnalyticsReport, AttendanceReport],
   exports: [AnalyticsService, AnalyticsCacheService],
 })
 export class ConstructionAnalyticsModule implements OnModuleInit {

@@ -13,42 +13,70 @@ import {
   AlertTriangle,
   Eye,
   Filter,
+  RefreshCw,
+  User,
+  Calendar,
+  MapPin,
 } from "lucide-react";
 import { attendanceService, type AttendanceOverride } from "@/services/attendance.service";
 import { useAuth } from "@/hooks/useAuth";
 import { Can } from "@/components/Can";
+import { useHasPermission } from "@/hooks/usePermissions";
 
 export default function AttendanceOverridesPage() {
   const params = useParams();
   const router = useRouter();
   const locale = (params.locale as string) ?? "ar";
   const isArabic = locale === "ar";
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const { showToast, ToastComponent } = useToast();
+  const canManage = useHasPermission("attendance.update");
 
   const [overrides, setOverrides] = useState<AttendanceOverride[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [statusFilter, setStatusFilter] = useState("");
+  const [employeeFilter, setEmployeeFilter] = useState("");
+  const [dateFilter, setDateFilter] = useState("");
 
   const [actionTarget, setActionTarget] = useState<AttendanceOverride | null>(null);
   const [actionMode, setActionMode] = useState<"approve" | "reject" | "view" | null>(null);
   const [comment, setComment] = useState("");
 
-  const loadData = useCallback(async (status?: string) => {
+  const loadData = useCallback(async (showSpinner = false) => {
+    if (showSpinner) setRefreshing(true);
+    setLoading(true);
     try {
-      setLoading(true);
-      const items = await attendanceService.listOverrides(status || undefined);
+      const items = await attendanceService.listOverrides();
       setOverrides(items);
     } catch {
       showToast(isArabic ? "خطأ في تحميل الطلبات" : "Error loading overrides", "error");
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
-  }, [isArabic]);
+  }, [isArabic, showToast]);
 
-  useEffect(() => { loadData(statusFilter); }, [loadData, statusFilter]);
+  useEffect(() => { loadData(); }, [loadData]);
 
-  const { currentItems, currentPage, totalPages, goToPage } = usePagination(overrides, 15);
+  const filteredOverrides = useMemo(() => {
+    const q = employeeFilter.trim().toLowerCase();
+    return overrides.filter((o) => {
+      if (statusFilter && o.status !== statusFilter) return false;
+      if (q) {
+        const name = o.employee?.fullName ?? "";
+        const code = o.employee?.code ?? "";
+        if (!name.toLowerCase().includes(q) && !code.toLowerCase().includes(q)) return false;
+      }
+      if (dateFilter) {
+        const d = (o.date ?? "").slice(0, 10);
+        if (d !== dateFilter) return false;
+      }
+      return true;
+    });
+  }, [overrides, statusFilter, employeeFilter, dateFilter]);
+
+  const { currentItems, currentPage, totalPages, goToPage } = usePagination(filteredOverrides, 15);
 
   const summary = useMemo(() => {
     return {
@@ -82,7 +110,7 @@ export default function AttendanceOverridesPage() {
         showToast(isArabic ? "تم رفض الطلب" : "Override rejected", "success");
       }
       closeAction();
-      await loadData(statusFilter);
+      await loadData();
     } catch {
       showToast(isArabic ? "فشلت العملية" : "Action failed", "error");
     }
@@ -95,6 +123,85 @@ export default function AttendanceOverridesPage() {
       return val;
     }
   };
+
+  const formatDay = (val?: string | null) => {
+    if (!val) return "—";
+    try {
+      return new Date(val).toLocaleDateString(isArabic ? "ar-EG" : "en-US");
+    } catch {
+      return val;
+    }
+  };
+
+  const formatTime = (val?: string | null) => {
+    if (!val) return "—";
+    try {
+      const d = new Date(val);
+      if (isNaN(d.getTime())) return "—";
+      return d.toLocaleTimeString(isArabic ? "ar-EG" : "en-US", { hour: "2-digit", minute: "2-digit" });
+    } catch {
+      return "—";
+    }
+  };
+
+  const formatPlace = (lat?: number | null, lng?: number | null, address?: string | null) => {
+    if (address) return address;
+    if (lat != null && lng != null) return `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+    return "—";
+  };
+
+  const computeWorkMinutes = (item: AttendanceOverride): number | null => {
+    if (item.attendance?.workedMinutes != null) return item.attendance.workedMinutes;
+    const p = item.payload;
+    if (!p?.checkInTime || !p?.checkOutTime) return null;
+    const ci = new Date(p.checkInTime).getTime();
+    const co = new Date(p.checkOutTime).getTime();
+    if (isNaN(ci) || isNaN(co)) return null;
+    return Math.round((co - ci) / 60000);
+  };
+
+  const formatDuration = (minutes: number | null): string => {
+    if (minutes == null) return "—";
+    const h = Math.floor(minutes / 60);
+    const m = minutes % 60;
+    return `${h}h ${String(m).padStart(2, "0")}m`;
+  };
+
+  const statusLabel = (status: string) =>
+    status === "approved"
+      ? (isArabic ? "مقبول" : "Approved")
+      : status === "rejected"
+      ? (isArabic ? "مرفوض" : "Rejected")
+      : (isArabic ? "بانتظار الموافقة" : "Pending");
+
+  const statusVariant = (status: string) =>
+    status === "approved" ? "success" : status === "rejected" ? "danger" : "warning";
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto" />
+      </div>
+    );
+  }
+
+  if (!canManage) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center p-6">
+        <div className="text-center space-y-2">
+          <AlertTriangle className="mx-auto text-amber-500" size={40} />
+          <h1 className="text-lg font-bold text-gray-900 dark:text-white">
+            {isArabic ? "ليس لديك صلاحية الوصول" : "No access"}
+          </h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            {isArabic
+              ? "هذه الصفحة متاحة للإدارة فقط"
+              : "This page is restricted to management"}
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   if (loading && overrides.length === 0) {
     return (
@@ -118,9 +225,11 @@ export default function AttendanceOverridesPage() {
           </p>
         </div>
         <button
-          onClick={() => loadData(statusFilter)}
-          className="px-4 py-2 text-sm bg-gold text-white rounded-xl hover:bg-gold-dark disabled:opacity-50 transition-colors"
+          onClick={() => loadData(true)}
+          disabled={refreshing}
+          className="flex items-center gap-2 px-4 py-2 text-sm bg-gold text-white rounded-xl hover:bg-gold-dark disabled:opacity-50 transition-colors"
         >
+          {refreshing && <RefreshCw size={14} className="animate-spin" />}
           {isArabic ? "تحديث" : "Refresh"}
         </button>
       </div>
@@ -149,25 +258,60 @@ export default function AttendanceOverridesPage() {
           <Filter size={16} className="text-gold" />
           <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300">{isArabic ? "تصفية" : "Filter"}</h2>
         </div>
-        <div className="flex gap-2 flex-wrap">
-          {[
-            { value: "", labelAr: "الكل", labelEn: "All" },
-            { value: "pending", labelAr: "بانتظار الموافقة", labelEn: "Pending" },
-            { value: "approved", labelAr: "مقبول", labelEn: "Approved" },
-            { value: "rejected", labelAr: "مرفوض", labelEn: "Rejected" },
-          ].map((opt) => (
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="flex gap-2 flex-wrap">
+            {[
+              { value: "", labelAr: "الكل", labelEn: "All" },
+              { value: "pending", labelAr: "بانتظار الموافقة", labelEn: "Pending" },
+              { value: "approved", labelAr: "مقبول", labelEn: "Approved" },
+              { value: "rejected", labelAr: "مرفوض", labelEn: "Rejected" },
+            ].map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => setStatusFilter(opt.value)}
+                className={`px-3 py-1.5 rounded-lg text-sm border transition ${
+                  statusFilter === opt.value
+                    ? "bg-primary text-white border-primary"
+                    : "border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
+                }`}
+              >
+                {isArabic ? opt.labelAr : opt.labelEn}
+              </button>
+            ))}
+          </div>
+          <div className="flex-1 min-w-[180px] max-w-xs">
+            <label className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 mb-1">
+              <User size={12} />
+              {isArabic ? "اسم الموظف أو الكود" : "Employee name or code"}
+            </label>
+            <input
+              type="text"
+              value={employeeFilter}
+              onChange={(e) => setEmployeeFilter(e.target.value)}
+              placeholder={isArabic ? "بحث..." : "Search..."}
+              className="w-full p-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-primary"
+            />
+          </div>
+          <div className="min-w-[160px]">
+            <label className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 mb-1">
+              <Calendar size={12} />
+              {isArabic ? "التاريخ" : "Date"}
+            </label>
+            <input
+              type="date"
+              value={dateFilter}
+              onChange={(e) => setDateFilter(e.target.value)}
+              className="w-full p-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-primary"
+            />
+          </div>
+          {(employeeFilter || dateFilter) && (
             <button
-              key={opt.value}
-              onClick={() => setStatusFilter(opt.value)}
-              className={`px-3 py-1.5 rounded-lg text-sm border transition ${
-                statusFilter === opt.value
-                  ? "bg-primary text-white border-primary"
-                  : "border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
-              }`}
+              onClick={() => { setEmployeeFilter(""); setDateFilter(""); }}
+              className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-danger transition"
             >
-              {isArabic ? opt.labelAr : opt.labelEn}
+              {isArabic ? "مسح" : "Clear"}
             </button>
-          ))}
+          )}
         </div>
       </Card>
 
@@ -177,19 +321,25 @@ export default function AttendanceOverridesPage() {
             <thead>
               <tr className="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
                 <th className="px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 text-right">
-                  {isArabic ? "النوع" : "Type"}
+                  {isArabic ? "الموظف" : "Employee"}
                 </th>
                 <th className="px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 text-right">
-                  {isArabic ? "السبب" : "Reason"}
+                  {isArabic ? "النوع" : "Type"}
                 </th>
                 <th className="px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 text-right">
                   {isArabic ? "التاريخ" : "Date"}
                 </th>
                 <th className="px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 text-right">
-                  {isArabic ? "الحالة" : "Status"}
+                  {isArabic ? "الحضور" : "Check-in"}
                 </th>
                 <th className="px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 text-right">
-                  {isArabic ? "ملاحظات" : "Comment"}
+                  {isArabic ? "الانصراف" : "Check-out"}
+                </th>
+                <th className="px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 text-right">
+                  {isArabic ? "ساعات العمل" : "Work Hours"}
+                </th>
+                <th className="px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 text-right">
+                  {isArabic ? "الحالة" : "Status"}
                 </th>
                 <th className="px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 text-right">
                   {isArabic ? "الإجراءات" : "Actions"}
@@ -199,13 +349,33 @@ export default function AttendanceOverridesPage() {
             <tbody>
               {currentItems.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-12 text-center text-gray-400">
+                  <td colSpan={8} className="px-4 py-12 text-center text-gray-400">
                     {isArabic ? "لا توجد طلبات" : "No override requests"}
                   </td>
                 </tr>
               ) : (
-                currentItems.map((item) => (
+                currentItems.map((item) => {
+                  const workMinutes = computeWorkMinutes(item);
+                  const p = item.payload;
+                  const checkInPlace = formatPlace(p?.checkInLatitude, p?.checkInLongitude, p?.checkInAddress);
+                  const checkOutPlace = formatPlace(p?.checkOutLatitude, p?.checkOutLongitude, p?.checkOutAddress);
+                  return (
                   <tr key={item.id} className="border-b border-gray-100 dark:border-gray-700 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <div className="flex items-center gap-2">
+                        <div className="w-7 h-7 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-xs font-bold text-gray-500 dark:text-gray-400 shrink-0">
+                          {(item.employee?.fullName ?? "?").charAt(0).toUpperCase()}
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-gray-800 dark:text-gray-200">
+                            {item.employee?.fullName ?? (isArabic ? "غير معروف" : "Unknown")}
+                          </p>
+                          {item.employee?.code && (
+                            <p className="text-[11px] text-gray-400">{item.employee.code}</p>
+                          )}
+                        </div>
+                      </div>
+                    </td>
                     <td className="px-4 py-3 whitespace-nowrap">
                       <Badge variant="info" size="sm">
                         {item.type === "check_in"
@@ -213,26 +383,40 @@ export default function AttendanceOverridesPage() {
                           : (isArabic ? "انصراف" : "Check-out")}
                       </Badge>
                     </td>
-                    <td className="px-4 py-3 text-gray-800 dark:text-gray-200 max-w-[280px]">
-                      <div className="line-clamp-2">{item.reason}</div>
-                    </td>
                     <td className="px-4 py-3 text-gray-600 dark:text-gray-400 whitespace-nowrap text-xs">
-                      {formatDate(item.createdAt)}
+                      {formatDay(item.date)}
+                    </td>
+                    <td className="px-4 py-3 min-w-[180px]">
+                      <div className="flex items-center gap-1.5 text-xs text-gray-800 dark:text-gray-200">
+                        <Clock size={12} className="text-gray-400 shrink-0" />
+                        {formatTime(p?.checkInTime)}
+                      </div>
+                      {checkInPlace !== "—" && (
+                        <div className="flex items-start gap-1.5 mt-0.5 text-[11px] text-gray-500 dark:text-gray-400">
+                          <MapPin size={11} className="text-gray-400 shrink-0 mt-0.5" />
+                          <span className="line-clamp-2">{checkInPlace}</span>
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 min-w-[180px]">
+                      <div className="flex items-center gap-1.5 text-xs text-gray-800 dark:text-gray-200">
+                        <Clock size={12} className="text-gray-400 shrink-0" />
+                        {formatTime(p?.checkOutTime)}
+                      </div>
+                      {checkOutPlace !== "—" && (
+                        <div className="flex items-start gap-1.5 mt-0.5 text-[11px] text-gray-500 dark:text-gray-400">
+                          <MapPin size={11} className="text-gray-400 shrink-0 mt-0.5" />
+                          <span className="line-clamp-2">{checkOutPlace}</span>
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-xs text-gray-600 dark:text-gray-400">
+                      {formatDuration(workMinutes)}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">
-                      <Badge
-                        variant={item.status === "approved" ? "success" : item.status === "rejected" ? "danger" : "warning"}
-                        size="sm"
-                      >
-                        {item.status === "approved"
-                          ? (isArabic ? "مقبول" : "Approved")
-                          : item.status === "rejected"
-                          ? (isArabic ? "مرفوض" : "Rejected")
-                          : (isArabic ? "بانتظار الموافقة" : "Pending")}
+                      <Badge variant={statusVariant(item.status)} size="sm">
+                        {statusLabel(item.status)}
                       </Badge>
-                    </td>
-                    <td className="px-4 py-3 text-gray-500 dark:text-gray-400 text-xs max-w-[200px]">
-                      <div className="line-clamp-1">{item.comment || "—"}</div>
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">
                       <div className="flex gap-1.5">
@@ -266,7 +450,8 @@ export default function AttendanceOverridesPage() {
                       </div>
                     </td>
                   </tr>
-                ))
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -276,7 +461,7 @@ export default function AttendanceOverridesPage() {
           totalPages={totalPages}
           onPageChange={goToPage}
           isArabic={isArabic}
-          total={overrides.length}
+          total={filteredOverrides.length}
         />
       </Card>
 
@@ -354,12 +539,24 @@ export default function AttendanceOverridesPage() {
                   </>
                 );
               })()}
-              {actionTarget.employeeId && (
+              {actionTarget.employee && (
                 <div>
-                  <p className="text-xs text-text-muted mb-1">{isArabic ? "رقم الموظف" : "Employee ID"}</p>
-                  <p className="text-sm text-text-primary text-xs">{actionTarget.employeeId}</p>
+                  <p className="text-xs text-text-muted mb-1">{isArabic ? "الموظف" : "Employee"}</p>
+                  <p className="text-sm text-text-primary">{actionTarget.employee.fullName}</p>
+                  {actionTarget.employee.code && (
+                    <p className="text-xs text-text-muted mt-0.5">{actionTarget.employee.code}</p>
+                  )}
                 </div>
               )}
+              {(() => {
+                const mins = computeWorkMinutes(actionTarget);
+                return mins != null ? (
+                  <div>
+                    <p className="text-xs text-text-muted mb-1">{isArabic ? "ساعات العمل" : "Work Hours"}</p>
+                    <p className="text-sm text-text-primary">{formatDuration(mins)}</p>
+                  </div>
+                ) : null;
+              })()}
             </div>
             {actionMode === "view" && actionTarget.comment && (
               <div>

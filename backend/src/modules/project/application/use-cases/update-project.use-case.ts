@@ -8,7 +8,7 @@ import {
   ProjectApplicationError,
   ProjectErrorCode,
 } from '../errors/project-application.error';
-import { OwnershipService } from '@/common/services/ownership.service';
+import { OwnershipActor, OwnershipService } from '@/common/services/ownership.service';
 import { EventBusImpl } from '@/modules/domain-events/event-bus.impl';
 import { ProjectStatusChangedEvent, ProjectCompletedEvent } from '@/modules/domain-events/events';
 
@@ -19,8 +19,8 @@ export class UpdateProjectUseCase {
     private readonly eventBus: EventBusImpl,
   ) {}
 
-  async execute(input: UpdateProjectInput, userProjectId?: string | null): Promise<Result<ProjectResult>> {
-    await this.ownership.verifyProjectAccess(userProjectId, input.projectId);
+  async execute(input: UpdateProjectInput, user?: OwnershipActor): Promise<Result<ProjectResult>> {
+    await this.ownership.verifyProjectAccess(user, input.projectId);
     const project = await this.projects.findById(new UniqueEntityId(input.projectId));
     if (!project) {
       return Result.fail(
@@ -36,6 +36,7 @@ export class UpdateProjectUseCase {
       description: input.description,
       client: input.client,
       startDate: input.startDate,
+      plannedDurationMonths: input.plannedDurationMonths,
       status: input.status,
       progress: input.progress,
     });

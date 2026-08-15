@@ -5,7 +5,7 @@ import { BuildingApplicationError, BuildingErrorCode } from '@/modules/building/
 import { IAnalyticalBoqRepository } from '../../domain/analytical-boq.repository';
 import { AnalyticalBoqItem } from '../../domain/analytical-boq-item.entity';
 import { AnalyticalBoqItemResult } from '../dto/analytical-boq.dto';
-import { OwnershipService } from '@/common/services/ownership.service';
+import { OwnershipActor, OwnershipService } from '@/common/services/ownership.service';
 
 export class ListAnalyticalBoqItemsUseCase {
   constructor(
@@ -14,8 +14,8 @@ export class ListAnalyticalBoqItemsUseCase {
     private readonly ownership: OwnershipService,
   ) {}
 
-  async execute(buildingId: string, userProjectId?: string | null): Promise<Result<AnalyticalBoqItemResult[]>> {
-    await this.ownership.verifyBuildingAccess(userProjectId, buildingId);
+  async execute(buildingId: string, user?: OwnershipActor): Promise<Result<AnalyticalBoqItemResult[]>> {
+    await this.ownership.verifyBuildingAccess(user, buildingId);
     const building = await this.buildings.findById(new UniqueEntityId(buildingId));
     if (!building) {
       return Result.fail(

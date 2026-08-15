@@ -3,6 +3,7 @@ export interface ProjectFundResult {
   projectId: string;
   initialBalance: number;
   currentBalance: number;
+  pettyCashBalance: number;
   lastUpdated: Date;
   createdAt: Date;
   updatedAt: Date;
@@ -17,4 +18,5 @@ export interface UpdateProjectFundInput {
   id: string;
   initialBalance?: number;
   currentBalance?: number;
+  pettyCashBalance?: number;
 }

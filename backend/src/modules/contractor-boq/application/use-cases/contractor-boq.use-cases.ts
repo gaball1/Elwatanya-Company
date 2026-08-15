@@ -10,7 +10,7 @@ import { syncFinalItemState } from '@/modules/final-boq/domain/final-boq-rules';
 import { toItemStateInput } from '@/modules/final-boq/application/use-cases/final-boq-mappers';
 import { getOrCreateFinalBoq } from '@/modules/final-boq/application/use-cases/final-boq-mappers';
 import { ISubcontractorRepository } from '@/modules/subcontractor/domain/subcontractor.repository';
-import { OwnershipService } from '@/common/services/ownership.service';
+import { OwnershipActor, OwnershipService } from '@/common/services/ownership.service';
 import { AuditService } from '@/modules/audit/audit.service';
 import { NotificationService } from '@/common/services/notification.service';
 import { ContractorBoq } from '../../domain/contractor-boq.entity';
@@ -35,6 +35,7 @@ import {
 
 function toResult(items: ContractorBoq['items']): ContractorBoqItemResult[] {
   return items.map((i) => ({
+    id: i.id.toValue(),
     itemCode: i.itemCode,
     description: i.description,
     unit: i.unit,
@@ -104,9 +105,9 @@ export class ListContractorBoqItemsUseCase {
   async execute(
     buildingId: string,
     contractorId: string,
-    userProjectId?: string | null,
+    user?: OwnershipActor,
   ): Promise<Result<ContractorBoqItemResult[]>> {
-    await this.ownership.verifyBuildingAccess(userProjectId, buildingId);
+    await this.ownership.verifyBuildingAccess(user, buildingId);
     const building = await this.buildings.findById(new UniqueEntityId(buildingId));
     if (!building) {
       return Result.fail(
@@ -132,8 +133,8 @@ export class SetContractorMetaUseCase {
     private readonly audit: AuditService,
   ) {}
 
-  async execute(input: SetContractorMetaInput, userProjectId?: string | null, userId?: string): Promise<Result<ContractorBoqMetaResult>> {
-    await this.ownership.verifyBuildingAccess(userProjectId, input.buildingId);
+  async execute(input: SetContractorMetaInput, user?: OwnershipActor, userId?: string): Promise<Result<ContractorBoqMetaResult>> {
+    await this.ownership.verifyBuildingAccess(user, input.buildingId);
     const buildingId = new UniqueEntityId(input.buildingId);
     const contractorId = new UniqueEntityId(input.contractorId);
 
@@ -180,9 +181,9 @@ export class GetContractorMetaUseCase {
   async execute(
     buildingId: string,
     contractorId: string,
-    userProjectId?: string | null,
+    user?: OwnershipActor,
   ): Promise<Result<ContractorBoqMetaResult | null>> {
-    await this.ownership.verifyBuildingAccess(userProjectId, buildingId);
+    await this.ownership.verifyBuildingAccess(user, buildingId);
     const boq = await this.contractorBoq.findByBuildingAndSubcontractor(
       new UniqueEntityId(buildingId),
       new UniqueEntityId(contractorId),
@@ -210,10 +211,10 @@ export class AllocateContractorItemUseCase {
 
   async execute(
     input: AllocateContractorItemInput,
-    userProjectId?: string | null,
+    user?: OwnershipActor,
     userId?: string,
   ): Promise<Result<ContractorBoqItemResult[]>> {
-    await this.ownership.verifyBuildingAccess(userProjectId, input.buildingId);
+    await this.ownership.verifyBuildingAccess(user, input.buildingId);
     const buildingId = new UniqueEntityId(input.buildingId);
     const contractorId = new UniqueEntityId(input.contractorId);
 
@@ -287,10 +288,10 @@ export class UpdateContractorItemQuantityUseCase {
 
   async execute(
     input: UpdateContractorItemQuantityInput,
-    userProjectId?: string | null,
+    user?: OwnershipActor,
     userId?: string,
   ): Promise<Result<ContractorBoqItemResult[]>> {
-    await this.ownership.verifyBuildingAccess(userProjectId, input.buildingId);
+    await this.ownership.verifyBuildingAccess(user, input.buildingId);
     const buildingId = new UniqueEntityId(input.buildingId);
     const contractorId = new UniqueEntityId(input.contractorId);
 
@@ -376,10 +377,10 @@ export class RemoveContractorItemUseCase {
     contractorId: string,
     itemCode: string,
     componentId?: string,
-    userProjectId?: string | null,
+    user?: OwnershipActor,
     userId?: string,
   ): Promise<Result<void>> {
-    await this.ownership.verifyBuildingAccess(userProjectId, buildingId);
+    await this.ownership.verifyBuildingAccess(user, buildingId);
     const building = await this.buildings.findById(new UniqueEntityId(buildingId));
     if (!building) {
       return Result.fail(
@@ -416,8 +417,8 @@ export class GetAvailableContractorQtyUseCase {
     contractorId: string;
     itemCode: string;
     componentId?: string;
-  }, userProjectId?: string | null): Promise<Result<number>> {
-    await this.ownership.verifyBuildingAccess(userProjectId, input.buildingId);
+  }, user?: OwnershipActor): Promise<Result<number>> {
+    await this.ownership.verifyBuildingAccess(user, input.buildingId);
     const buildingId = new UniqueEntityId(input.buildingId);
     const finalItem = await toFinalItemForAllocation(
       buildingId,

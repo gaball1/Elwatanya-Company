@@ -28,6 +28,7 @@ export class PrismaPurchaseRepository implements IPurchaseRepository {
       createdBy: purchase.createdBy,
       categoryId: purchase.categoryId || null,
       inventoryItemId: purchase.inventoryItemId || null,
+      warehouseId: purchase.warehouseId || null,
       deletedAt: purchase.deletedAt,
       updatedAt: new Date(),
     };
@@ -43,6 +44,20 @@ export class PrismaPurchaseRepository implements IPurchaseRepository {
     });
   }
 
+  async transition(
+    id: string,
+    fromStatuses: PurchaseStatus[],
+    toStatus: PurchaseStatus,
+    tx?: Prisma.TransactionClient,
+  ): Promise<boolean> {
+    const client = tx || this.prisma;
+    const result = await client.purchase.updateMany({
+      where: { id, deletedAt: null, status: { in: fromStatuses } },
+      data: { status: toStatus, updatedAt: new Date() },
+    });
+    return result.count > 0;
+  }
+
   async findById(id: UniqueEntityId, tx?: Prisma.TransactionClient): Promise<Purchase | null> {
     const client = tx || this.prisma;
     const record = await client.purchase.findFirst({
@@ -55,6 +70,15 @@ export class PrismaPurchaseRepository implements IPurchaseRepository {
     const client = tx || this.prisma;
     const records = await client.purchase.findMany({
       where: { projectId, deletedAt: null },
+      orderBy: { date: 'desc' },
+    });
+    return records.map((r) => this.toDomain(r));
+  }
+
+  async findByStatus(status: string, projectId?: string, tx?: Prisma.TransactionClient): Promise<Purchase[]> {
+    const client = tx || this.prisma;
+    const records = await client.purchase.findMany({
+      where: { status, projectId: projectId || undefined, deletedAt: null },
       orderBy: { date: 'desc' },
     });
     return records.map((r) => this.toDomain(r));
@@ -87,6 +111,7 @@ export class PrismaPurchaseRepository implements IPurchaseRepository {
     createdBy: string;
     categoryId: string | null;
     inventoryItemId: string | null;
+    warehouseId: string | null;
     deletedAt: Date | null;
     createdAt: Date;
     updatedAt: Date;
@@ -109,6 +134,7 @@ export class PrismaPurchaseRepository implements IPurchaseRepository {
         createdBy: record.createdBy,
         categoryId: record.categoryId ?? '',
         inventoryItemId: record.inventoryItemId ?? '',
+        warehouseId: record.warehouseId ?? null,
         deletedAt: record.deletedAt,
       },
       new UniqueEntityId(record.id),

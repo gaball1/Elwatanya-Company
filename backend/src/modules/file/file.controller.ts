@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Delete, Param, Query, UploadedFile, UseInterceptors, BadRequestException, Res, UseGuards, ForbiddenException } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Param, Query, Body, UploadedFile, UseInterceptors, BadRequestException, Res, UseGuards, ForbiddenException } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Response } from 'express';
@@ -8,6 +8,7 @@ import { RequirePermission } from '../../common/decorators/permissions.decorator
 import { Public } from '../../common/decorators/auth.decorators';
 import { Permissions } from '../../common/constants/permissions.constant';
 import { buildContentDisposition } from '../../common/pdf-header.util';
+import { isSafeInlineMimeType, MAX_FILE_SIZE_BYTES } from './domain/file-security.constants';
 
 @ApiTags('Files')
 @ApiBearerAuth()
@@ -20,7 +21,11 @@ export class FileController {
   @ApiOperation({ summary: 'Upload a file' })
   @ApiConsumes('multipart/form-data')
   @RequirePermission(Permissions.Files.Upload)
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: MAX_FILE_SIZE_BYTES, files: 1 },
+    }),
+  )
   async upload(
     @UploadedFile() file: any,
     @Query('category') category: string,
@@ -41,16 +46,30 @@ export class FileController {
   }
 
   @Post('upload-base64')
-  @ApiOperation({ summary: 'Upload a file from base64 string' })
+  @ApiOperation({ summary: 'Upload a file from a base64 string' })
   @RequirePermission(Permissions.Files.Upload)
   async uploadBase64(
-    @Query('category') category: string,
-    @Query('fileName') fileName: string,
-    @Query('entityType') entityType?: string,
-    @Query('entityId') entityId?: string,
+    @Body() body: { base64?: string; fileName?: string; category?: string; entityType?: string; entityId?: string },
+    @Query('category') qCategory?: string,
+    @Query('fileName') qFileName?: string,
+    @Query('entityType') qEntityType?: string,
+    @Query('entityId') qEntityId?: string,
   ) {
-    // Expect base64 in request body
-    return { message: 'Send base64 data in POST body to /files/upload' };
+    const base64 = body?.base64;
+    if (!base64) throw new BadRequestException('base64 is required in the request body');
+    const category = body?.category ?? qCategory;
+    if (!category) throw new BadRequestException('Category is required');
+    const fileName = body?.fileName ?? qFileName;
+    if (!fileName) throw new BadRequestException('fileName is required');
+
+    const result = await this.fileService.uploadBase64(base64, {
+      category,
+      fileName,
+      mimeType: '',
+      entityType: body?.entityType ?? qEntityType,
+      entityId: body?.entityId ?? qEntityId,
+    });
+    return result;
   }
 
   @Get('download/:id')
@@ -58,8 +77,10 @@ export class FileController {
   @RequirePermission(Permissions.Files.Read)
   async download(@Param('id') id: string, @Res() res: Response) {
     const { stream, mimeType, fileName } = await this.fileService.getFileStream(id);
+    const disposition = isSafeInlineMimeType(mimeType) ? 'inline' : 'attachment';
     res.setHeader('Content-Type', mimeType);
-    res.setHeader('Content-Disposition', buildContentDisposition(fileName, 'inline'));
+    res.setHeader('Content-Disposition', buildContentDisposition(fileName, disposition));
+    res.setHeader('X-Content-Type-Options', 'nosniff');
     stream.pipe(res);
   }
 
@@ -72,9 +93,13 @@ export class FileController {
       throw new ForbiddenException('This file is not a public company asset');
     }
     const { stream, mimeType, fileName } = await this.fileService.getFileStream(id);
+    // Company assets are public: only inline the safe raster-image types.
+    // Anything else is forced to download (attachment) to prevent execution.
+    const disposition = isSafeInlineMimeType(mimeType) ? 'inline' : 'attachment';
     res.setHeader('Content-Type', mimeType);
-    res.setHeader('Content-Disposition', buildContentDisposition(fileName, 'inline'));
+    res.setHeader('Content-Disposition', buildContentDisposition(fileName, disposition));
     res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
     stream.pipe(res);
   }
 

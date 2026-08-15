@@ -38,18 +38,16 @@ export class UpdateInventoryItemUseCase {
         }
       }
 
-      // Name must be unique within the same category (case/AR-insensitive), excluding self.
+      // Name must be globally unique (case/AR-insensitive), excluding self.
       if (input.name) {
-        const effectiveCategory = input.categoryId ?? item.categoryId;
         const conflict = await this.items.findNameConflict(
           normalizeKey(input.name),
-          effectiveCategory,
           item.id.toValue(),
         );
         if (conflict) {
           return Result.fail(
             new Error(
-              `An item named "${conflict.name}" already exists in this category (id: ${conflict.id.toValue()}). Use a different name.`,
+              `An item named "${conflict.name}" already exists. Use a different name — item names must be unique.`,
             ),
           );
         }
@@ -64,6 +62,7 @@ export class UpdateInventoryItemUseCase {
       description: input.description,
       categoryId: input.categoryId,
       warehouseId: input.warehouseId,
+      projectId: input.projectId,
       unit: input.unit,
       quantity: input.quantity,
       minQuantity: input.minQuantity,

@@ -17,6 +17,7 @@ export class PrismaProjectRepository implements IProjectRepository {
       description: project.description,
       client: project.client,
       startDate: project.startDate,
+      plannedDurationMonths: project.plannedDurationMonths,
       status: project.status,
       progress: project.progress,
       deletedAt: project.deletedAt,
@@ -71,6 +72,7 @@ export class PrismaProjectRepository implements IProjectRepository {
     description: string;
     client: string;
     startDate: Date | null;
+    plannedDurationMonths: number;
     status: string;
     progress: number;
     deletedAt: Date | null;
@@ -86,6 +88,7 @@ export class PrismaProjectRepository implements IProjectRepository {
         description: record.description,
         client: record.client,
         startDate: record.startDate,
+        plannedDurationMonths: record.plannedDurationMonths,
         status: record.status,
         progress: record.progress,
         deletedAt: record.deletedAt,

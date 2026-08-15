@@ -165,16 +165,7 @@ export default function RolesPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [form, setForm] = useState({ name: "", description: "", permissionIds: [] as string[] });
 
-  const allPermsByName = useMemo(() => {
-    const map: Record<string, PermissionInfo> = {};
-    for (const p of allPerms) {
-      map[p.name] = p;
-    }
-    return map;
-  }, [allPerms]);
-
   const loadData = useCallback(async () => {
-    setLoading(true);
     try {
       const [rolesData, permsData] = await Promise.all([
         roleService.list(),
@@ -187,9 +178,14 @@ export default function RolesPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [isArabic, showToast]);
 
-  useEffect(() => { loadData(); }, [loadData]);
+  useEffect(() => {
+    const run = async () => {
+      await loadData();
+    };
+    run();
+  }, [loadData]);
 
   const filteredRoles = useMemo(() => {
     if (!searchTerm) return roles;

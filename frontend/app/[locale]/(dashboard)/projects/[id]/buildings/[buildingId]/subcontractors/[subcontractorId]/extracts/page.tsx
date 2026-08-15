@@ -5,11 +5,13 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { Card } from "@/components/ui";
-import { DollarSign, Plus, Eye, Edit2, Trash2 } from "lucide-react";
+import { DollarSign, Plus, Eye, Edit2, Trash2, Download } from "lucide-react";
 import UploadFromDeviceButton from "@/components/shared/UploadFromDeviceButton";
 import DeleteConfirmModal from "@/components/boq/DeleteConfirmModal";
 import { extractService, type Extract } from "@/services/extract.service";
+import { exportExtractsListToExcel } from "@/lib/boqExcel";
 import { Can } from "@/components/Can";
+import { useToast } from "@/components/ui/Toast";
 
 export default function ContractorExtractsPage() {
   const params = useParams();
@@ -18,6 +20,7 @@ export default function ContractorExtractsPage() {
   const projectId = params.id as string;
   const buildingId = params.buildingId as string;
   const contractorId = params.subcontractorId as string;
+  const { showToast, ToastComponent } = useToast();
   const [list, setList] = useState<Extract[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -39,18 +42,60 @@ export default function ContractorExtractsPage() {
 
   const handleDelete = async () => {
     if (!deleteId) return;
-    await extractService.remove(buildingId, contractorId, deleteId);
-    setDeleteId(null);
-    load();
+    try {
+      await extractService.remove(buildingId, contractorId, deleteId);
+      setDeleteId(null);
+      load();
+    } catch (err) {
+      setDeleteId(null);
+      showToast(
+        err instanceof Error
+          ? err.message
+          : isArabic
+            ? "فشل حذف المستخلص"
+            : "Failed to delete extract",
+        "error"
+      );
+    }
+  };
+
+  const handleExportExcel = async () => {
+    try {
+      await exportExtractsListToExcel(
+        list.map((e) => ({
+          runningNumber: e.runningNumber,
+          label: e.label || e.id,
+          date: e.date,
+          status: e.status,
+          totalWorkValue: e.totalWorkValue ?? 0,
+          totalDeductions: e.totalDeductions ?? 0,
+          netPayable: e.netPayable ?? 0,
+        })),
+        isArabic ? "مستخلصات المقاول" : "Contractor Extracts",
+        isArabic ? "ar" : "en",
+      );
+      showToast(isArabic ? "تم تصدير Excel" : "Exported to Excel", "success");
+    } catch {
+      showToast(isArabic ? "فشل التصدير" : "Export failed", "error");
+    }
   };
 
   return (
     <div>
+      {ToastComponent}
       <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
         <h3 className="font-bold text-primary">
           {isArabic ? "مستخلصات المقاول" : "Contractor Extracts"}
         </h3>
         <div className="flex gap-2">
+          <button
+            onClick={handleExportExcel}
+            disabled={list.length === 0}
+            className="flex items-center gap-1 px-3 py-1.5 border border-green-600 text-success-dark rounded-lg text-sm hover:bg-success-dark hover:text-white transition disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <Download size={14} />
+            {isArabic ? "تصدير Excel" : "Export Excel"}
+          </button>
           <Can permission="extracts.create">
             <UploadFromDeviceButton isArabic={isArabic} onUpload={load} />
           </Can>
@@ -104,24 +149,32 @@ export default function ContractorExtractsPage() {
                   <Eye size={14} />
                   {isArabic ? "عرض" : "View"}
                 </Link>
-                <Can permission="extracts.update">
-                  <Link
-                    href={`${base}/${e.id}/edit`}
-                    className="text-info text-sm flex items-center gap-1 hover:underline"
-                  >
-                    <Edit2 size={14} />
-                    {isArabic ? "تعديل" : "Edit"}
-                  </Link>
-                </Can>
-                <Can permission="extracts.delete">
-                  <button
-                    onClick={() => setDeleteId(e.id)}
-                    className="text-danger text-sm flex items-center gap-1"
-                  >
-                    <Trash2 size={14} />
-                    {isArabic ? "حذف" : "Delete"}
-                  </button>
-                </Can>
+                {e.status === "final" ? (
+                  <span className="text-xs text-text-muted flex items-center gap-1 py-0.5">
+                    {isArabic ? "معتمد" : "Approved"}
+                  </span>
+                ) : (
+                  <>
+                    <Can permission="extracts.update">
+                      <Link
+                        href={`${base}/${e.id}/edit`}
+                        className="text-info text-sm flex items-center gap-1 hover:underline"
+                      >
+                        <Edit2 size={14} />
+                        {isArabic ? "تعديل" : "Edit"}
+                      </Link>
+                    </Can>
+                    <Can permission="extracts.delete">
+                      <button
+                        onClick={() => setDeleteId(e.id)}
+                        className="text-danger text-sm flex items-center gap-1"
+                      >
+                        <Trash2 size={14} />
+                        {isArabic ? "حذف" : "Delete"}
+                      </button>
+                    </Can>
+                  </>
+                )}
               </div>
             </Card>
           ))}

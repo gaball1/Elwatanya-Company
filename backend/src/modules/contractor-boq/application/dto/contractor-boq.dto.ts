@@ -1,4 +1,5 @@
 export interface ContractorBoqItemResult {
+  id: string;
   itemCode: string;
   description: string;
   unit: string;

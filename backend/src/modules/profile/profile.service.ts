@@ -20,6 +20,13 @@ export class ProfileService {
     return { signatureUrl };
   }
 
+  async saveAvatar(userId: string, avatarUrl: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+    await this.prisma.user.update({ where: { id: userId }, data: { avatarUrl } });
+    return { avatarUrl };
+  }
+
   async getProfile(userId: string) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
@@ -49,6 +56,7 @@ export class ProfileService {
       role: assignedRoles.length > 0 ? assignedRoles[0].name : user.role,
       status: user.status,
       signatureUrl: user.signatureUrl ?? '',
+      avatarUrl: user.avatarUrl ?? '',
       employee: user.employee,
       roles: assignedRoles,
       projects: user.projectAssignments.map((pa) => pa.project),

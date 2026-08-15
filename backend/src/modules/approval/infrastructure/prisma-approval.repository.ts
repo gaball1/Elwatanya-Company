@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '@/prisma/prisma.service';
-import { IApprovalRepository } from '../domain/approval.repository';
+import { IApprovalRepository, ApprovalListItem } from '../domain/approval.repository';
 import { Approval } from '@prisma/client';
 
 @Injectable()
@@ -10,13 +10,34 @@ export class PrismaApprovalRepository implements IApprovalRepository {
   async findMany(params: {
     status?: string;
     entityType?: string;
+    requestedBy?: string;
     skip?: number;
     take?: number;
-  }): Promise<Approval[]> {
+  }): Promise<ApprovalListItem[]> {
     const where: any = { deletedAt: null };
     if (params.status) where.status = params.status;
     if (params.entityType) where.entityType = params.entityType;
-    return this.prisma.approval.findMany({ where, orderBy: { createdAt: 'desc' }, skip: params.skip ?? 0, take: params.take ?? 50 });
+    if (params.requestedBy) where.requestedBy = params.requestedBy;
+    const items = await this.prisma.approval.findMany({ where, orderBy: { createdAt: 'desc' }, skip: params.skip ?? 0, take: params.take ?? 50 });
+    return this.attachUserNames(items);
+  }
+
+  /** Attaches requester/approver display names for the UI (no schema relation exists). */
+  private async attachUserNames(items: Approval[]): Promise<ApprovalListItem[]> {
+    const userIds = Array.from(
+      new Set(items.flatMap((a) => [a.requestedBy, a.approvedBy].filter((id): id is string => Boolean(id)))),
+    );
+    if (userIds.length === 0) return items as ApprovalListItem[];
+    const users = await this.prisma.user.findMany({
+      where: { id: { in: userIds } },
+      select: { id: true, name: true },
+    });
+    const nameById = new Map(users.map((u) => [u.id, u.name]));
+    return items.map((a) => ({
+      ...a,
+      requestedByName: nameById.get(a.requestedBy) ?? '',
+      approvedByName: a.approvedBy ? nameById.get(a.approvedBy) ?? '' : undefined,
+    })) as unknown as ApprovalListItem[];
   }
 
   async findById(id: string): Promise<Approval | null> {
@@ -62,10 +83,25 @@ export class PrismaApprovalRepository implements IApprovalRepository {
     return this.prisma.approval.update({ where: { id }, data });
   }
 
-  async count(params: { status?: string; entityType?: string }): Promise<number> {
+  async transition(
+    id: string,
+    fromStatus: string,
+    toStatus: string,
+    data: { approvedBy?: string; comment?: string; approvedAt?: Date },
+  ): Promise<Approval | null> {
+    const result = await this.prisma.approval.updateMany({
+      where: { id, deletedAt: null, status: fromStatus },
+      data: { status: toStatus, ...data },
+    });
+    if (result.count === 0) return null;
+    return this.findById(id);
+  }
+
+  async count(params: { status?: string; entityType?: string; requestedBy?: string }): Promise<number> {
     const where: any = { deletedAt: null };
     if (params.status) where.status = params.status;
     if (params.entityType) where.entityType = params.entityType;
+    if (params.requestedBy) where.requestedBy = params.requestedBy;
     return this.prisma.approval.count({ where });
   }
 }

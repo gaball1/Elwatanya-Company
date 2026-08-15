@@ -1,4 +1,3 @@
-/* eslint-disable */
 "use client";
 
 import { useState } from "react";
@@ -18,10 +17,13 @@ export default function ProjectForm({ onSubmit, initial }: ProjectFormProps) {
     initial?.status ?? "planning"
   );
   const [startDate, setStartDate] = useState(initial?.startDate ?? "");
+  const [plannedDurationMonths, setPlannedDurationMonths] = useState(
+    initial?.plannedDurationMonths ?? 24
+  );
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit({ name, description, location, status, startDate });
+    onSubmit({ name, description, location, status, startDate, plannedDurationMonths });
   };
 
   return (
@@ -47,6 +49,15 @@ export default function ProjectForm({ onSubmit, initial }: ProjectFormProps) {
         value={startDate}
         onChange={(e) => setStartDate(e.target.value)}
         required
+      />
+      <Input
+        label="المدة المخططة للتنفيذ (شهر)"
+        id="project-duration"
+        type="number"
+        min={1}
+        max={480}
+        value={plannedDurationMonths}
+        onChange={(e) => setPlannedDurationMonths(Number(e.target.value) || 24)}
       />
       <div>
         <label

@@ -3,7 +3,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { RequirePermission } from '../../common/decorators/permissions.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { ProfileService } from './profile.service';
-import { UpdateProfileDto, ChangePasswordDto, SaveSignatureDto } from './dto/profile.dto';
+import { UpdateProfileDto, ChangePasswordDto, SaveSignatureDto, SaveAvatarDto } from './dto/profile.dto';
 
 @ApiTags('Profile')
 @ApiBearerAuth()
@@ -50,5 +50,11 @@ export class ProfileController {
   async clearSignature(@CurrentUser('sub') userId: string) {
     await this.profile.saveSignature(userId, '');
     return { success: true };
+  }
+
+  @Put('avatar')
+  @ApiOperation({ summary: 'Save profile picture (base64 data URL)' })
+  async saveAvatar(@CurrentUser('sub') userId: string, @Body() dto: SaveAvatarDto) {
+    return this.profile.saveAvatar(userId, dto.avatarUrl);
   }
 }

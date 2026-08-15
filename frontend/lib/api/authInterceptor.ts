@@ -1,5 +1,6 @@
 import { API_BASE_URL } from "./env";
 import { debugLog } from "./debug";
+import { safeFetch, isNetworkError } from "./fetchTransport";
 import {
   clearTokens,
   getAccessToken,
@@ -48,7 +49,7 @@ export async function refreshAccessToken(): Promise<boolean> {
       const base = API_BASE_URL.replace(/\/$/, "");
       const url = `${base}/auth/refresh`;
       debugLog("[AUTH_INTERCEPTOR] refreshAccessToken - calling:", url);
-      const response = await fetch(url, {
+      const response = await safeFetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ refreshToken }),
@@ -83,7 +84,9 @@ export async function refreshAccessToken(): Promise<boolean> {
       return true;
     } catch (err) {
       debugLog("[AUTH_INTERCEPTOR] refreshAccessToken - ERROR:", (err as Error)?.message);
-      clearTokens();
+      if (!isNetworkError(err)) {
+        clearTokens();
+      }
       return false;
     } finally {
       refreshPromise = null;

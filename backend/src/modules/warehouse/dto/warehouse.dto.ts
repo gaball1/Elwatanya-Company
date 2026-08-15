@@ -8,6 +8,11 @@ import {
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateWarehouseDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  projectId?: string;
+
   @ApiProperty({ example: 'WH-001' })
   @IsString()
   @IsNotEmpty()
@@ -34,6 +39,11 @@ export class CreateWarehouseDto {
 }
 
 export class UpdateWarehouseDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  projectId?: string;
+
   @ApiPropertyOptional({ example: 'WH-002' })
   @IsOptional()
   @IsString()

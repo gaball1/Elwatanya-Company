@@ -48,6 +48,7 @@ export default function ProjectsPage() {
     description: "",
     client: "",
     startDate: "",
+    plannedDurationMonths: 24,
     status: "active",
     progress: 0,
   });
@@ -57,7 +58,7 @@ export default function ProjectsPage() {
       const { name, value } = e.target;
       setProjectForm((prev) => ({
         ...prev,
-        [name]: name === "progress" ? (Number(value) || 0) : value,
+        [name]: name === "progress" || name === "plannedDurationMonths" ? (Number(value) || 0) : value,
       }));
     },
     []
@@ -65,7 +66,7 @@ export default function ProjectsPage() {
 
   const openAddModal = useCallback(() => {
     setEditingProject(null);
-    setProjectForm({ code: "", name: "", location: "", description: "", client: "", startDate: "", status: "active", progress: 0 });
+    setProjectForm({ code: "", name: "", location: "", description: "", client: "", startDate: "", plannedDurationMonths: 24, status: "active", progress: 0 });
     setShowModal(true);
   }, []);
 
@@ -78,6 +79,7 @@ export default function ProjectsPage() {
       description: project.description || "",
       client: project.client || "",
       startDate: project.startDate ? project.startDate.split("T")[0] : "",
+      plannedDurationMonths: project.plannedDurationMonths ?? 24,
       status: project.status || "active",
       progress: project.progress ?? 0,
     });
@@ -95,6 +97,7 @@ export default function ProjectsPage() {
           description: projectForm.description,
           client: projectForm.client,
           startDate: projectForm.startDate || undefined,
+          plannedDurationMonths: projectForm.plannedDurationMonths || undefined,
           status: projectForm.status,
           progress: projectForm.progress,
         };
@@ -204,7 +207,7 @@ export default function ProjectsPage() {
                 </div>
                 <p className="text-text-muted mt-1">
                   {isArabic ? "تاريخ الإنشاء:" : "Created:"}{" "}
-                  {project.createdAt ? new Date(project.createdAt).toLocaleDateString() : "—"}
+                  {project.createdAt ? new Date(project.createdAt).toLocaleDateString(isArabic ? "ar-EG" : "en-US") : "—"}
                 </p>
               </div>
             </Link>
@@ -280,13 +283,16 @@ export default function ProjectsPage() {
                 maxLength={1000}
               />
               <div className="grid grid-cols-3 gap-4">
-                <input
-                  type="date"
-                  name="startDate"
-                  value={projectForm.startDate}
-                  onChange={handleInputChange}
-                  className="w-full p-3 border rounded-xl"
-                />
+                <div>
+                  <input
+                    type="date"
+                    name="startDate"
+                    value={projectForm.startDate}
+                    onChange={handleInputChange}
+                    className="w-full p-3 border rounded-xl"
+                  />
+                  <span className="text-xs text-text-muted mt-1">{isArabic ? "تاريخ البدء" : "Start Date"}</span>
+                </div>
                 <select
                   name="status"
                   value={projectForm.status}
@@ -309,6 +315,18 @@ export default function ProjectsPage() {
                   />
                   <span className="text-xs text-text-muted mt-1">{isArabic ? "نسبة الإنجاز %" : "Progress %"}</span>
                 </div>
+              </div>
+              <div>
+                <input
+                  type="number"
+                  name="plannedDurationMonths"
+                  min={1}
+                  max={480}
+                  value={projectForm.plannedDurationMonths}
+                  onChange={handleInputChange}
+                  className="w-full p-3 border rounded-xl"
+                />
+                <span className="text-xs text-text-muted mt-1">{isArabic ? "المدة المخططة للتنفيذ (شهر)" : "Planned Duration (months)"}</span>
               </div>
               <div className="flex gap-3">
                 <button

@@ -1,7 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsIn, IsOptional, IsString, IsUUID } from 'class-validator';
+import { IsIn, IsOptional, IsString } from 'class-validator';
 
-const ENTITY_TYPES = ['extract', 'purchase', 'leave', 'fund-transaction', 'client-statement', 'subcontractor-statement', 'inventory'];
+const ENTITY_TYPES = ['extract', 'purchase', 'leave', 'fund-transaction', 'client-statement', 'subcontractor-statement', 'inventory', 'estimate', 'boq'];
 const APPROVAL_STATUSES = ['draft', 'pending', 'approved', 'rejected', 'cancelled'];
 
 export class RequestApprovalDto {
@@ -11,7 +11,7 @@ export class RequestApprovalDto {
   entityType: string;
 
   @ApiProperty()
-  @IsUUID()
+  @IsString()
   entityId: string;
 
   @ApiPropertyOptional({ enum: ['draft', 'pending'], default: 'pending' })

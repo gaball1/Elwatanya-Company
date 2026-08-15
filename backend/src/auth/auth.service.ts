@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   UnauthorizedException,
   InternalServerErrorException,
@@ -55,6 +56,13 @@ export class AuthService {
   }
 
   async register(dto: RegisterDto) {
+    // Public self-registration is disabled by default. When enabled it creates
+    // an account with the default (low-privilege) role; enterprise accounts
+    // are provisioned by an administrator instead.
+    if (this.configService.get<string>('ALLOW_PUBLIC_REGISTRATION', 'false') !== 'true') {
+      throw new ForbiddenException('Public registration is disabled. Contact an administrator.');
+    }
+
     const result = await this.registerUserUseCase.execute({
       email: dto.email,
       password: dto.password,
@@ -249,6 +257,7 @@ export class AuthService {
       projectId,
       roleNames,
       projectIds,
+      employeeId: userRecord?.employeeId ?? null,
     };
 
     if (permissions) {
@@ -286,7 +295,9 @@ export class AuthService {
         permissions: payload.permissions,
         roleNames,
         projectIds,
+        employeeId: userRecord?.employeeId ?? null,
         status: userRecord?.status ?? 'ACTIVE',
+        avatarUrl: userRecord?.avatarUrl ?? null,
       },
     };
   }
@@ -314,6 +325,7 @@ export class AuthService {
         createdAt: true,
         updatedAt: true,
         employeeId: true,
+        avatarUrl: true,
         roleAssignments: {
           include: { role: true },
         },

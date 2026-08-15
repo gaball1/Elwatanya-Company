@@ -42,6 +42,26 @@ export class PrismaAttendanceRepository implements IAttendanceRepository {
       updatedAt: new Date(),
     };
 
+    // A soft-deleted attendance still holds the unique (employeeId, date) index,
+    // so a fresh insert would violate the constraint. Restore the existing row
+    // instead of inserting a new record.
+    const softDeleted = await this.prisma.attendance.findFirst({
+      where: {
+        employeeId: attendance.employeeId,
+        date: attendance.date,
+        deletedAt: { not: null },
+      },
+      select: { id: true },
+    });
+    if (softDeleted) {
+      await this.prisma.attendance.update({
+        where: { id: softDeleted.id },
+        data: { ...data, deletedAt: null },
+      });
+      attendance.reconcileId(new UniqueEntityId(softDeleted.id));
+      return;
+    }
+
     await this.prisma.attendance.upsert({
       where: { id: attendance.id.toValue() },
       create: { id: attendance.id.toValue(), ...data, createdAt: attendance.createdAt },
@@ -59,6 +79,14 @@ export class PrismaAttendanceRepository implements IAttendanceRepository {
   async findAll(): Promise<Attendance[]> {
     const records = await this.prisma.attendance.findMany({
       where: { deletedAt: null },
+      orderBy: { createdAt: 'desc' },
+    });
+    return records.map((r) => this.toDomain(r));
+  }
+
+  async findAllByEmployee(employeeId: string): Promise<Attendance[]> {
+    const records = await this.prisma.attendance.findMany({
+      where: { employeeId, deletedAt: null },
       orderBy: { createdAt: 'desc' },
     });
     return records.map((r) => this.toDomain(r));

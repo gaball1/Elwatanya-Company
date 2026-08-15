@@ -1,5 +1,3 @@
-/* eslint-disable */
-
 export type NumberUnit = "currency" | "percent" | "ratio" | "count" | "days" | "score" | "none";
 
 interface FormatOptions {

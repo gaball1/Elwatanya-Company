@@ -7,7 +7,7 @@ import {
   ProjectApplicationError,
   ProjectErrorCode,
 } from '../errors/project-application.error';
-import { OwnershipService } from '@/common/services/ownership.service';
+import { OwnershipActor, OwnershipService } from '@/common/services/ownership.service';
 
 export class GetProjectUseCase {
   constructor(
@@ -15,8 +15,8 @@ export class GetProjectUseCase {
     private readonly ownership: OwnershipService,
   ) {}
 
-  async execute(projectId: string, userProjectId?: string | null): Promise<Result<ProjectResult>> {
-    await this.ownership.verifyProjectAccess(userProjectId, projectId);
+  async execute(projectId: string, user?: OwnershipActor): Promise<Result<ProjectResult>> {
+    await this.ownership.verifyProjectAccess(user, projectId);
 
     const project = await this.projects.findById(new UniqueEntityId(projectId));
     if (!project) {

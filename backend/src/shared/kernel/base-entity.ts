@@ -1,7 +1,7 @@
 import { UniqueEntityId } from './unique-entity-id.vo';
 
 export abstract class BaseEntity {
-  protected readonly _id: UniqueEntityId;
+  protected _id: UniqueEntityId;
   public readonly createdAt: Date;
   public readonly updatedAt: Date;
 
@@ -13,6 +13,10 @@ export abstract class BaseEntity {
 
   get id(): UniqueEntityId {
     return this._id;
+  }
+
+  protected changeId(id: UniqueEntityId): void {
+    this._id = id;
   }
 
   equals(entity?: BaseEntity): boolean {

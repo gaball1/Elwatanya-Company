@@ -17,5 +17,6 @@ export interface IEmployerBoqRepository {
     unit: string,
   ): Promise<EmployerBoqItem | null>;
   deleteByItemCode(buildingId: UniqueEntityId, itemCode: string): Promise<void>;
+  deleteAllForBuilding(buildingId: UniqueEntityId): Promise<void>;
   generateNextItemCode(buildingId: UniqueEntityId): Promise<string>;
 }

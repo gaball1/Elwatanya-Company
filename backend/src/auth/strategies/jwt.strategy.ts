@@ -12,6 +12,7 @@ export interface JwtPayload {
   permissions?: string[];
   roleNames?: string[];
   projectIds?: string[];
+  employeeId?: string | null;
 }
 
 @Injectable()
@@ -66,6 +67,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       permissions: Array.from(permissions),
       roleNames: Array.from(roleNames),
       projectIds,
+      employeeId: user.employeeId,
     };
   }
 }

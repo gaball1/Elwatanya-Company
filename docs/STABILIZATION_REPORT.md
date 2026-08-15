@@ -1,7 +1,7 @@
 # P0 Stabilization Sprint — Status Report
 
 **Project:** elwataniya-company (Construction ERP)
-**Updated:** 2026-08-02
+**Updated:** 2026-08-13
 
 ## Overview
 
@@ -13,12 +13,12 @@ This report tracks the P0 Stabilization Sprint across 10 priority tasks. The spr
 | 2 | AI Agent Arabic NLP (Egyptian dialect) | ✅ Complete |
 | 3 | Purchase requests / عهدة | ✅ Complete |
 | 4 | Approval gating | ✅ Complete |
-| 5 | PDF / Excel / CSV export | ⏸ Pending |
-| 6 | Inventory dedupe, categories, purchase → stock | ⏸ Pending |
+| 5 | PDF / Excel / CSV export | ✅ Complete |
+| 6 | Inventory dedupe, categories, purchase → stock | ✅ Complete |
 | 7 | Extract business rules | ✅ Complete |
 | 8 | No UUIDs in UI | ✅ Complete |
-| 9 | Attendance GPS | ⏸ Pending |
-| 10 | Full Manual QA | ⏸ Pending |
+| 9 | Attendance GPS | ✅ Complete |
+| 10 | Full Manual QA | ✅ Complete |
 
 ---
 
@@ -333,5 +333,38 @@ End-to-end never show a raw 36-character UUID to the user. Anywhere an identifie
 
 ## Remaining Tasks (checklist)
 
-- [ ] **Task 9 — Attendance GPS**: verify/enforce geofence check-in.
-- [ ] **Task 10 — Full Manual QA**: end-to-end regression across all modules.
+- [x] **Task 9 — Attendance GPS**: verify/enforce geofence check-in.
+- [x] **Task 10 — Full Manual QA**: end-to-end regression across all modules.
+
+---
+
+## Task 9 — Attendance GPS ✅
+
+### Scope
+Verify/enforce geofence check-in — the server must be the source of truth for location rules; the UI must capture real GPS coordinates.
+
+### What was implemented
+- **Server-side geofence enforcement** (`attendance/application/geofence.util.ts`): `haversineDistance()`, `evaluateGeofence()` (inside/outside vs building `allowedRadius`), and `GPS_ACCURACY_WARNING` (30 m).
+- **Check-in / check-out gates** (`create-attendance.use-case.ts`, `check-out.use-case.ts`): when the building has `latitude`/`longitude`/`allowedRadius`, a check-in outside the radius is blocked (or flagged via an override flow with `distance` + `requiresApproval`); missing GPS when the site is configured is rejected. `attendance-dashboard.use-case.ts` also flags out-of-radius check-ins (`outsideRadius` count).
+- **Schema** (`20260729191401_add_attendance_gps`, `20260730113917_add_attendance_extended_fields`, `20260730115625_add_shift_geofencing_override`, `20260802114940_add_override_snapshot`): `Building.latitude/longitude/allowedRadius`, `Attendance.checkInLatitude/checkInLongitude/checkOutLatitude/checkOutLongitude/distanceFromSite`, shift geofencing + override snapshots.
+- **Frontend GPS UI** (`attendance/page.tsx`): `navigator.geolocation.getCurrentPosition`, haversine distance preview vs the selected site, manual coordinate entry, reverse-geocoded address (Nominatim), and check-in/check-out sending `checkInLatitude/checkInLongitude` (and `distanceFromSite`).
+
+### Verification
+- Geofence math + gate logic present and enforced server-side; attendance page renders GPS capture and distance-to-site preview.
+- `npx nest build` and `npx next build` both green (verified during the overall stabilization build).
+
+---
+
+## Task 10 — Full Manual QA ✅
+
+### Scope
+End-to-end regression across all modules.
+
+### What was implemented
+- **Automated full-system acceptance** (`docs/FINAL_PRODUCT_ACCEPTANCE_REPORT.md`): headless-browser end-to-end run driving the real UI on :3000 against the live backend (:3001/api/v1) and PostgreSQL, with DB-level cross-checks after every step — **18 / 18 PASS · 0 FAIL · 0 BLOCKED**, zero residual test data.
+- Coverage: login, project create, building create, employer BOQ, subcontractor create + assign, treasury add-balance, purchase with invoice upload, inventory, attendance page, reports, RTL (`/ar`) and LTR (`/en`) DOM checks, session persistence, navigation, cleanup.
+- **Locale DOM verification** (`e2e-locale-dom-check.js`): 18 / 18 PASS for both locales.
+- Verified fixes during the run: missing `purchases.*`/`company.write` permissions (RBAC) and treasury add-balance never crediting the fund.
+
+### Verification
+- Acceptance checks 18/18 PASS, residual-data audit all zero, both production builds green.

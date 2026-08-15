@@ -13,6 +13,7 @@ export class PrismaProjectFundRepository implements IProjectFundRepository {
       projectId: fund.projectId,
       initialBalance: fund.initialBalance,
       currentBalance: fund.currentBalance,
+      pettyCashBalance: fund.pettyCashBalance,
       lastUpdated: fund.lastUpdated,
       deletedAt: fund.deletedAt,
       updatedAt: new Date(),
@@ -63,6 +64,7 @@ export class PrismaProjectFundRepository implements IProjectFundRepository {
     projectId: string;
     initialBalance: { toNumber: () => number };
     currentBalance: { toNumber: () => number };
+    pettyCashBalance: { toNumber: () => number };
     lastUpdated: Date;
     deletedAt: Date | null;
     createdAt: Date;
@@ -73,6 +75,7 @@ export class PrismaProjectFundRepository implements IProjectFundRepository {
         projectId: record.projectId,
         initialBalance: record.initialBalance.toNumber(),
         currentBalance: record.currentBalance.toNumber(),
+        pettyCashBalance: record.pettyCashBalance.toNumber(),
         lastUpdated: record.lastUpdated,
         deletedAt: record.deletedAt,
       },

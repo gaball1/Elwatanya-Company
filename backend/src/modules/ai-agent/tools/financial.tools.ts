@@ -3,13 +3,15 @@ import { BaseTool } from './base.tool';
 import { AgentHttpClient } from './http-client';
 import { ToolResult } from '../dto/agent-response.dto';
 import { ListExtractPaymentsTool } from './erp-resolution.tools';
+import { schema, projectRefProps, statusProps } from './tool-schemas';
 
 @Injectable()
 export class ListProjectFundsTool extends BaseTool {
   readonly name = 'list_project_funds';
-  readonly description = 'List all project funds';
+  readonly description = 'List all project funds (budget, balance, project), optionally filtered by project';
   readonly requiresPermission = 'project-funds.read';
   readonly requiredEntity = 'project-fund';
+  readonly parameters = schema({ ...projectRefProps });
 
   constructor(private readonly api: AgentHttpClient) {
     super();
@@ -26,9 +28,12 @@ export class ListProjectFundsTool extends BaseTool {
 @Injectable()
 export class ListFundTransactionsTool extends BaseTool {
   readonly name = 'list_fund_transactions';
-  readonly description = 'List fund transactions, optionally filtered by fund';
+  readonly description = 'List fund transactions (deposits, withdrawals, payments), optionally filtered by fund';
   readonly requiresPermission = 'fund-transactions.read';
   readonly requiredEntity = 'fund-transaction';
+  readonly parameters = schema({
+    fundId: { type: 'string', description: 'Fund UUID (rarely needed).' },
+  });
 
   constructor(private readonly api: AgentHttpClient) {
     super();
@@ -45,9 +50,17 @@ export class ListFundTransactionsTool extends BaseTool {
 @Injectable()
 export class ListPurchasesTool extends BaseTool {
   readonly name = 'list_purchases';
-  readonly description = 'List purchases, optionally filtered by status';
+  readonly description = 'List purchase orders, optionally filtered by status or by whether they have been received into inventory';
   readonly requiresPermission = 'purchases.read';
   readonly requiredEntity = 'purchase';
+  readonly parameters = schema({
+    ...statusProps,
+    received: {
+      type: 'boolean',
+      description: 'true = received into inventory, false = still awaiting delivery/receipt (e.g. "المشتريات اللي لسه مستلمناهاش").',
+    },
+    ...projectRefProps,
+  });
 
   constructor(private readonly api: AgentHttpClient) {
     super();

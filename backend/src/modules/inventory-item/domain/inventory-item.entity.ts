@@ -11,6 +11,7 @@ export interface InventoryItemProps {
   description: string;
   categoryId: string;
   warehouseId: string;
+  projectId: string | null;
   unit: string;
   quantity: number;
   minQuantity: number;
@@ -39,6 +40,7 @@ export class InventoryItem extends AggregateRoot {
   get description(): string { return this.props.description; }
   get categoryId(): string { return this.props.categoryId; }
   get warehouseId(): string { return this.props.warehouseId; }
+  get projectId(): string | null { return this.props.projectId; }
   get unit(): string { return this.props.unit; }
   get quantity(): number { return this.props.quantity; }
   get minQuantity(): number { return this.props.minQuantity; }
@@ -54,6 +56,7 @@ export class InventoryItem extends AggregateRoot {
     description?: string;
     categoryId?: string;
     warehouseId?: string;
+    projectId?: string;
     unit?: string;
     quantity?: number;
     minQuantity?: number;
@@ -76,6 +79,7 @@ export class InventoryItem extends AggregateRoot {
         description: input.description ?? '',
         categoryId: input.categoryId ?? '',
         warehouseId: input.warehouseId ?? '',
+        projectId: input.projectId ?? null,
         unit: input.unit ?? '',
         quantity: input.quantity ?? 0,
         minQuantity: input.minQuantity ?? 0,
@@ -102,6 +106,7 @@ export class InventoryItem extends AggregateRoot {
     description?: string;
     categoryId?: string;
     warehouseId?: string;
+    projectId?: string;
     unit?: string;
     quantity?: number;
     minQuantity?: number;
@@ -123,6 +128,7 @@ export class InventoryItem extends AggregateRoot {
     if (fields.description !== undefined) this.props.description = fields.description;
     if (fields.categoryId !== undefined) this.props.categoryId = fields.categoryId;
     if (fields.warehouseId !== undefined) this.props.warehouseId = fields.warehouseId;
+    if (fields.projectId !== undefined) this.props.projectId = fields.projectId;
     if (fields.unit !== undefined) this.props.unit = fields.unit;
     if (fields.quantity !== undefined) this.props.quantity = fields.quantity;
     if (fields.minQuantity !== undefined) this.props.minQuantity = fields.minQuantity;

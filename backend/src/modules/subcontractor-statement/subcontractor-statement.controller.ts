@@ -3,6 +3,7 @@ import { handleError } from '../../common/utils/handle-error';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { RequirePermission } from '../../common/decorators/permissions.decorator';
 import { Permissions } from '../../common/constants/permissions.constant';
+import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
 import { ListSubcontractorStatementsUseCase } from './application/use-cases/list-subcontractor-statements.use-case';
 import { CreateSubcontractorStatementUseCase } from './application/use-cases/create-subcontractor-statement.use-case';
 import { UpdateSubcontractorStatementUseCase } from './application/use-cases/update-subcontractor-statement.use-case';
@@ -20,12 +21,12 @@ export class SubcontractorStatementController {
     private readonly remove: DeleteSubcontractorStatementUseCase,
   ) {}
 
-  @Get() @ApiOperation({ summary: 'List subcontractor statements' }) @RequirePermission(Permissions.SubcontractorStatements.Read) async listAll() {
-    const r = await this.list.execute(); return { items: r.getValue() };
+  @Get() @ApiOperation({ summary: 'List subcontractor statements' }) @RequirePermission(Permissions.SubcontractorStatements.Read) async listAll(@CurrentUser() user?: JwtPayload) {
+    const r = await this.list.execute(user); return { items: r.getValue() };
   }
 
-  @Get(':id') @ApiOperation({ summary: 'Get subcontractor statement by id' }) @RequirePermission(Permissions.SubcontractorStatements.Read) async getById(@Param('id', ParseUUIDPipe) id: string) {
-    const r = await this.list.execute(); const item = r.getValue()?.find((s) => s.id === id);
+  @Get(':id') @ApiOperation({ summary: 'Get subcontractor statement by id' }) @RequirePermission(Permissions.SubcontractorStatements.Read) async getById(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user?: JwtPayload) {
+    const r = await this.list.execute(user); const item = r.getValue()?.find((s) => s.id === id);
     if (!item) throw new NotFoundException('Subcontractor statement not found');
     return { statement: item };
   }

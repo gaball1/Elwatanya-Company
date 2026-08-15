@@ -12,19 +12,24 @@ export class SubmitApprovalUseCase {
 
   async execute(id: string, submittedBy: string, comment?: string): Promise<Result<Approval>> {
     try {
-      const approval = await this.repo.findById(id);
-      if (!approval) return Result.fail(new Error('Approval request not found'));
-      if (approval.status !== 'draft') return Result.fail(new Error('Only draft requests can be submitted'));
-      const updated = await this.repo.update(id, { status: 'pending', comment: comment ?? approval.comment ?? '' });
+      // Atomic transition guards against double-submit race.
+      const updated = await this.repo.transition(id, 'draft', 'pending', {
+        comment: comment ?? undefined,
+      });
+      if (!updated) {
+        const existing = await this.repo.findById(id);
+        if (!existing) return Result.fail(new Error('Approval request not found'));
+        return Result.fail(new Error('Only draft requests can be submitted'));
+      }
       await this.eventBus.publish(
         new ApprovalRequestedEvent(
-          approval.id,
+          updated.id,
           'approval',
           {
-            id: approval.id,
-            entityType: approval.entityType,
-            entityId: approval.entityId,
-            title: approval.entityType,
+            id: updated.id,
+            entityType: updated.entityType,
+            entityId: updated.entityId,
+            title: updated.entityType,
             requestedBy: submittedBy,
             permission: 'approvals.approve',
           },

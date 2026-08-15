@@ -13,6 +13,8 @@ import { IFinalBoqRepository } from '@/modules/final-boq/domain/final-boq.reposi
 import { CONTRACTOR_BOQ_REPOSITORY } from '@/modules/contractor-boq/domain/contractor-boq.repository';
 import { IContractorBoqRepository } from '@/modules/contractor-boq/domain/contractor-boq.repository';
 import { DistributeComponentUseCase } from './application/use-cases/distribute-component.use-case';
+import { DistributeItemUseCase } from './application/use-cases/distribute-item.use-case';
+import { RemoveDistributionUseCase } from './application/use-cases/remove-distribution.use-case';
 import { DistributionController } from './distribution.controller';
 
 @Module({
@@ -41,7 +43,30 @@ import { DistributionController } from './distribution.controller';
       ) => new DistributeComponentUseCase(finalBoq, contractorBoq, buildings, ownership, audit, prisma),
       inject: [FINAL_BOQ_REPOSITORY, CONTRACTOR_BOQ_REPOSITORY, BUILDING_REPOSITORY, OwnershipService, AuditService, PrismaService],
     },
+    {
+      provide: DistributeItemUseCase,
+      useFactory: (
+        finalBoq: IFinalBoqRepository,
+        contractorBoq: IContractorBoqRepository,
+        buildings: IBuildingRepository,
+        ownership: OwnershipService,
+        audit: AuditService,
+        prisma: PrismaService,
+      ) => new DistributeItemUseCase(finalBoq, contractorBoq, buildings, ownership, audit, prisma),
+      inject: [FINAL_BOQ_REPOSITORY, CONTRACTOR_BOQ_REPOSITORY, BUILDING_REPOSITORY, OwnershipService, AuditService, PrismaService],
+    },
+    {
+      provide: RemoveDistributionUseCase,
+      useFactory: (
+        finalBoq: IFinalBoqRepository,
+        contractorBoq: IContractorBoqRepository,
+        buildings: IBuildingRepository,
+        ownership: OwnershipService,
+        audit: AuditService,
+      ) => new RemoveDistributionUseCase(finalBoq, contractorBoq, buildings, ownership, audit),
+      inject: [FINAL_BOQ_REPOSITORY, CONTRACTOR_BOQ_REPOSITORY, BUILDING_REPOSITORY, OwnershipService, AuditService],
+    },
   ],
-  exports: [DistributeComponentUseCase],
+  exports: [DistributeComponentUseCase, DistributeItemUseCase, RemoveDistributionUseCase],
 })
 export class DistributionModule {}

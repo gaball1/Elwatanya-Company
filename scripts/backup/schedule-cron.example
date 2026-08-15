@@ -1,0 +1,15 @@
+# El Wataniya ERP - cron schedule example (Linux production)
+# Copy into /etc/cron.d/elwataniya-backup and adjust paths.
+# The job runs regardless of whether the application is running.
+#
+# Daily backup at 02:00 (change minute/hour as needed):
+# 0 2 * * * root /opt/elwataniya/scripts/backup/backup.sh >> /var/log/elwataniya-backup.log 2>&1
+#
+# Daily restore-verification at 03:00 (proves backups can be restored):
+# 0 3 * * * root /opt/elwataniya/scripts/backup/restore-verify.sh >> /var/log/elwataniya-restore-verify.log 2>&1
+#
+# Notes:
+#  - Create scripts/backup/backup.env from backup.env.example with the correct
+#    BACKUP_DIR, BACKUP_RETENTION_DAYS and BACKUP_EXTERNAL_COMMAND (off-server).
+#  - Set POSTGRES_PASSWORD in the environment or backup.env for non-container pg_dump.
+#  - The scripts fail loudly (non-zero exit) and are safe to run while the app is up.

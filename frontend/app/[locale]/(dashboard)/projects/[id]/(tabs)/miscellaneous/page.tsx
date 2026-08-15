@@ -1,7 +1,7 @@
 /* eslint-disable */
 "use client";
 
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { Card } from "@/components/ui";
 import {
@@ -25,35 +25,46 @@ import { useDebounce } from "@/hooks/useDebounce";
 import { usePagination } from "@/hooks/usePagination";
 import Pagination from "@/components/ui/Pagination";
 import { projectFundService } from "@/services/project-fund.service";
+import { fundTransactionService } from "@/services/fund-transaction.service";
+import { approvalService } from "@/services/approval.service";
 import { miscellaneousService, type Miscellaneous } from "@/services/miscellaneous.service";
 import { Can } from "@/components/Can";
+import { useAuth } from "@/hooks/useAuth";
 
 export default function ProjectMiscellaneousPage() {
   const params = useParams();
+  const router = useRouter();
   const locale = (params.locale as string) ?? "ar";
   const isArabic = locale === "ar";
   const projectId = params.id as string;
   const { showToast, ToastComponent } = useToast();
+  const { user } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // ✅ State - جلب البيانات من الـ API
   const [miscItems, setMiscItems] = useState<Miscellaneous[]>([]);
-  const [projectFund, setProjectFund] = useState<{ currentBalance: number } | undefined>();
+  const [projectFund, setProjectFund] = useState<{ id: string; currentBalance: number; pettyCashBalance: number; transactions?: Array<{ id: string; type: "request" | "add" | "deduct" | "transfer"; category: string; amount: number; description: string; date: string; status: "pending" | "approved" | "rejected" }> } | undefined>();
   const [loading, setLoading] = useState(true);
 
-  // ✅ تحميل البيانات من الـ API
+  // ✅ تحميل البيانات من الـ API — كل طلب مستقل حتى لو فيه خطأ
   useEffect(() => {
-    Promise.all([
-      miscellaneousService.list(),
-      projectFundService.list(),
-    ])
-      .then(([items, funds]) => {
-        setMiscItems(items.filter((m) => m.projectId === projectId));
+    setLoading(true);
+
+    // Load fund independently — must always succeed
+    projectFundService.list()
+      .then((funds) => {
         const fund = funds.find((f) => f.projectId === projectId);
         if (fund) setProjectFund(fund);
       })
+      .catch(() => {}); // silent
+
+    // Load misc items
+    miscellaneousService.list()
+      .then((items) => {
+        setMiscItems(items.filter((m) => m.projectId === projectId));
+      })
       .catch(() => {
-        showToast(isArabic ? "فشل تحميل البيانات" : "Failed to load data", "error");
+        showToast(isArabic ? "فشل تحميل بيانات النثريات" : "Failed to load miscellaneous", "error");
       })
       .finally(() => setLoading(false));
   }, [projectId, showToast, isArabic]);
@@ -100,7 +111,7 @@ export default function ProjectMiscellaneousPage() {
   );
 
   const totalMisc = miscItems.reduce((sum, m) => sum + m.amount, 0);
-  const fundBalance = projectFund?.currentBalance || 0;
+  const fundBalance = projectFund?.pettyCashBalance || 0;
 
   const getCategoryLabel = (category: string) => {
     const labels: Record<string, string> = {
@@ -172,6 +183,14 @@ export default function ProjectMiscellaneousPage() {
         return;
       }
 
+      if (!invoiceFile && !editingItem?.invoiceFile) {
+        showToast(
+          isArabic ? "يرجى رفع الفاتورة أولاً" : "Please upload the invoice",
+          "error"
+        );
+        return;
+      }
+
       if (amount > fundBalance) {
         showToast(
           isArabic ? "رصيد العهدة غير كافٍ" : "Insufficient fund balance",
@@ -187,6 +206,10 @@ export default function ProjectMiscellaneousPage() {
             amount,
             category,
             notes: sanitizeInput(notes),
+            // بدون رفع ملف جديد: يُحتفظ بالفاتورة الحالية
+            invoiceFile: invoiceFile
+              ? await fileToBase64(invoiceFile)
+              : editingItem.invoiceFile,
           });
 
           setMiscItems(
@@ -198,11 +221,20 @@ export default function ProjectMiscellaneousPage() {
             isArabic ? "تم تعديل النثريات" : "Miscellaneous updated",
             "success"
           );
-        } catch {
-          showToast(isArabic ? "فشل التعديل" : "Update failed", "error");
+        } catch (error: any) {
+          showToast(
+            error?.message
+              ? error.message
+              : isArabic
+              ? "فشل التعديل"
+              : "Update failed",
+            "error"
+          );
         }
       } else {
         try {
+          if (!invoiceFile) return;
+          const invoiceFileBase64 = await fileToBase64(invoiceFile);
           const saved = await miscellaneousService.create({
             projectId,
             description: sanitizeInput(description),
@@ -210,7 +242,8 @@ export default function ProjectMiscellaneousPage() {
             category,
             date: new Date().toISOString().split("T")[0],
             notes: sanitizeInput(notes),
-            createdBy: '',
+            invoiceFile: invoiceFileBase64,
+            createdBy: user?.id ?? '',
           });
 
           setMiscItems([saved, ...miscItems]);
@@ -218,8 +251,15 @@ export default function ProjectMiscellaneousPage() {
             isArabic ? "تم إضافة النثريات" : "Miscellaneous added",
             "success"
           );
-        } catch {
-          showToast(isArabic ? "فشل الإضافة" : "Failed to add", "error");
+        } catch (error: any) {
+          showToast(
+            error?.message
+              ? error.message
+              : isArabic
+              ? "فشل الإضافة"
+              : "Failed to add",
+            "error"
+          );
         }
       }
       setShowAddModal(false);
@@ -241,6 +281,8 @@ export default function ProjectMiscellaneousPage() {
       formData,
       projectId,
       fundBalance,
+      fileToBase64,
+      user,
       showToast,
       isArabic,
     ]
@@ -312,7 +354,7 @@ export default function ProjectMiscellaneousPage() {
 
   // ✅ طلب زيادة عهدة النثريات
   const handleRequestFund = useCallback(
-    (e: React.FormEvent) => {
+    async (e: React.FormEvent) => {
       e.preventDefault();
       const form = e.target as HTMLFormElement;
       const amount = Number(
@@ -326,35 +368,80 @@ export default function ProjectMiscellaneousPage() {
         return;
       }
 
-      if (projectFund) {
-        const updatedFund = {
-          ...projectFund,
-        };
-        setProjectFund(updatedFund);
+      if (!projectFund) {
+        showToast(
+          isArabic ? "لم يتم العثور على العهدة" : "Fund not found",
+          "error"
+        );
+        return;
       }
 
-      showToast(
-        isArabic ? "تم إرسال طلب زيادة العهدة" : "Fund increase request sent",
-        "success"
-      );
-      setShowRequestModal(false);
+      try {
+        const tx = await fundTransactionService.create({
+          fundId: projectFund.id,
+          type: "request",
+          category: "miscellaneous",
+          amount,
+          description: `طلب زيادة عهدة نثريات: ${reason}`,
+        });
+        await approvalService.request({
+          entityType: "fund-transaction",
+          entityId: tx.id,
+          comment: reason,
+        });
+        setProjectFund((prev) =>
+          prev
+            ? {
+                ...prev,
+                transactions: [
+                  ...(prev.transactions ?? []),
+                  {
+                    id: tx.id,
+                    type: "request" as const,
+                    category: "miscellaneous" as const,
+                    amount,
+                    description: `طلب زيادة عهدة نثريات: ${reason}`,
+                    date: tx.date.split("T")[0],
+                    status: "pending" as const,
+                  },
+                ],
+              }
+            : prev
+        );
+        showToast(
+          isArabic
+            ? "تم إرسال طلب زيادة العهدة للموافقة"
+            : "Fund increase request sent for approval",
+          "success"
+        );
+        setShowRequestModal(false);
+      } catch (err) {
+        showToast(err instanceof Error ? err.message : "Error", "error");
+      }
     },
     [projectFund, showToast, isArabic]
   );
 
-  // ✅ إضافة رصيد للعهدة
+  // ✅ إضافة رصيد للعهدة — تسجيل في الفند الفعلي
   const handleAddFund = useCallback(
-    (amount: number) => {
-      if (projectFund) {
-        const updatedFund = {
-          ...projectFund,
-          currentBalance: projectFund.currentBalance + amount,
-        };
-        setProjectFund(updatedFund);
-        showToast(
-          isArabic ? "تم إضافة الرصيد للعهدة" : "Fund balance added",
-          "success"
-        );
+    async (amount: number) => {
+      if (!projectFund) {
+        showToast(isArabic ? "لم يتم العثور على العهدة" : "Fund not found", "error");
+        return;
+      }
+      try {
+        await fundTransactionService.create({
+          fundId: projectFund.id,
+          type: "transfer",
+          category: "miscellaneous",
+          amount,
+          description: "تحويل لعهدة الموقع (نثريات)",
+          status: "approved",
+        });
+        setProjectFund((prev) => prev ? { ...prev, currentBalance: prev.currentBalance - amount, pettyCashBalance: prev.pettyCashBalance + amount } : prev);
+        showToast(isArabic ? "تم إضافة الرصيد لعهدة الموقع" : "Fund balance added to petty cash", "success");
+      } catch (err) {
+        showToast(err instanceof Error ? err.message : "Error", "error");
       }
     },
     [projectFund, showToast, isArabic]
@@ -371,11 +458,36 @@ export default function ProjectMiscellaneousPage() {
     <div className="space-y-6" suppressHydrationWarning>
       {ToastComponent}
 
+      {/* No Fund Warning */}
+      {!loading && !projectFund && (
+        <div className="bg-warning-light border border-warning-dark rounded-lg p-4 flex items-center justify-between gap-3">
+          <p className="text-warning-dark text-sm font-medium">
+            {isArabic
+              ? '⚠️ لم يتم إنشاء خزنة لهذا المشروع. اذهب لتبويب الخزنة وأنشئ الخزنة أولاً.'
+              : '⚠️ No treasury found for this project. Please go to the Treasury tab and create one first.'}
+          </p>
+          <button
+            onClick={() => router.push(`/${locale}/projects/${projectId}/treasury`)}
+            className="shrink-0 px-3 py-1.5 bg-warning-dark text-white text-xs rounded-lg hover:opacity-90 transition"
+          >
+            {isArabic ? 'فتح الخزنة' : 'Open Treasury'}
+          </button>
+        </div>
+      )}
+
       {/* Fund Cards */}
-      <div className="grid md:grid-cols-3 gap-4" suppressHydrationWarning>
+      <div className="grid md:grid-cols-4 gap-4" suppressHydrationWarning>
+        <Card className="p-4 border-r-4 border-info" suppressHydrationWarning>
+          <p className="text-text-secondary text-sm">
+            {isArabic ? "رصيد العهدة السابق" : "Previous Petty Cash"}
+          </p>
+          <p className="text-2xl font-bold text-info">
+            {(fundBalance + totalMisc).toLocaleString()} ج.م
+          </p>
+        </Card>
         <Card className="p-4 border-r-4 border-gold" suppressHydrationWarning>
           <p className="text-text-secondary text-sm">
-            {isArabic ? "رصيد العهدة" : "Fund Balance"}
+            {isArabic ? "عهدة الموقع (نثريات)" : "Site Petty Cash"}
           </p>
           <p className="text-2xl font-bold text-gold">
             {fundBalance.toLocaleString()} ج.م
@@ -425,7 +537,7 @@ export default function ProjectMiscellaneousPage() {
             {isArabic ? "طلب زيادة عهدة" : "Request Fund Increase"}
           </button>
         </Can>
-        <Can permission="miscellaneous.create">
+        <Can permission="fund-transactions.create">
           <button
             onClick={() => setShowFundModal(true)}
             className="flex items-center gap-2 px-4 py-2 border border-success-dark text-success-dark rounded-lg hover:bg-success-dark hover:text-white transition text-sm font-medium"
@@ -523,8 +635,11 @@ export default function ProjectMiscellaneousPage() {
                     <FileText size={16} />
                   </button>
                 ) : (
-                  <span className="text-xs text-text-muted w-[16px]">
-                    {isArabic ? "لا" : "-"}
+                  <span
+                    className="text-xs text-text-muted px-2 py-0.5 rounded-full bg-surface-tertiary"
+                    title={isArabic ? "لا توجد فاتورة مرفقة" : "No invoice attached"}
+                  >
+                    {isArabic ? "بدون فاتورة" : "No invoice"}
                   </span>
                 )}
                 <Can permission="miscellaneous.update">
@@ -892,7 +1007,7 @@ export default function ProjectMiscellaneousPage() {
           <div className="bg-surface rounded-2xl w-full max-w-md">
             <div className="p-5 border-b flex justify-between items-center">
               <h2 className="text-xl font-bold text-primary">
-                {isArabic ? "إضافة رصيد للعهدة" : "Add Fund"}
+                {isArabic ? "إضافة رصيد لعهدة النثريات" : "Add Miscellaneous Fund"}
               </h2>
               <button
                 onClick={() => setShowFundModal(false)}
@@ -902,31 +1017,45 @@ export default function ProjectMiscellaneousPage() {
               </button>
             </div>
             <div className="p-5">
-              <p className="text-text-secondary mb-4">
-                {isArabic
-                  ? "المبلغ الحالي في العهدة:"
-                  : "Current fund balance:"}
-                <span className="font-bold text-gold block text-xl">
+              {/* Treasury balance (source) */}
+              <div className="bg-primary/5 border border-primary/20 rounded-xl p-3 mb-3">
+                <p className="text-xs text-text-secondary mb-1">
+                  {isArabic ? "رصيد الخزنة الرئيسية (سيتم التحويل منها):" : "Main Treasury Balance (transfer source):"}
+                </p>
+                <p className="text-2xl font-bold text-primary">
+                  {(projectFund?.currentBalance ?? 0).toLocaleString()} ج.م
+                </p>
+              </div>
+              {/* Petty cash balance (destination) */}
+              <div className="bg-gold/5 border border-gold/30 rounded-xl p-3 mb-4">
+                <p className="text-xs text-text-secondary mb-1">
+                  {isArabic ? "رصيد عهدة الموقع الحالي:" : "Current site petty cash:"}
+                </p>
+                <p className="text-xl font-bold text-gold">
                   {fundBalance.toLocaleString()} ج.م
-                </span>
-              </p>
+                </p>
+              </div>
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
                   const form = e.target as HTMLFormElement;
                   const amount = Number(
-                    (form.elements.namedItem("amount") as HTMLInputElement)
-                      .value
+                    (form.elements.namedItem("amount") as HTMLInputElement).value
                   );
-                  if (isValidAmount(amount)) {
-                    handleAddFund(amount);
-                    setShowFundModal(false);
-                  } else {
+                  if (!isValidAmount(amount)) {
+                    showToast(isArabic ? "المبلغ غير صحيح" : "Invalid amount", "error");
+                    return;
+                  }
+                  if (amount > (projectFund?.currentBalance ?? 0)) {
                     showToast(
-                      isArabic ? "المبلغ غير صحيح" : "Invalid amount",
+                      isArabic
+                        ? `المبلغ يتجاوز رصيد الخزنة (${(projectFund?.currentBalance ?? 0).toLocaleString()} ج.م)`
+                        : `Amount exceeds treasury balance (${(projectFund?.currentBalance ?? 0).toLocaleString()} EGP)`,
                       "error"
                     );
+                    return;
                   }
+                  handleAddFund(amount).then(() => setShowFundModal(false));
                 }}
                 className="space-y-4"
               >

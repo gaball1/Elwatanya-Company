@@ -38,6 +38,11 @@ export class CreateInventoryItemDto {
   @IsString()
   warehouseId?: string;
 
+  @ApiPropertyOptional({ example: '00000000-0000-0000-0000-000000000000' })
+  @IsOptional()
+  @IsString()
+  projectId?: string;
+
   @ApiPropertyOptional({ example: 'طن' })
   @IsOptional()
   @IsString()
@@ -49,6 +54,12 @@ export class CreateInventoryItemDto {
   @IsNumber()
   @Min(0)
   quantity?: number;
+
+  @ApiPropertyOptional({ example: 'سبب إضافة الصنف (توريد/افتتاح رصيد)' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  reason?: string;
 
   @ApiPropertyOptional({ example: 10 })
   @IsOptional()
@@ -67,6 +78,25 @@ export class CreateInventoryItemDto {
   @IsString()
   @IsIn(['active', 'inactive'])
   status?: string;
+}
+
+export class IncreaseInventoryItemDto {
+  @ApiProperty({ example: 25, description: 'كمية التوريد المضافة للمخزون' })
+  @IsNumber()
+  @Min(0.01)
+  quantity!: number;
+
+  @ApiPropertyOptional({ example: 'توريد بند جديد للمشروع' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  reason?: string;
+
+  @ApiPropertyOptional({ example: 850.5 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  unitCost?: number;
 }
 
 export class UpdateInventoryItemDto {
@@ -99,6 +129,11 @@ export class UpdateInventoryItemDto {
   @IsOptional()
   @IsString()
   warehouseId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  projectId?: string;
 
   @ApiPropertyOptional()
   @IsOptional()

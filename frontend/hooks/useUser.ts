@@ -10,6 +10,8 @@ export interface UserInfo {
   permissions?: string[];
   roleNames?: string[];
   projectIds?: string[];
+  employeeId?: string | null;
+  avatarUrl?: string | null;
   status?: string;
 }
 

@@ -37,6 +37,12 @@ export class CreateStockMovementDto {
   @MaxLength(200)
   reference?: string;
 
+  @ApiPropertyOptional({ example: 'سبب العملية (توريد/صرف/زيادة)' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  reason?: string;
+
   @ApiPropertyOptional({ example: 'Stock movement notes' })
   @IsOptional()
   @IsString()
@@ -103,6 +109,12 @@ export class UpdateStockMovementDto {
   @IsString()
   @MaxLength(200)
   reference?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  reason?: string;
 
   @ApiPropertyOptional()
   @IsOptional()

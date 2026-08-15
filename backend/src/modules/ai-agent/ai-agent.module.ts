@@ -18,6 +18,10 @@ import { ConversationService } from './nl/conversation.service';
 import { AgentAnalyticsService } from './analytics/agent-analytics.service';
 import { BaseTool } from './tools/base.tool';
 import { BaseWorkflow } from './workflows/base.workflow';
+import { LlmConfigService } from './llm/llm-config.service';
+import { LlmProviderService } from './llm/llm-provider.service';
+import { AgentPromptBuilder } from './llm/agent-prompt.builder';
+import { LlmAgentService } from './llm/llm-agent.service';
 
 // Tool imports
 import { ListProjectsTool, GetProjectTool, CreateProjectTool, UpdateProjectTool } from './tools/project.tools';
@@ -30,19 +34,17 @@ import { ListSuppliersTool, CreateSupplierTool, ListClientsTool, CreateClientToo
 import { ListSubcontractorsTool, CreateSubcontractorTool, AssignSubcontractorTool, CreateExtractTool, ListExtractsTool } from './tools/subcontractor.tools';
 import { ProjectSummaryTool, EmployeeStatsTool, PendingApprovalsSummaryTool, FundSummaryTool, InventorySummaryTool } from './tools/analysis.tools';
 import { CreateNotificationTool } from './tools/notification.tools';
-import { SearchKnowledgeTool, GetDocumentTool, SummarizeDocumentTool } from './tools/knowledge.tools';
+import { SearchKnowledgeTool } from './tools/knowledge.tools';
 import { GetEntityTimelineTool, GetEntityLifecycleTool } from './tools/timeline.tools';
 import { GlobalSearchTool } from './tools/search.tools';
 import { GetSettingsTool, UpdateSettingsTool } from './tools/settings.tools';
 import { GetCompanySettingsTool, UpdateCompanySettingsTool } from './tools/company.tools';
-import { ListTemplatesTool, CreateDocumentTool, ListDocumentsTool } from './tools/document-engine.tools';
 import { GetEmployerBOQTool, GetAnalyticalBOQTool, GetFinalBOQTool, GetContractorBOQTool } from './tools/boq.tools';
 import { GetKPITool, GetTrendsTool, GetComparisonTool, GetForecastTool } from './tools/bi.tools';
 import { GetWhiteLabelBrandingTool, UpdateWhiteLabelBrandingTool } from './tools/white-label.tools';
 import { ListReportsTool, GenerateReportTool } from './tools/reporting.tools';
 import { RenderPdfTool } from './tools/pdf.tools';
 import { ListSignatureWorkflowsTool, CreateSignatureWorkflowTool, SubmitForSignatureTool, SignDocumentTool, GetSignatureStatusTool } from './tools/signature.tools';
-import { GenerateDocumentNumberTool, GetDocumentNumberConfigTool, UpdateDocumentNumberConfigTool } from './tools/document-number.tools';
 import { EvaluateAllKpisTool } from './tools/construction-bi.tools';
 import {
   GetProjectDashboardTool,
@@ -92,19 +94,17 @@ const ALL_TOOLS = [
   ListSubcontractorsTool, CreateSubcontractorTool, AssignSubcontractorTool, CreateExtractTool, ListExtractsTool,
   ProjectSummaryTool, EmployeeStatsTool, PendingApprovalsSummaryTool, FundSummaryTool, InventorySummaryTool,
   CreateNotificationTool,
-  SearchKnowledgeTool, GetDocumentTool, SummarizeDocumentTool,
+  SearchKnowledgeTool,
   GetEntityTimelineTool, GetEntityLifecycleTool,
   GlobalSearchTool,
   GetSettingsTool, UpdateSettingsTool,
   GetCompanySettingsTool, UpdateCompanySettingsTool,
-  ListTemplatesTool, CreateDocumentTool, ListDocumentsTool,
   GetEmployerBOQTool, GetAnalyticalBOQTool, GetFinalBOQTool, GetContractorBOQTool,
   GetKPITool, GetTrendsTool, GetComparisonTool, GetForecastTool,
   GetWhiteLabelBrandingTool, UpdateWhiteLabelBrandingTool,
   ListReportsTool, GenerateReportTool,
   RenderPdfTool,
   ListSignatureWorkflowsTool, CreateSignatureWorkflowTool, SubmitForSignatureTool, SignDocumentTool, GetSignatureStatusTool,
-  GenerateDocumentNumberTool, GetDocumentNumberConfigTool, UpdateDocumentNumberConfigTool,
   EvaluateAllKpisTool,
   GetProjectDashboardTool, GetProjectSummaryTool, GetProjectProfitabilityTool, GetProjectRisksTool, GetProjectProgressTool,
   GetContractorAnalysisTool, GetBoqAnalysisTool, GetCashflowTool, GetInventoryAnalysisTool, GetEmployeeAnalysisTool, GetAttendanceAnalysisTool, GetExecutiveDashboardTool,
@@ -117,8 +117,13 @@ const ALL_WORKFLOWS = [
   ContractorOnboardingWorkflow, ExtractWorkflow, KnowledgeFusionWorkflow, ContractorPaymentAnalysisWorkflow,
 ] as const;
 
+const AI_AGENT_API_URL =
+  process.env.AI_AGENT_API_URL ||
+  process.env.API_URL ||
+  `http://localhost:${process.env.PORT || 3001}`;
+
 @Module({
-  imports: [HttpModule.register({ baseURL: 'http://localhost:3001', timeout: 30000 }), PrismaModule],
+  imports: [HttpModule.register({ baseURL: AI_AGENT_API_URL, timeout: 30000 }), PrismaModule],
   controllers: [AiAgentController],
   providers: [
     AiAgentService,
@@ -135,6 +140,10 @@ const ALL_WORKFLOWS = [
     ConversationService,
     AgentAnalyticsService,
     ExecutiveReportService,
+    LlmConfigService,
+    LlmProviderService,
+    AgentPromptBuilder,
+    LlmAgentService,
     ...ALL_TOOLS,
     ...ALL_WORKFLOWS,
   ],

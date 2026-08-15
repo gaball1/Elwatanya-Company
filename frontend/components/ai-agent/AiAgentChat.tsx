@@ -33,7 +33,13 @@ interface Message {
   content: string;
   timestamp: Date;
   intent?: string;
-  data?: any;
+  data?: unknown;
+}
+
+let aiMessageSeq = 0;
+function nextAiMessageId(): string {
+  aiMessageSeq += 1;
+  return `${Date.now()}-${aiMessageSeq}`;
 }
 
 export default function AiAgentChat() {
@@ -60,7 +66,16 @@ export default function AiAgentChat() {
   ]);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
-  const [conversationId, setConversationId] = useState<string | undefined>();
+  const [conversationId, setConversationId] = useState<string | undefined>(() => {
+    try {
+      if (typeof window !== "undefined") {
+        return localStorage.getItem("ai_agent_conversation_id") ?? undefined;
+      }
+    } catch {
+      // localStorage unavailable - conversation still works, just not persisted
+    }
+    return undefined;
+  });
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<"chat" | "history">("chat");
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
@@ -72,15 +87,6 @@ export default function AiAgentChat() {
 
   useEffect(() => {
     try {
-      const saved = localStorage.getItem("ai_agent_conversation_id");
-      if (saved) setConversationId(saved);
-    } catch {
-      // localStorage unavailable - conversation still works, just not persisted
-    }
-  }, []);
-
-  useEffect(() => {
-    try {
       if (conversationId) {
         localStorage.setItem("ai_agent_conversation_id", conversationId);
       }
@@ -88,21 +94,6 @@ export default function AiAgentChat() {
       // ignore storage errors
     }
   }, [conversationId]);
-
-  useEffect(() => {
-    if (open && view === "chat" && inputRef.current) inputRef.current.focus();
-  }, [open, view]);
-
-  useEffect(() => {
-    if (open && view === "history") {
-      loadConversations();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, view, search]);
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, isTyping]);
 
   const loadConversations = async () => {
     setHistoryLoading(true);
@@ -115,6 +106,24 @@ export default function AiAgentChat() {
       setHistoryLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (open && view === "chat" && inputRef.current) inputRef.current.focus();
+  }, [open, view]);
+
+  useEffect(() => {
+    if (open && view === "history") {
+      const run = async () => {
+        await loadConversations();
+      };
+      run();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, view, search]);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, isTyping]);
 
   const openConversation = async (id: string) => {
     try {
@@ -189,7 +198,7 @@ export default function AiAgentChat() {
     if (!text) return;
 
     if (retryCount === 0) {
-      const userMsg: Message = { id: Date.now().toString(), role: "user", content: text, timestamp: new Date() };
+      const userMsg: Message = { id: nextAiMessageId(), role: "user", content: text, timestamp: new Date() };
       setMessages((prev) => [...prev, userMsg]);
       setInput("");
       setIsTyping(true);
@@ -213,7 +222,7 @@ export default function AiAgentChat() {
       }
 
       const assistantMsg: Message = {
-        id: (Date.now() + 1).toString(),
+        id: nextAiMessageId(),
         role: "assistant",
         content: response.message || t("error_message"),
         timestamp: new Date(),
@@ -225,7 +234,7 @@ export default function AiAgentChat() {
 
       if (response.requiresFollowUp && response.followUpQuestion) {
         const followUp: Message = {
-          id: (Date.now() + 2).toString(),
+          id: nextAiMessageId(),
           role: "assistant",
           content: `ℹ️ ${response.followUpQuestion}`,
           timestamp: new Date(),
@@ -233,17 +242,18 @@ export default function AiAgentChat() {
         setTimeout(() => setMessages((prev) => [...prev, followUp]), 300);
       }
       setIsTyping(false);
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const e = err as { status?: number; name?: string; message?: string };
       const isNetworkError =
-        !err?.status ||
-        err?.status === 408 ||
-        err?.status === 502 ||
-        err?.status === 503 ||
-        err?.status === 504 ||
-        err?.name === "TypeError" ||
-        err?.message?.includes("fetch") ||
-        err?.message?.includes("network") ||
-        err?.message?.includes("timed out");
+        !e?.status ||
+        e?.status === 408 ||
+        e?.status === 502 ||
+        e?.status === 503 ||
+        e?.status === 504 ||
+        e?.name === "TypeError" ||
+        e?.message?.includes("fetch") ||
+        e?.message?.includes("network") ||
+        e?.message?.includes("timed out");
 
       if (isNetworkError && retryCount < 2) {
         setTimeout(() => handleSend(text, retryCount + 1), 1000);
@@ -251,7 +261,7 @@ export default function AiAgentChat() {
         return;
       }
       pendingTextRef.current = null;
-      setError(err?.message || t("error_message"));
+      setError(e?.message || t("error_message"));
       setIsTyping(false);
     }
   };
@@ -427,11 +437,11 @@ export default function AiAgentChat() {
                         )}
                       >
                         <div className="whitespace-pre-wrap">{msg.content}</div>
-                        {msg.data && (
+                        {msg.data ? (
                           <div className="mt-2 pt-2 border-t border-border/50 text-xs text-text-muted">
                             {t("data_received")}
                           </div>
-                        )}
+                        ) : null}
                         <p className={cn("text-[10px] mt-1 opacity-60", msg.role === "user" ? "text-white/70" : "text-text-muted")}>
                           {msg.timestamp.toLocaleTimeString(locale === "ar" ? "ar-EG" : "en-US", { hour: "2-digit", minute: "2-digit" })}
                         </p>

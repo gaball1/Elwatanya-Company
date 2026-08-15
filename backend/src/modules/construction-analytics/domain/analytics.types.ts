@@ -4,6 +4,7 @@ export interface AnalyticsProject {
   code: string;
   status: string;
   startDate: Date | null;
+  plannedDurationMonths: number;
   progress: number;
   client: string | null;
 }

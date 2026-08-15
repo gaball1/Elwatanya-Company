@@ -27,6 +27,14 @@ export interface FinalBoqItemResult {
   isAnalyzed: boolean;
   status: string;
   components: FinalBoqComponentResult[];
+  /** Item-level distribution for non-analyzed items (componentId === null). */
+  itemDistribution: {
+    contractorId: string;
+    contractorName: string;
+    quantity: number;
+    percentage: number;
+    assignedAt: string;
+  }[];
 }
 
 export interface FinalBoqTotalsResult {

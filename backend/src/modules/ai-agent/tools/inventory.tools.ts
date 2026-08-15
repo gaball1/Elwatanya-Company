@@ -3,6 +3,7 @@ import { BaseTool } from './base.tool';
 import { AgentHttpClient } from './http-client';
 import { ToolResult } from '../dto/agent-response.dto';
 import { pickBest } from './resolution.utils';
+import { schema } from './tool-schemas';
 
 @Injectable()
 export class ListWarehousesTool extends BaseTool {
@@ -24,9 +25,17 @@ export class ListWarehousesTool extends BaseTool {
 @Injectable()
 export class ListInventoryItemsTool extends BaseTool {
   readonly name = 'list_inventory_items';
-  readonly description = 'List inventory items, optionally filtered by warehouse, category, or an item name/code (Arabic-aware)';
+  readonly description = 'List inventory items with available quantity and warehouse, optionally filtered by warehouse, category, or an item name/code (Arabic-aware). Use for "المخزن فيه X كام؟" (how much of X is in stock).';
   readonly requiresPermission = 'inventory.read';
   readonly requiredEntity = 'inventory-item';
+  readonly parameters = schema({
+    warehouseId: { type: 'string', description: 'Warehouse UUID (rarely needed — a name works).' },
+    warehouseName: { type: 'string', description: 'Warehouse name, e.g. مخزن القاهرة.' },
+    categoryId: { type: 'string', description: 'Inventory category UUID.' },
+    itemName: { type: 'string', description: 'Item name or code, e.g. أسمنت, حديد.' },
+    name: { type: 'string', description: 'Alias for itemName.' },
+    query: { type: 'string', description: 'Free-text item name to match.' },
+  });
 
   constructor(private readonly api: AgentHttpClient) {
     super();

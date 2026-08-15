@@ -7,6 +7,7 @@ import { AttendanceOverrideModule } from '@/modules/attendance-override/attendan
 import { ATTENDANCE_REPOSITORY, IAttendanceRepository } from './domain/attendance.repository';
 import { PrismaAttendanceRepository } from './infrastructure/prisma-attendance.repository';
 import { ListAttendanceUseCase } from './application/use-cases/list-attendance.use-case';
+import { ListMyAttendanceUseCase } from './application/use-cases/list-my-attendance.use-case';
 import { GetAttendanceUseCase } from './application/use-cases/get-attendance.use-case';
 import { CreateAttendanceUseCase } from './application/use-cases/create-attendance.use-case';
 import { CheckOutUseCase } from './application/use-cases/check-out.use-case';
@@ -23,6 +24,11 @@ import { AttendanceController } from './attendance.controller';
     {
       provide: ListAttendanceUseCase,
       useFactory: (repo: IAttendanceRepository) => new ListAttendanceUseCase(repo),
+      inject: [ATTENDANCE_REPOSITORY],
+    },
+    {
+      provide: ListMyAttendanceUseCase,
+      useFactory: (repo: IAttendanceRepository) => new ListMyAttendanceUseCase(repo),
       inject: [ATTENDANCE_REPOSITORY],
     },
     {

@@ -8,7 +8,7 @@ import {
   EmployerBoqErrorCode,
 } from '../errors/employer-boq-application.error';
 import { RemoveAnalyticalBoqItemUseCase } from '@/modules/analytical-boq/application/use-cases/remove-analytical-boq-item.use-case';
-import { OwnershipService } from '@/common/services/ownership.service';
+import { OwnershipActor, OwnershipService } from '@/common/services/ownership.service';
 import { AuditService } from '@/modules/audit/audit.service';
 import { NotificationService } from '@/common/services/notification.service';
 
@@ -22,8 +22,8 @@ export class DeleteEmployerBoqItemUseCase {
     private readonly notifications: NotificationService,
   ) {}
 
-  async execute(buildingId: string, itemCode: string, userProjectId?: string | null, userId?: string): Promise<Result<void>> {
-    await this.ownership.verifyBuildingAccess(userProjectId, buildingId);
+  async execute(buildingId: string, itemCode: string, user?: OwnershipActor, userId?: string): Promise<Result<void>> {
+    await this.ownership.verifyBuildingAccess(user, buildingId);
     const buildingEntityId = new UniqueEntityId(buildingId);
     const building = await this.buildings.findById(buildingEntityId);
     if (!building) {
@@ -47,7 +47,7 @@ export class DeleteEmployerBoqItemUseCase {
     await this.employerBoq.deleteByItemCode(buildingEntityId, normalizedCode);
 
     // Cascade delete from Analytical (which also syncs Final BOQ). Tolerate absence in analytical.
-    const cascade = await this.removeAnalytical.execute(buildingId, normalizedCode, userProjectId, userId);
+    const cascade = await this.removeAnalytical.execute(buildingId, normalizedCode, user, userId);
     if (cascade.isFailure) {
       // Analytical item may not exist yet — the employer item is already removed.
       const error = cascade.error as Error | undefined;

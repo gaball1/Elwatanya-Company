@@ -10,7 +10,7 @@ import {
   EmployerBoqErrorCode,
 } from '../errors/employer-boq-application.error';
 import { toEmployerBoqItemResult } from './list-employer-boq-items.use-case';
-import { OwnershipService } from '@/common/services/ownership.service';
+import { OwnershipActor, OwnershipService } from '@/common/services/ownership.service';
 import { AuditService } from '@/modules/audit/audit.service';
 import { EventBusImpl } from '@/modules/domain-events/event-bus.impl';
 import { BOQUploadedEvent } from '@/modules/domain-events/events';
@@ -24,8 +24,8 @@ export class SetEmployerBoqItemsUseCase {
     private readonly eventBus: EventBusImpl,
   ) {}
 
-  async execute(input: SetEmployerBoqItemsInput, userProjectId?: string | null, userId?: string): Promise<Result<EmployerBoqItemResult[]>> {
-    await this.ownership.verifyBuildingAccess(userProjectId, input.buildingId);
+  async execute(input: SetEmployerBoqItemsInput, user?: OwnershipActor, userId?: string): Promise<Result<EmployerBoqItemResult[]>> {
+    await this.ownership.verifyBuildingAccess(user, input.buildingId);
     const buildingId = new UniqueEntityId(input.buildingId);
     const building = await this.buildings.findById(buildingId);
     if (!building) {

@@ -1,6 +1,7 @@
-import { Injectable } from '@nestjs/common';
+﻿import { Injectable } from '@nestjs/common';
 import { BaseTool } from './base.tool';
 import { AgentHttpClient } from './http-client';
+import { projectSchema } from './tool-schemas';
 
 const API = '/api/v1/analytics';
 
@@ -10,6 +11,7 @@ export class GetProjectDashboardTool extends BaseTool {
   readonly description = 'Get the full project analytics dashboard: KPIs, earned value (EVM), progress, cost breakdown, BOQ intelligence, contractor performance, treasury, inventory, employees, buildings and risk engine';
   readonly requiresPermission = 'projects.read';
   readonly requiredEntity = 'project';
+  readonly parameters = projectSchema();
 
   constructor(private readonly http: AgentHttpClient) { super(); }
 
@@ -31,6 +33,7 @@ export class GetProjectSummaryTool extends BaseTool {
   readonly description = 'AI-ready executive summary of a project: performance verdict, financials, top profitable and loss-making items, delayed contractors, top risks and recommended actions';
   readonly requiresPermission = 'projects.read';
   readonly requiredEntity = 'project';
+  readonly parameters = projectSchema();
 
   constructor(private readonly http: AgentHttpClient) { super(); }
 
@@ -52,6 +55,7 @@ export class GetProjectProfitabilityTool extends BaseTool {
   readonly description = 'Project profitability analysis: BOQ profit/margin, cost breakdown by item, top profit and loss-making BOQ items';
   readonly requiresPermission = 'projects.read';
   readonly requiredEntity = 'project';
+  readonly parameters = projectSchema();
 
   constructor(private readonly http: AgentHttpClient) { super(); }
 
@@ -76,6 +80,7 @@ export class GetProjectRisksTool extends BaseTool {
   readonly description = 'Project risk engine output: risk score, level, and actionable risk items with severity, probability, impact and recommendations';
   readonly requiresPermission = 'projects.read';
   readonly requiredEntity = 'project';
+  readonly parameters = projectSchema();
 
   constructor(private readonly http: AgentHttpClient) { super(); }
 
@@ -97,6 +102,7 @@ export class GetProjectProgressTool extends BaseTool {
   readonly description = 'Project progress analytics by project, building, category and contractor BOQ, including earned value schedule metrics';
   readonly requiresPermission = 'projects.read';
   readonly requiredEntity = 'project';
+  readonly parameters = projectSchema();
 
   constructor(private readonly http: AgentHttpClient) { super(); }
 
@@ -118,6 +124,7 @@ export class GetContractorAnalysisTool extends BaseTool {
   readonly description = 'Subcontractor performance analysis: assigned and completed BOQ value, extracts, paid amounts, average execution, delays, reliability and performance scores';
   readonly requiresPermission = 'projects.read';
   readonly requiredEntity = 'project';
+  readonly parameters = projectSchema();
 
   constructor(private readonly http: AgentHttpClient) { super(); }
 
@@ -139,6 +146,7 @@ export class GetBoqAnalysisTool extends BaseTool {
   readonly description = 'BOQ intelligence: profit/loss classification per item, top profit, top loss, delayed and highest-cost BOQ items';
   readonly requiresPermission = 'projects.read';
   readonly requiredEntity = 'project';
+  readonly parameters = projectSchema();
 
   constructor(private readonly http: AgentHttpClient) { super(); }
 
@@ -160,6 +168,7 @@ export class GetCashflowTool extends BaseTool {
   readonly description = 'Treasury and cash flow intelligence: cash in/out, balance, committed and upcoming payments, monthly cash flow, daily balances and 3-month forecast';
   readonly requiresPermission = 'projects.read';
   readonly requiredEntity = 'project';
+  readonly parameters = projectSchema();
 
   constructor(private readonly http: AgentHttpClient) { super(); }
 
@@ -181,6 +190,7 @@ export class GetInventoryAnalysisTool extends BaseTool {
   readonly description = 'Inventory intelligence: consumption, received stock, current and reserved stock, reorder items, material cost, inventory value and turnover';
   readonly requiresPermission = 'projects.read';
   readonly requiredEntity = 'project';
+  readonly parameters = projectSchema();
 
   constructor(private readonly http: AgentHttpClient) { super(); }
 
@@ -202,6 +212,7 @@ export class GetEmployeeAnalysisTool extends BaseTool {
   readonly description = 'Employee and attendance intelligence: attendance rate, late and absence percentages, worked and overtime hours, payroll cost and monthly trends';
   readonly requiresPermission = 'projects.read';
   readonly requiredEntity = 'project';
+  readonly parameters = projectSchema();
 
   constructor(private readonly http: AgentHttpClient) { super(); }
 
@@ -223,6 +234,7 @@ export class GetAttendanceAnalysisTool extends BaseTool {
   readonly description = 'Attendance intelligence: attendance/absence/late rates, average working hours, overtime hours, active workforce, daily trend and breakdowns by building and department';
   readonly requiresPermission = 'projects.read';
   readonly requiredEntity = 'project';
+  readonly parameters = projectSchema();
 
   constructor(private readonly http: AgentHttpClient) { super(); }
 

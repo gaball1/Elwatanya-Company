@@ -2,6 +2,7 @@ import { apiClient } from '@/lib/api/apiClient';
 
 export interface Warehouse {
   id: string;
+  projectId: string | null;
   code: string;
   name: string;
   location: string;
@@ -11,6 +12,7 @@ export interface Warehouse {
 }
 
 export interface CreateWarehouseData {
+  projectId?: string;
   code: string;
   name: string;
   location?: string;
@@ -18,6 +20,7 @@ export interface CreateWarehouseData {
 }
 
 export interface UpdateWarehouseData {
+  projectId?: string;
   code?: string;
   name?: string;
   location?: string;
@@ -25,8 +28,9 @@ export interface UpdateWarehouseData {
 }
 
 export const warehouseService = {
-  async list(): Promise<Warehouse[]> {
-    const data = await apiClient<{ items: Warehouse[] }>('/warehouses', { method: 'GET' });
+  async list(projectId?: string): Promise<Warehouse[]> {
+    const params = projectId ? `?projectId=${encodeURIComponent(projectId)}` : '';
+    const data = await apiClient<{ items: Warehouse[] }>(`/warehouses${params}`, { method: 'GET' });
     return data.items;
   },
   async get(id: string): Promise<Warehouse> {

@@ -8,9 +8,27 @@ function isBrowser(): boolean {
   return typeof window !== "undefined";
 }
 
+function extractTokenExp(token: string): string {
+  const parts = token.split(".");
+  if (parts.length < 2) return "1";
+  try {
+    const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const json = decodeURIComponent(
+      Array.from(atob(base64))
+        .map((c) => "%" + c.charCodeAt(0).toString(16).padStart(2, "0"))
+        .join("")
+    );
+    const payload = JSON.parse(json) as { exp?: number };
+    if (typeof payload.exp === "number") return String(payload.exp);
+  } catch {
+    // fall back to a presence marker
+  }
+  return "1";
+}
+
 function setTokenCookie(token: string): void {
   if (!isBrowser()) return;
-  document.cookie = `${TOKEN_COOKIE_NAME}=${token};path=/;SameSite=Lax;max-age=604800`;
+  document.cookie = `${TOKEN_COOKIE_NAME}=${extractTokenExp(token)};path=/;SameSite=Lax;max-age=604800`;
 }
 
 function removeTokenCookie(): void {

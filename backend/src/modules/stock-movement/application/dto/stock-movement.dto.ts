@@ -5,6 +5,7 @@ export interface StockMovementResult {
   quantity: number;
   date: Date;
   reference: string;
+  reason: string;
   notes: string;
   createdBy: string;
   issuedTo: string;
@@ -21,6 +22,7 @@ export interface CreateStockMovementInput {
   quantity: number;
   date?: Date;
   reference?: string;
+  reason?: string;
   notes?: string;
   createdBy?: string;
   issuedTo?: string;
@@ -36,6 +38,7 @@ export interface UpdateStockMovementInput {
   quantity?: number;
   date?: Date;
   reference?: string;
+  reason?: string;
   notes?: string;
   createdBy?: string;
   issuedTo?: string;

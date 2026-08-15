@@ -60,7 +60,12 @@ export class PrismaFinalBoqRepository implements IFinalBoqRepository {
   async save(finalBoq: FinalBoq): Promise<void> {
     await this.prisma.$transaction(async (tx) => {
       await tx.finalBoq.upsert({
-        where: { id: finalBoq.id.toValue() },
+        where: {
+          projectId_businessCode: {
+            projectId: finalBoq.projectId.toValue(),
+            businessCode: finalBoq.businessCode,
+          },
+        },
         create: {
           id: finalBoq.id.toValue(),
           buildingId: finalBoq.buildingId.toValue(),
@@ -94,7 +99,12 @@ export class PrismaFinalBoqRepository implements IFinalBoqRepository {
         }
 
         await tx.finalBoqItem.upsert({
-          where: { id: item.id.toValue() },
+          where: {
+            finalBoqId_businessCode: {
+              finalBoqId: finalBoq.id.toValue(),
+              businessCode: item.businessCode,
+            },
+          },
           create: {
             id: item.id.toValue(),
             finalBoqId: finalBoq.id.toValue(),
@@ -133,7 +143,12 @@ export class PrismaFinalBoqRepository implements IFinalBoqRepository {
           }
 
           await tx.component.upsert({
-            where: { id: component.id.toValue() },
+            where: {
+              finalBoqItemId_businessCode: {
+                finalBoqItemId: item.id.toValue(),
+                businessCode: component.businessCode,
+              },
+            },
             create: {
               id: component.id.toValue(),
               finalBoqItemId: item.id.toValue(),

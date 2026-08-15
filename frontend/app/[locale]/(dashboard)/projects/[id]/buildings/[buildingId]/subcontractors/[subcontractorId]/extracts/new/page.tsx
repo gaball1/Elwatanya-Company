@@ -9,9 +9,10 @@ import BackButton from "@/components/shared/BackButton";
 import ExtractDeductionsTable from "@/components/boq/ExtractDeductionsTable";
 import ExtractSummaryCards from "@/components/boq/ExtractSummaryCards";
 import ExtractWorkItemsTable from "@/components/boq/ExtractWorkItemsTable";
+import OtherAmountsEditor from "@/components/boq/OtherAmountsEditor";
 import DeleteConfirmModal from "@/components/boq/DeleteConfirmModal";
 import { calcExtractItem, fromBoqExtractItem } from "@/lib/extractCalculations";
-import { extractService, type Extract } from "@/services/extract.service";
+import { extractService, type Extract, type OtherAmountItem } from "@/services/extract.service";
 import { contractorBoqService, type ContractorBoqItem } from "@/services/contractorBoq.service";
 import type { ExtractItem } from "@/types/boq";
 import type { ExtractDeduction } from "@/types/finance";
@@ -34,6 +35,7 @@ export default function NewContractorExtractPage() {
   const [status, setStatus] = useState<"running" | "final">("running");
   const [runningNumber, setRunningNumber] = useState(1);
   const [insurancePercent, setInsurancePercent] = useState(5);
+  const [otherAmountItems, setOtherAmountItems] = useState<OtherAmountItem[]>([]);
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
   const [manualDeductions, setManualDeductions] = useState<ExtractDeduction[]>(
     []
@@ -49,7 +51,7 @@ export default function NewContractorExtractPage() {
     previousPaid,
     previousQuantities,
     loading: metaLoading,
-  } = useExtractMeta(buildingId, contractorId, runningNumber);
+  } = useExtractMeta(buildingId, contractorId, runningNumber, status);
 
   useEffect(() => {
     let mounted = true;
@@ -85,6 +87,7 @@ export default function NewContractorExtractPage() {
             current: 0,
             executionPercent: 100,
             unitPrice: b.unitPrice || 0,
+            contractorBoqItemId: b.id,
           })
         );
       }
@@ -98,7 +101,7 @@ export default function NewContractorExtractPage() {
         });
       });
     });
-  }, [metaLoading, previousQuantities, boqItems]);
+  }, [metaLoading, previousQuantities, boqItems, runningNumber, status]);
 
   const updateRow = (idx: number, field: keyof ExtractItem, value: number) => {
     const next = [...rows];
@@ -106,13 +109,16 @@ export default function NewContractorExtractPage() {
     setRows(next);
   };
 
+  const otherAmounts = otherAmountItems.reduce((s, i) => s + (i.amount || 0), 0);
+
   const { totalWorkValue, deductions, totalDeductions, netPayable } =
     useExtractCalculations(
       rows,
       insurancePercent,
       manualDeductions,
-      previousPaid,
-      isArabic
+      otherAmounts,
+      isArabic,
+      previousPaid
     );
 
   const handleAddDeduction = () => {
@@ -272,6 +278,8 @@ export default function NewContractorExtractPage() {
         status,
         insurancePercent,
         previousPaid,
+        otherAmounts,
+        otherAmountItems: otherAmountItems.filter((i) => i.name.trim() !== ""),
         items: rows.map((r) => fromBoqExtractItem(r)),
         manualDeductions: manualDeductionsPayload,
       });
@@ -384,16 +392,13 @@ export default function NewContractorExtractPage() {
         </Card>
       </div>
 
-      {previousPaid > 0 && (
-        <Card className="p-3 bg-info-light border border-blue-200 text-sm">
-          <span className="text-info-dark font-medium">
-            {isArabic
-              ? "ماسبق صرفة (من المستخلصات السابقة):"
-              : "Previously paid:"}{" "}
-            <strong>{previousPaid.toLocaleString()} ج.م</strong>
-          </span>
-        </Card>
-      )}
+      <Card className="p-3">
+        <OtherAmountsEditor
+          isArabic={isArabic}
+          items={otherAmountItems}
+          onChange={setOtherAmountItems}
+        />
+      </Card>
 
       <ExtractWorkItemsTable
         isArabic={isArabic}
@@ -479,28 +484,34 @@ export default function NewContractorExtractPage() {
                         </td>
                         <td className="p-2 text-center">
                           {isManual ? (
+                            <span className="text-text-muted">—</span>
+                          ) : (
+                            <span>
+                              {ded.percent != null ? `${ded.percent}%` : "—"}
+                            </span>
+                          )}
+                        </td>
+                        <td className="p-2 text-center font-bold text-danger">
+                          {isManual ? (
                             <input
                               type="number"
-                              value={ded.percent ?? ""}
+                              min={0}
+                              value={ded.amount ?? ""}
                               onChange={(e) => {
                                 if (manualIdx !== -1) {
                                   handleUpdateDeduction(
                                     manualIdx,
-                                    "percent",
+                                    "amount",
                                     Number(e.target.value)
                                   );
                                 }
                               }}
-                              className="w-16 border-b outline-none focus:border-gold text-center"
-                              min={0}
-                              max={100}
+                              className="w-28 border-b outline-none focus:border-gold text-center"
+                              placeholder="0"
                             />
                           ) : (
-                            <span>{ded.percent || 0}%</span>
+                            <span>{ded.amount?.toLocaleString() || 0} ج.م</span>
                           )}
-                        </td>
-                        <td className="p-2 text-center font-bold text-danger">
-                          {ded.amount?.toLocaleString() || 0} ج.م
                         </td>
                         <td className="p-2 text-center">
                           {isManual ? (
@@ -532,6 +543,7 @@ export default function NewContractorExtractPage() {
       <ExtractSummaryCards
         isArabic={isArabic}
         totalWorkValue={totalWorkValue}
+        otherAmounts={otherAmounts}
         totalDeductions={totalDeductions}
         netPayable={netPayable}
       />

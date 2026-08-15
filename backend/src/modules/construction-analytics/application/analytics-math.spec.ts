@@ -126,7 +126,7 @@ describe('classifyItem', () => {
 describe('earned value', () => {
   it('computes BAC/EV/AC and derived metrics', () => {
     const ds = emptyDataset();
-    ds.project = { id: 'p1', name: 'P1', code: 'C1', status: 'active', startDate: null, progress: 50, client: null };
+    ds.project = { id: 'p1', name: 'P1', code: 'C1', status: 'active', startDate: null, plannedDurationMonths: 24, progress: 50, client: null };
     ds.employerItems = [
       { buildingId: 'b1', itemCode: 'A', description: 'x', unit: 'no', quantity: 10, unitPrice: 100, totalValue: 1000 },
       { buildingId: 'b1', itemCode: 'B', description: 'y', unit: 'no', quantity: 10, unitPrice: 100, totalValue: 1000 },
@@ -164,7 +164,7 @@ describe('earned value', () => {
 describe('progress', () => {
   it('aggregates executed value by building and category', () => {
     const ds = emptyDataset();
-    ds.project = { id: 'p1', name: 'P1', code: 'C1', status: 'active', startDate: null, progress: 0, client: null };
+    ds.project = { id: 'p1', name: 'P1', code: 'C1', status: 'active', startDate: null, plannedDurationMonths: 24, progress: 0, client: null };
     ds.buildings = [{ id: 'b1', name: 'Block A', code: 'A', status: 'active', startDate: null }];
     ds.finalBoqItems = [{ id: 'f1', finalBoqId: 'fb1', businessCode: '10', description: 'Root', unit: 'no', quantity: 1, unitPrice: 1, totalValue: 1, itemStatus: 'active', parentItemId: null }];
     ds.components = [{ id: 'c1', finalBoqItemId: 'f1', businessCode: 'c1', description: 'component', unit: 'no', quantity: 1, unitPrice: 1, totalValue: 1 }];
@@ -259,7 +259,28 @@ describe('boq intelligence', () => {
 describe('plannedPercent', () => {
   it('uses project progress when no start date', () => {
     const ds = emptyDataset();
-    ds.project = { id: 'p1', name: 'P1', code: 'C1', status: 'active', startDate: null, progress: 30, client: null };
+    ds.project = { id: 'p1', name: 'P1', code: 'C1', status: 'active', startDate: null, plannedDurationMonths: 24, progress: 30, client: null };
     expect(plannedPercent(ds)).toBe(30);
+  });
+
+  it('scales elapsed time against the configured planned duration', () => {
+    const ds = emptyDataset();
+    const start = new Date(Date.now() - 3 * 30 * 86400000); // exactly 3 months elapsed
+    ds.project = { id: 'p1', name: 'P1', code: 'C1', status: 'active', startDate: start, plannedDurationMonths: 6, progress: 50, client: null };
+    expect(plannedPercent(ds)).toBe(50);
+  });
+
+  it('falls back to the default 24-month horizon when duration is unset', () => {
+    const ds = emptyDataset();
+    const start = new Date(Date.now() - 3 * 30 * 86400000);
+    ds.project = { id: 'p1', name: 'P1', code: 'C1', status: 'active', startDate: start, plannedDurationMonths: 0, progress: 50, client: null };
+    expect(plannedPercent(ds)).toBe(12.5);
+  });
+
+  it('caps planned percent at 100', () => {
+    const ds = emptyDataset();
+    const start = new Date(Date.now() - 12 * 30 * 86400000);
+    ds.project = { id: 'p1', name: 'P1', code: 'C1', status: 'active', startDate: start, plannedDurationMonths: 6, progress: 50, client: null };
+    expect(plannedPercent(ds)).toBe(100);
   });
 });

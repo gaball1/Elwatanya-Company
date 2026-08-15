@@ -15,6 +15,7 @@ import { ApprovalEntitySyncSubscriber } from './application/approval-entity-sync
 import { PrismaService } from '@/prisma/prisma.service';
 import { PurchaseModule } from '@/modules/purchase/purchase.module';
 import { PurchaseStockService } from '@/modules/purchase/application/purchase-stock.service';
+import { AuditService } from '@/modules/audit/audit.service';
 
 @Module({
   imports: [PrismaModule, PurchaseModule],
@@ -33,13 +34,13 @@ import { PurchaseStockService } from '@/modules/purchase/application/purchase-st
     },
     {
       provide: ApproveApprovalUseCase,
-      useFactory: (repo: IApprovalRepository, eventBus: EventBusImpl) => new ApproveApprovalUseCase(repo, eventBus),
-      inject: [APPROVAL_REPOSITORY, EventBusImpl],
+      useFactory: (repo: IApprovalRepository, eventBus: EventBusImpl, audit: AuditService) => new ApproveApprovalUseCase(repo, eventBus, audit),
+      inject: [APPROVAL_REPOSITORY, EventBusImpl, AuditService],
     },
     {
       provide: RejectApprovalUseCase,
-      useFactory: (repo: IApprovalRepository, eventBus: EventBusImpl) => new RejectApprovalUseCase(repo, eventBus),
-      inject: [APPROVAL_REPOSITORY, EventBusImpl],
+      useFactory: (repo: IApprovalRepository, eventBus: EventBusImpl, audit: AuditService) => new RejectApprovalUseCase(repo, eventBus, audit),
+      inject: [APPROVAL_REPOSITORY, EventBusImpl, AuditService],
     },
     {
       provide: SubmitApprovalUseCase,

@@ -6,6 +6,7 @@ export interface ProjectResult {
   description: string;
   client: string;
   startDate: Date | null;
+  plannedDurationMonths: number;
   status: string;
   progress: number;
   createdAt: Date;

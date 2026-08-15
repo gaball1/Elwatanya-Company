@@ -5,10 +5,12 @@ import { PurchaseResult, toResult } from '../dto/purchase.dto';
 export class ListPurchasesUseCase {
   constructor(private readonly purchaseRepo: IPurchaseRepository) {}
 
-  async execute(projectId?: string): Promise<Result<PurchaseResult[]>> {
-    const purchases = projectId
-      ? await this.purchaseRepo.findByProjectId(projectId)
-      : await this.purchaseRepo.findAll();
+  async execute(projectId?: string, status?: string): Promise<Result<PurchaseResult[]>> {
+    const purchases = status
+      ? await this.purchaseRepo.findByStatus(status, projectId)
+      : projectId
+        ? await this.purchaseRepo.findByProjectId(projectId)
+        : await this.purchaseRepo.findAll();
     return Result.ok(purchases.map(toResult));
   }
 }

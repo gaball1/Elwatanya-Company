@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { notificationService } from '@/services/notification.service';
 
 let cachedUnreadCount = 0;
@@ -12,8 +12,7 @@ function notifyListeners() {
 
 export async function refreshUnreadCount(): Promise<number> {
   try {
-    const items = await notificationService.list();
-    cachedUnreadCount = items.filter((n) => !n.read).length;
+    cachedUnreadCount = await notificationService.unreadCount();
   } catch {
     // keep existing count on failure
   }
@@ -21,25 +20,27 @@ export async function refreshUnreadCount(): Promise<number> {
   return cachedUnreadCount;
 }
 
+export function resetUnreadCount(): void {
+  cachedUnreadCount = 0;
+  notifyListeners();
+}
+
 export function useUnreadCount(): { unreadCount: number; refresh: () => Promise<number> } {
   const [unreadCount, setCount] = useState(cachedUnreadCount);
-  const refreshRef = useRef<() => Promise<number>>(async () => cachedUnreadCount);
+  const refresh = useCallback(() => refreshUnreadCount(), []);
 
   useEffect(() => {
     const listener = (count: number) => setCount(count);
     listeners.push(listener);
-    refreshRef.current();
+    refresh().catch(() => {});
     const interval = setInterval(() => {
-      refreshRef.current().catch(() => {});
+      refresh().catch(() => {});
     }, POLL_INTERVAL_MS);
     return () => {
       clearInterval(interval);
       listeners = listeners.filter((l) => l !== listener);
     };
-  }, []);
-
-  const refresh = useCallback(() => refreshUnreadCount(), []);
-  refreshRef.current = refresh;
+  }, [refresh]);
 
   return { unreadCount, refresh };
 }

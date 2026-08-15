@@ -20,6 +20,8 @@ import {
   UpdateConversationDto,
 } from './dto/conversation.dto';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { RequirePermission } from '../../common/decorators/permissions.decorator';
+import { Permissions } from '../../common/constants/permissions.constant';
 import { Throttle } from '@nestjs/throttler';
 import { Request } from 'express';
 import { ErpKnowledgeService } from './knowledge/erp-knowledge.service';
@@ -28,6 +30,7 @@ import { ConversationMemoryService } from './memory/conversation-memory.service'
 
 @ApiTags('AI Agent')
 @ApiBearerAuth()
+@RequirePermission(Permissions.Profile.Read)
 @Controller('ai-agent')
 export class AiAgentController {
   constructor(
@@ -121,6 +124,7 @@ export class AiAgentController {
 
   @Get('analytics')
   @ApiOperation({ summary: 'Get AI Agent usage analytics' })
+  @RequirePermission(Permissions.Reports.Read)
   getAnalytics() {
     return { success: true, data: this.analytics.getStats() };
   }

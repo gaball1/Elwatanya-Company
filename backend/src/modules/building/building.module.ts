@@ -11,6 +11,7 @@ import { CreateBuildingUseCase } from './application/use-cases/create-building.u
 import { UpdateBuildingUseCase } from './application/use-cases/update-building.use-case';
 import { GetBuildingUseCase } from './application/use-cases/get-building.use-case';
 import { ListBuildingsByProjectUseCase } from './application/use-cases/list-buildings-by-project.use-case';
+import { ListAllBuildingsUseCase } from './application/use-cases/list-all-buildings.use-case';
 import { SoftDeleteBuildingUseCase } from './application/use-cases/soft-delete-building.use-case';
 import { BuildingController } from './building.controller';
 import { IProjectRepository } from '@/modules/project/domain/project.repository';
@@ -56,6 +57,12 @@ import { IProjectRepository } from '@/modules/project/domain/project.repository'
         ownership: OwnershipService,
       ) => new ListBuildingsByProjectUseCase(buildings, projects, ownership),
       inject: [BUILDING_REPOSITORY, PROJECT_REPOSITORY, OwnershipService],
+    },
+    {
+      provide: ListAllBuildingsUseCase,
+      useFactory: (buildings: PrismaBuildingRepository) =>
+        new ListAllBuildingsUseCase(buildings),
+      inject: [BUILDING_REPOSITORY],
     },
     {
       provide: SoftDeleteBuildingUseCase,

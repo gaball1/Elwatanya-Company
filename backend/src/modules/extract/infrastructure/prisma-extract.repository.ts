@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '@/prisma/prisma.service';
 import { UniqueEntityId } from '@/shared/kernel/unique-entity-id.vo';
 import { Extract } from '../domain/extract.entity';
-import { IExtractRepository } from '../domain/extract.repository';
+import { IExtractRepository, ExtractListItem } from '../domain/extract.repository';
 import { ExtractDeduction, ExtractStatus } from '../domain/extract-rules';
 
 function deductionTypeToPrisma(type: ExtractDeduction['type']): 'INSURANCE' | 'PREVIOUS_PAYMENTS' | 'CUSTOM' {
@@ -16,6 +16,19 @@ function deductionTypeFromPrisma(type: string): ExtractDeduction['type'] {
   if (type === 'INSURANCE') return 'insurance';
   if (type === 'PREVIOUS_PAYMENTS') return 'previous_paid';
   return 'manual';
+}
+
+function parseOtherAmountItems(value: Prisma.JsonValue | null): { id: string; name: string; amount: number }[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is { id: string; name: string; amount: number } => {
+    if (!item || typeof item !== 'object') return false;
+    const obj = item as Record<string, unknown>;
+    return typeof obj.id === 'string' && typeof obj.name === 'string' && typeof obj.amount === 'number';
+  }).map((item) => ({
+    id: item.id,
+    name: item.name,
+    amount: item.amount,
+  }));
 }
 
 @Injectable()
@@ -36,6 +49,8 @@ export class PrismaExtractRepository implements IExtractRepository {
           insurancePercent: new Prisma.Decimal(extract.insurancePercent),
           extractDate: extract.extractDate,
           previousPaid: new Prisma.Decimal(extract.previousPaid),
+          otherAmounts: new Prisma.Decimal(extract.otherAmounts),
+          otherAmountItems: extract.otherAmountItems.length ? extract.otherAmountItems : Prisma.JsonNull,
           totalWorkValue: new Prisma.Decimal(extract.totalWorkValue),
           totalDeductions: new Prisma.Decimal(extract.totalDeductions),
           netPayable: new Prisma.Decimal(extract.netPayable),
@@ -50,6 +65,8 @@ export class PrismaExtractRepository implements IExtractRepository {
           insurancePercent: new Prisma.Decimal(extract.insurancePercent),
           extractDate: extract.extractDate,
           previousPaid: new Prisma.Decimal(extract.previousPaid),
+          otherAmounts: new Prisma.Decimal(extract.otherAmounts),
+          otherAmountItems: extract.otherAmountItems.length ? extract.otherAmountItems : Prisma.JsonNull,
           totalWorkValue: new Prisma.Decimal(extract.totalWorkValue),
           totalDeductions: new Prisma.Decimal(extract.totalDeductions),
           netPayable: new Prisma.Decimal(extract.netPayable),
@@ -120,6 +137,51 @@ export class PrismaExtractRepository implements IExtractRepository {
     return records.map((r) => this.toDomain(r));
   }
 
+  async listAll(projectIds?: string[] | null): Promise<ExtractListItem[]> {
+    const records = await this.prisma.statement.findMany({
+      where: {
+        deletedAt: null,
+        ...(projectIds && projectIds.length > 0
+          ? { contractorBoq: { building: { projectId: { in: projectIds } } } }
+          : {}),
+      },
+      include: {
+        contractorBoq: {
+          include: {
+            building: { select: { id: true, name: true, projectId: true, project: { select: { name: true } } } },
+            subcontractor: { select: { id: true, name: true, workType: true } },
+          },
+        },
+        _count: { select: { items: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return records.map((r) => ({
+      id: r.id,
+      projectId: r.contractorBoq.building.projectId,
+      projectName: r.contractorBoq.building.project.name,
+      buildingId: r.contractorBoq.building.id,
+      buildingName: r.contractorBoq.building.name,
+      contractorId: r.contractorBoq.subcontractor.id,
+      contractorName: r.contractorBoq.subcontractor.name,
+      workType: r.contractorBoq.subcontractor.workType,
+      sequenceNumber: r.sequenceNumber,
+      runningNumber: r.runningNumber,
+      status: r.status,
+      label: r.label,
+      extractDate: r.extractDate,
+      insurancePercent: r.insurancePercent.toNumber(),
+      previousPaid: r.previousPaid.toNumber(),
+      otherAmounts: r.otherAmounts.toNumber(),
+      totalWorkValue: r.totalWorkValue.toNumber(),
+      totalDeductions: r.totalDeductions.toNumber(),
+      netPayable: r.netPayable.toNumber(),
+      itemCount: r._count.items,
+      createdAt: r.createdAt,
+    }));
+  }
+
   async delete(id: UniqueEntityId): Promise<void> {
     await this.prisma.statement.update({
       where: { id: id.toValue() },
@@ -137,6 +199,8 @@ export class PrismaExtractRepository implements IExtractRepository {
     insurancePercent: Prisma.Decimal;
     extractDate: Date;
     previousPaid: Prisma.Decimal;
+    otherAmounts: Prisma.Decimal;
+    otherAmountItems: Prisma.JsonValue | null;
     totalWorkValue: Prisma.Decimal;
     totalDeductions: Prisma.Decimal;
     netPayable: Prisma.Decimal;
@@ -183,6 +247,8 @@ export class PrismaExtractRepository implements IExtractRepository {
         insurancePercent: record.insurancePercent.toNumber(),
         extractDate: record.extractDate,
         previousPaid: record.previousPaid.toNumber(),
+        otherAmounts: record.otherAmounts.toNumber(),
+        otherAmountItems: parseOtherAmountItems(record.otherAmountItems),
         totalWorkValue: record.totalWorkValue.toNumber(),
         totalDeductions: record.totalDeductions.toNumber(),
         netPayable: record.netPayable.toNumber(),

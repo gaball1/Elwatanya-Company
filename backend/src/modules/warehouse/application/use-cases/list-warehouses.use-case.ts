@@ -6,6 +6,7 @@ import { IWarehouseRepository } from '../../domain/warehouse.repository';
 export function toResult(w: Warehouse): WarehouseResult {
   return {
     id: w.id.toValue(),
+    projectId: w.projectId,
     code: w.code,
     name: w.name,
     location: w.location,
@@ -18,8 +19,8 @@ export function toResult(w: Warehouse): WarehouseResult {
 export class ListWarehousesUseCase {
   constructor(private readonly warehouses: IWarehouseRepository) {}
 
-  async execute(): Promise<Result<WarehouseResult[]>> {
-    const list = await this.warehouses.findAll();
+  async execute(projectId?: string): Promise<Result<WarehouseResult[]>> {
+    const list = await this.warehouses.findAll(projectId);
     return Result.ok(list.map(toResult));
   }
 }

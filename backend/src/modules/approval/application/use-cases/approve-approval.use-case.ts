@@ -3,30 +3,58 @@ import { IApprovalRepository } from '../../domain/approval.repository';
 import { Result } from '@/shared/kernel/result';
 import { EventBusImpl } from '@/modules/domain-events/event-bus.impl';
 import { ApprovalApprovedEvent } from '@/modules/domain-events/events';
+import { AuditService } from '@/modules/audit/audit.service';
 
 export class ApproveApprovalUseCase {
   constructor(
     private readonly repo: IApprovalRepository,
     private readonly eventBus: EventBusImpl,
+    private readonly audit?: AuditService,
   ) {}
 
-  async execute(id: string, approvedBy: string, comment?: string): Promise<Result<Approval>> {
+  async execute(id: string, approvedBy: string, comment?: string, ip?: string): Promise<Result<Approval>> {
     try {
-      const approval = await this.repo.findById(id);
-      if (!approval) return Result.fail(new Error('Approval request not found'));
-      if (approval.status !== 'pending') return Result.fail(new Error('Only pending requests can be approved'));
-      const updated = await this.repo.update(id, { status: 'approved', approvedBy, comment: comment ?? '', approvedAt: new Date() });
+      const existing = await this.repo.findById(id);
+      if (!existing) return Result.fail(new Error('Approval request not found'));
+      if (existing.requestedBy === approvedBy) {
+        return Result.fail(new Error('You cannot approve your own request'));
+      }
+      // Atomic transition guards against concurrent approve/reject double side-effects.
+      const updated = await this.repo.transition(id, 'pending', 'approved', {
+        approvedBy,
+        comment: comment ?? '',
+        approvedAt: new Date(),
+      });
+      if (!updated) {
+        const existing = await this.repo.findById(id);
+        if (!existing) return Result.fail(new Error('Approval request not found'));
+        return Result.fail(new Error('Only pending requests can be approved'));
+      }
+      const target = updated as Approval;
+      await this.audit?.log({
+        userId: approvedBy,
+        action: `approval.approved`,
+        entity: 'approval',
+        entityId: id,
+        metadata: {
+          entityType: target.entityType,
+          entityId: target.entityId,
+          requestedBy: target.requestedBy,
+          comment: comment ?? '',
+        },
+        ip,
+      });
       await this.eventBus.publish(
         new ApprovalApprovedEvent(
-          approval.id,
+          updated.id,
           'approval',
           {
-            id: approval.id,
-            entityType: approval.entityType,
-            entityId: approval.entityId,
-            title: approval.entityType,
+            id: updated.id,
+            entityType: updated.entityType,
+            entityId: updated.entityId,
+            title: updated.entityType,
             approvedBy,
-            recipientIds: [approval.requestedBy],
+            recipientIds: [updated.requestedBy],
           },
         ),
       );

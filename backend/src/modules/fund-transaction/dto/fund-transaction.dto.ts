@@ -19,10 +19,10 @@ export class CreateFundTransactionDto {
   @IsUUID()
   fundId!: string;
 
-  @ApiProperty({ example: 'add', enum: ['add', 'deduct', 'request'] })
+  @ApiProperty({ example: 'add', enum: ['add', 'deduct', 'request', 'transfer'] })
   @IsString()
   @IsNotEmpty()
-  @IsIn(['add', 'deduct', 'request'])
+  @IsIn(['add', 'deduct', 'request', 'transfer'])
   type!: string;
 
   @ApiProperty({ example: 50000 })
@@ -31,10 +31,10 @@ export class CreateFundTransactionDto {
   @Max(999999999.99)
   amount!: number;
 
-  @ApiPropertyOptional({ example: 'general', enum: ['general', 'purchase', 'miscellaneous'] })
+  @ApiPropertyOptional({ example: 'general', enum: ['general', 'purchase', 'miscellaneous', 'petty_cash', 'extract'] })
   @IsOptional()
   @IsString()
-  @IsIn(['general', 'purchase', 'miscellaneous'])
+  @IsIn(['general', 'purchase', 'miscellaneous', 'petty_cash', 'extract'])
   category?: string;
 
   @ApiPropertyOptional({ example: 'دفعة مقدمة للمقاول' })
@@ -83,7 +83,7 @@ export class UpdateFundTransactionDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
-  @IsIn(['add', 'deduct', 'request'])
+  @IsIn(['add', 'deduct', 'request', 'transfer'])
   type?: string;
 
   @ApiPropertyOptional()
@@ -96,7 +96,7 @@ export class UpdateFundTransactionDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
-  @IsIn(['general', 'purchase', 'miscellaneous'])
+  @IsIn(['general', 'purchase', 'miscellaneous', 'petty_cash', 'extract'])
   category?: string;
 
   @ApiPropertyOptional()

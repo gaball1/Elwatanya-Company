@@ -13,6 +13,8 @@ import { SelfEvaluationService } from './evaluation/self-evaluation.service';
 import { ConversationService } from './nl/conversation.service';
 import { AgentHttpClient } from './tools/http-client';
 import { AgentAnalyticsService } from './analytics/agent-analytics.service';
+import { LlmAgentService } from './llm/llm-agent.service';
+import { AuditService } from '../audit/audit.service';
 import { BaseWorkflow, WorkflowState } from './workflows/base.workflow';
 import { sanitizeUuids, pickBest } from './tools/resolution.utils';
 import { v4 as uuidv4 } from 'uuid';
@@ -57,6 +59,8 @@ export class AiAgentService {
     private readonly conversation: ConversationService,
     private readonly api: AgentHttpClient,
     private readonly analytics: AgentAnalyticsService,
+    private readonly llmAgent: LlmAgentService,
+    private readonly audit: AuditService,
   ) {}
 
   async processMessage(
@@ -73,6 +77,42 @@ export class AiAgentService {
     // Check for active workflow first
     if (this.workflows.hasActiveWorkflow(conversationId)) {
       return this.resumeWorkflow(conversationId, dto, user);
+    }
+
+    // Follow-up "show the full list" (e.g. "اعرض القائمة الكاملة") after a list
+    // offer re-runs the last list tool and forces the formatter to print every
+    // item instead of offering a follow-up question again.
+    const lastListIntent = (this.context.get(conversationId) as any)._lastListIntent as IntentResult | undefined;
+    const wantsFullList = !!lastListIntent && this.isShowFullListConfirmation(dto.message);
+    this.context.set(conversationId, '_showFullList', wantsFullList ? true : undefined);
+    if (wantsFullList && lastListIntent) {
+      this.logger.log(`Full-list confirmation — re-running ${lastListIntent.intent}`);
+      this.analytics.trackRequest(lastListIntent.intent);
+      return this.executeSingleTool({ ...lastListIntent }, conversationId, dto, user);
+    }
+
+    // LLM-first: when a provider is configured, let the model choose and
+    // execute tools against real ERP data. Falls back to the deterministic
+    // planner when no key is present or the call fails.
+    if (this.llmAgent.isAvailable()) {
+      const history = (await this.memory.getHistory(conversationId)).slice(0, -1);
+      this.analytics.trackRequest('llm');
+      const llmResponse = await this.llmAgent.process(dto.message, conversationId, user, history);
+      if (!(llmResponse as any)?.metadata?.needsFallback) {
+        await this.memory.add(
+          conversationId,
+          {
+            role: 'assistant',
+            message: llmResponse.message,
+            timestamp: new Date(),
+            intent: llmResponse.intent,
+            toolResults: llmResponse.data,
+          },
+          undefined,
+        );
+        return llmResponse;
+      }
+      this.logger.warn('LLM path failed — falling back to deterministic engine');
     }
 
     const intent = this.planner.classify(dto.message, this.context.getAll(conversationId));
@@ -129,7 +169,11 @@ export class AiAgentService {
     }
 
     // Generic fallback
-    const fallback = `I understood you want to work with "${intent.entities?.entity || 'data'}". How can I help you with that?`;
+    const ar = this.isArabicText(dto.message);
+    const entity = intent.entities?.entity || 'data';
+    const fallback = ar
+      ? `فهمت أنك تريد العمل مع "${entity}". كيف يمكنني مساعدتك في ذلك؟`
+      : `I understood you want to work with "${entity}". How can I help you with that?`;
     return this.buildResponse(true, fallback, intent.intent, conversationId, null, null);
   }
 
@@ -174,6 +218,9 @@ export class AiAgentService {
 
       if (result.success && result.data) {
         this.updateContextFromResult(conversationId, intent.intent, result.data);
+        if (intent.intent.startsWith('list_') || intent.intent.startsWith('show_')) {
+          this.context.set(conversationId, '_lastListIntent', intent);
+        }
       }
 
       // Self-evaluation
@@ -245,17 +292,19 @@ export class AiAgentService {
     }
 
     await this.ensureProjectIdFromName(conversationId, user);
-    const context = this.context.getAll(conversationId);
-    const missingFields = workflow.validateContext(context);
 
     // Enrich workflow-specific context from what the user already provided
-    this.extractWorkflowArgs(_dto.message, workflow, context);
-    const remainingMissing = workflow.validateContext({ ...context, ...this.context.getAll(conversationId) });
+    this.extractWorkflowArgs(conversationId, _dto.message, workflow);
+    const enriched = this.context.getAll(conversationId);
+    const remainingMissing = workflow.validateContext(enriched);
 
     if (remainingMissing.length > 0) {
       this.context.set(conversationId, 'activeWorkflow', workflowName);
       this.context.set(conversationId, 'workflowPhase', workflow.phases[0]?.name || 'starting');
       this.context.set(conversationId, 'workflowStep', 0);
+      // Persist an active workflow state so the next user message resumes this
+      // workflow instead of being classified as a brand-new request.
+      this.workflows.setState(conversationId, workflow.createState(enriched));
 
       const phaseNames = workflow.phases.map((p) => `  • ${p.description}`).join('\n');
       const fields = remainingMissing.map((f) => `  • ${f}`).join('\n');
@@ -270,7 +319,7 @@ export class AiAgentService {
     }
 
     // Execute workflow
-    return this.executeWorkflowSteps(workflow, conversationId, context, user, intent);
+    return this.executeWorkflowSteps(workflow, conversationId, enriched, user, intent);
   }
 
   private async resumeWorkflow(
@@ -290,7 +339,7 @@ export class AiAgentService {
     }
 
     // Update context with any values from the user's message
-    this.extractWorkflowArgs(dto.message, workflow, this.context.getAll(conversationId));
+    this.extractWorkflowArgs(conversationId, dto.message, workflow);
     await this.ensureProjectIdFromName(conversationId, user);
 
     const context = this.context.getAll(conversationId);
@@ -539,7 +588,20 @@ export class AiAgentService {
   }
 
   private buildWhyReasoning(intent: string, results: ToolResult[], ar = false): string {
-    const data = results[0]?.data || {};
+    const raw = results[0]?.data || {};
+    // The delayed_project_impact chain runs list_projects first, which returns
+    // a bare array. Normalize it into the same shape project_summary provides
+    // so the counts below are real numbers, never "0 projects".
+    const data = Array.isArray(raw)
+      ? {
+          total: raw.length,
+          active: raw.filter((p: any) => p.status === 'active').length,
+          completed: raw.filter((p: any) => p.status === 'completed').length,
+          onHold: raw.filter(
+            (p: any) => String(p.status || '').toLowerCase().replace('-', '_') === 'on_hold',
+          ).length,
+        }
+      : raw;
 
     if (ar) {
       switch (intent) {
@@ -612,20 +674,33 @@ export class AiAgentService {
     }
   }
 
-  private extractWorkflowArgs(message: string, workflow: BaseWorkflow, context: Record<string, any>): void {
-    const lower = message.toLowerCase();
+  private extractWorkflowArgs(conversationId: string, message: string, workflow: BaseWorkflow): void {
+    const context = this.context.getAll(conversationId);
 
-    const clientMatch = message.match(/client\s+(?:is\s+)?["']?([^"'\n]+?)["']?(?:\s+and|\s*$|\.)/i);
-    if (clientMatch && workflow.validateContext(context).includes('clientName')) context.clientName = clientMatch[1].trim();
+    // Follow-delimiter shared by the value captures below: stop at commas,
+    // "and"/"or", the end of the message, or the next field keyword so values
+    // can be parsed even when the user does not separate them with commas.
+    const stop = '(?:\\s*,\\s*|\\s+and\\s+|\\s+or\\s+|\\s*$|\\.|\\s+(?:phone|location|date|budget|client|code|type|status)\\b)';
 
-    const nameMatch = message.match(/(?:project|building|employee)\s+(?:name\s+)?(?:is\s+)?["']?([^"'\n]+?)["']?(?:\s+and|\s*$|\.)/i);
-    if (nameMatch) {
-      const val = nameMatch[1].trim();
-      if (!context.projectName) context.projectName = val;
-      if (!context.employeeName) context.employeeName = val;
+    const clientMatch = message.match(new RegExp(`client\\s+(?:is\\s+)?["']?([^"'\n,]+?)["']?${stop}`, 'i'));
+    if (clientMatch && workflow.getRequiredFields().includes('clientName') && !context.clientName) {
+      context.clientName = clientMatch[1].trim();
     }
 
-    const locationMatch = message.match(/location\s+(?:is\s+)?["']?([^"'\n]+?)["']?(?:\s+and|\s*$|\.)/i);
+    const nameMatch = message.match(new RegExp(`(project|building|employee)\\s+(name\\s+)?(is\\s+)?["']?([^"'\n,]+?)["']?${stop}`, 'i'));
+    if (nameMatch) {
+      const kind = nameMatch[1].toLowerCase();
+      const val = nameMatch[4].trim();
+      // A bare "project X" mention only fills the value when it isn't already
+      // known, but an explicit "X name is ..." always wins so it can overwrite
+      // a fragment ("name") picked up by resolveEntitiesFromMessage.
+      const explicit = !!nameMatch[2];
+      if (kind === 'project' && (explicit || !context.projectName)) context.projectName = val;
+      else if (kind === 'building' && (explicit || !context.buildingName)) context.buildingName = val;
+      else if (kind === 'employee' && (explicit || !context.employeeName)) context.employeeName = val;
+    }
+
+    const locationMatch = message.match(new RegExp(`location\\s+(?:is\\s+)?["']?([^"'\n,]+?)["']?${stop}`, 'i'));
     if (locationMatch && !context.projectLocation) context.projectLocation = locationMatch[1].trim();
 
     const dateMatch = message.match(/(?:start\s+)?date\s+(?:is\s+)?["']?(\d{4}-\d{2}-\d{2})["']?/i);
@@ -651,10 +726,42 @@ export class AiAgentService {
       if (!context.projectId) context.projectId = uuids[0];
       if (!context.buildingId && uuids[1]) context.buildingId = uuids[1];
     }
+
+    // Persist back into the engine: getAll() returns a copy, so extracted
+    // values must be written through here to survive to the next turn/step.
+    this.context.update(conversationId, context);
   }
 
   private isArabicText(text: string): boolean {
     return /[\u0600-\u06FF]/.test(text || '');
+  }
+
+  /**
+   * Detect a follow-up that confirms showing the full list after the agent
+   * offered one ("وجدت 11 مقاول. هل تريد أن أعرض لك القائمة كاملة؟").
+   * Messages that name a specific entity ("اعرض قائمة المقاولين الكاملة") are
+   * NOT treated as confirmations — the normal planner handles those.
+   */
+  private isShowFullListConfirmation(message: string): boolean {
+    const lower = message.toLowerCase().trim();
+    const explicitEntity = /(مقاول|مورد|عميل|موظف|مشتريات|مستخلص|مخزن|صناديق|صندوق|بنود|بند|مشروع|مشاريع|مخزون|اصناف|أصناف|building|project|purchase|subcontractor|supplier|client|employee|extract|payment|inventory|fund|warehouse|item|product)/.test(lower);
+    if (explicitEntity) return false;
+
+    // Arabic: "اعرض القائمة كاملة" / "القائمة كلها" / "الكل" + a show verb
+    if (/(القائمه|القائمة|الليست|قائمة|قائمه)/.test(lower)) {
+      if (/(كامله|كاملة|الكامله|الكاملة|بالكامل|بكامل|كلها|كلهم|الكل|جميع)/.test(lower)) return true;
+    }
+    if (/(الكل|كلهم|كلها|جميع|كلهم)/.test(lower) &&
+        /(اعرض|وريني|ورينى|عرض|اديني|ادينى|جيب|اكشف|اظهر|أظهر|شوف|عايز|عايزة|ممكن)/.test(lower)) return true;
+
+    // Short Arabic confirmations after a list offer
+    if (/^(نعم|تمام|ايوه|أيوه|ايوة|اه|آه|اكيد|أكيد|طبعا|طيب|خلاص|اوكي|أوكي|موافق|براحتك|عرضهم|وريهم|اوريهم|أوريهم|شوفهم)$/.test(lower)) return true;
+
+    // English: "show the full list" / "show all" / "all of them"
+    if (/\b(show|display|get)\b.*\b(full|complete|all|entire)\b.*\blist\b/.test(lower)) return true;
+    if (/\bshow all\b|\ball of them\b|\bfull list\b|\bcomplete list\b|\bthe whole list\b/.test(lower)) return true;
+
+    return false;
   }
 
   private extractArgsFromMessage(message: string, args: Record<string, any>): void {
@@ -663,6 +770,21 @@ export class AiAgentService {
     if (nameMatch) args.name = nameMatch[1] || nameMatch[2];
     const statusMatch = lower.match(/(active|completed|on_hold|pending|approved|rejected|draft|cancelled)/);
     if (statusMatch) args.status = statusMatch[1];
+    const arabicStatusMap: Record<string, string> = {
+      'المعلقة': 'pending', 'المعلقه': 'pending', 'معلقة': 'pending', 'معلقه': 'pending',
+      'قيد المراجعة': 'pending', 'قيد الانتظار': 'pending',
+      'المعتمدة': 'approved', 'المعتمد': 'approved', 'معتمدة': 'approved', 'معتمد': 'approved',
+      'المرفوضة': 'rejected', 'المرفوضه': 'rejected', 'مرفوض': 'rejected', 'مرفوضة': 'rejected',
+      'المكتملة': 'completed', 'المكتمله': 'completed', 'مكتملة': 'completed', 'مكتمله': 'completed',
+      'الملغية': 'cancelled', 'الملغيه': 'cancelled', 'ملغي': 'cancelled', 'ملغيه': 'cancelled',
+      'النشطة': 'active', 'النشطه': 'active', 'نشط': 'active', 'نشطة': 'active', 'نشطه': 'active',
+    };
+    for (const [kw, st] of Object.entries(arabicStatusMap)) {
+      if (lower.includes(kw)) {
+        args.status = st;
+        break;
+      }
+    }
     const uuidMatch = message.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
     if (uuidMatch) {
       if (!args.projectId) args.projectId = uuidMatch[0];
@@ -710,9 +832,10 @@ export class AiAgentService {
       this.context.set(conversationId, 'projectName', code);
     }
 
-    // "project X" mention
+    // "project X" mention (skip "project name is ..." — that pattern is handled
+    // by extractWorkflowArgs, which would otherwise be blocked by this fragment)
     const projectMention = this.extractNameAfter(message, /(?:project|مشروع)\s+/i);
-    if (projectMention && !codeMatch) {
+    if (projectMention && !codeMatch && !/^name\b/i.test(projectMention)) {
       this.context.set(conversationId, 'currentProjectName', projectMention);
       this.context.set(conversationId, 'projectName', projectMention);
     }
@@ -738,10 +861,10 @@ export class AiAgentService {
       this.context.set(conversationId, 'supplierName', supplierMention);
     }
 
-    // Item mention from Arabic "where is X" (e.g. "فين الحديد")
-    const itemMention = message.match(/(?:فين|اين|وين)\s+(.+)/i);
+    // Item mention from Arabic "where is X" (e.g. "فين الحديد") or "المخزن فيه X كام"
+    const itemMention = message.match(/(?:فين|اين|وين)\s+(.+)|(?:المخزن|المخزون|مخزن|مخزون|المخازن|مخازن).*(?:فيه|فية|فيا)\s+(.+)/i);
     if (itemMention) {
-      const name = this.cleanNameFragment(itemMention[1].replace(/[؟?]+$/, ''));
+      const name = this.cleanNameFragment((itemMention[1] || itemMention[2] || '').replace(/[؟?]+$/, ''));
       if (name) {
         this.context.set(conversationId, 'currentItemName', name);
         this.context.set(conversationId, 'itemName', name);
@@ -895,16 +1018,12 @@ export class AiAgentService {
   }
 
   private async logAudit(userId: string, action: string, result: ToolResult | { success: boolean; data?: any }, metadata: any): Promise<void> {
-    try {
-      await this.api.post('/api/v1/audit', {
-        userId,
-        action: `AI_AGENT_${action.toUpperCase()}`,
-        entity: 'ai-agent',
-        entityId: userId,
-        metadata: { success: result.success, action, ...metadata },
-      }, '');
-    } catch {
-      this.logger.warn('Failed to log audit entry');
-    }
+    await this.audit.log({
+      userId,
+      action: `AI_AGENT_${action.toUpperCase()}`,
+      entity: 'ai-agent',
+      entityId: userId,
+      metadata: { success: result.success, action, ...metadata },
+    });
   }
 }

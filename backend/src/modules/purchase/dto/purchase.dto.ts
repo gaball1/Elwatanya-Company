@@ -59,10 +59,10 @@ export class CreatePurchaseDto {
   @MaxLength(1000)
   notes?: string;
 
-  @ApiPropertyOptional({ example: 'data:application/pdf;base64,...' })
-  @IsOptional()
+  @ApiProperty({ example: 'data:application/pdf;base64,...' })
   @IsString()
-  invoiceFile?: string;
+  @IsNotEmpty()
+  invoiceFile!: string;
 
   @ApiPropertyOptional({ example: 'شركة المواد الممتازة' })
   @IsOptional()
@@ -167,4 +167,9 @@ export class UpdatePurchaseStatusDto {
   @IsNotEmpty()
   @IsIn(['approved', 'received', 'cancelled'])
   status!: 'approved' | 'received' | 'cancelled';
+
+  @ApiPropertyOptional({ example: 'a1b2c3d4-...' })
+  @IsOptional()
+  @IsUUID()
+  warehouseId?: string;
 }

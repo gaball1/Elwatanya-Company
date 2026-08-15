@@ -2,8 +2,10 @@ export type TreasurySourceType =
   | "extract"
   | "purchase"
   | "miscellaneous"
+  | "income"
   | "initial"
-  | "adjustment";
+  | "adjustment"
+  | "payment";
 
 export type DeductionType = "manual" | "insurance" | "previous_paid";
 
@@ -24,20 +26,25 @@ export interface TreasuryTransaction {
   amount: number;
   description: string;
   date: string;
+  status?: "pending" | "approved" | "rejected";
   notes?: string;
+  previousBalance?: number;
+  currentBalance?: number;
   metadata?: {
     buildingId?: string;
     contractorId?: string;
     contractorName?: string;
     extractLabel?: string;
     category?: string;
+    source?: string;
+    paymentId?: string;
   };
 }
 
 export interface FundTransaction {
   id: string;
-  type: "add" | "deduct" | "request";
-  category: "purchase" | "miscellaneous" | "general";
+  type: "add" | "deduct" | "request" | "transfer";
+  category: "purchase" | "miscellaneous" | "general" | "petty_cash" | "extract";
   amount: number;
   description: string;
   date: string;
@@ -50,6 +57,7 @@ export interface ProjectFund {
   projectId: string;
   initialBalance: number;
   currentBalance: number;
+  pettyCashBalance: number;
   lastUpdated: string;
   transactions: FundTransaction[];
 }

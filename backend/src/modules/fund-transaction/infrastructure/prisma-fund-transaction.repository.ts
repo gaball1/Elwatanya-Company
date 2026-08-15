@@ -3,12 +3,13 @@ import { PrismaService } from '@/prisma/prisma.service';
 import { UniqueEntityId } from '@/shared/kernel/unique-entity-id.vo';
 import { FundTransaction, FundTransactionType, FundTransactionCategory, FundTransactionStatus } from '../domain/fund-transaction.entity';
 import { IFundTransactionRepository } from '../domain/fund-transaction.repository';
+import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class PrismaFundTransactionRepository implements IFundTransactionRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  async save(transaction: FundTransaction): Promise<void> {
+  async save(transaction: FundTransaction, tx?: Prisma.TransactionClient): Promise<void> {
     const data = {
       fundId: transaction.fundId,
       type: transaction.type,
@@ -24,7 +25,8 @@ export class PrismaFundTransactionRepository implements IFundTransactionReposito
       updatedAt: new Date(),
     };
 
-    await this.prisma.fundTransaction.upsert({
+    const client = tx ?? this.prisma;
+    await client.fundTransaction.upsert({
       where: { id: transaction.id.toValue() },
       create: {
         id: transaction.id.toValue(),

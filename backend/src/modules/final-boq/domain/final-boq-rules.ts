@@ -59,6 +59,8 @@ export interface FinalItemStateInput {
 export interface FinalItemStateOutput extends FinalItemStateInput {
   remainingQuantity: number;
   components: ComponentStateOutput[];
+  /** Distribution for non-analyzed items (componentId === null). Empty for analyzed items. */
+  itemDistribution: ComponentStateOutput['distribution'];
 }
 
 /**
@@ -94,6 +96,64 @@ export function getComponentAllocatedQty(
     }
   }
   return sum;
+}
+
+/**
+ * Sum of component values (quantity × unitPrice).
+ * Used to guard analyzed item budgets against the parent item price.
+ */
+export function sumComponentValues(
+  components: { quantity: number; unitPrice: number }[],
+): number {
+  let sum = 0;
+  for (const c of components) {
+    sum += c.quantity * c.unitPrice;
+  }
+  return sum;
+}
+
+/**
+ * Budget rule: analyzed component totals must NOT exceed the parent item's
+ * original total price (item.quantity × item.unitPrice). Mirrors the budget
+ * validation exposed in the final BOQ UI.
+ */
+export function validateComponentsWithinBudget(
+  itemTotalValue: number,
+  components: { quantity: number; unitPrice: number }[],
+): { ok: true } | { ok: false; error: string } {
+  const total = sumComponentValues(components);
+  if (total > itemTotalValue) {
+    return {
+      ok: false,
+      error: `إجمالي التحليل (${total}) يتجاوز القيمة الإجمالية للبند (${itemTotalValue})`,
+    };
+  }
+  return { ok: true };
+}
+
+/** Build item-level distribution entries from allocations with no componentId. */
+function buildItemDistribution(
+  allocations: AllocationRef[],
+  itemCode: string,
+  quantity: number,
+  assignedAt: string,
+): ComponentStateOutput['distribution'] {
+  const distribution: ComponentStateOutput['distribution'] = [];
+  for (const a of allocations) {
+    if (
+      a.itemCode === itemCode &&
+      (a.componentId === null || a.componentId === undefined)
+    ) {
+      distribution.push({
+        contractorId: a.contractorId,
+        contractorName: a.contractorName || a.contractorId,
+        quantity: a.assignedQuantity,
+        percentage: (a.assignedQuantity / quantity) * 100,
+        assignedAt,
+      });
+    }
+  }
+  return distribution;
 }
 
 /**
@@ -145,6 +205,7 @@ export function syncFinalItemState(
       components,
       status,
       remainingQuantity: Math.max(0, item.quantity - allocated),
+      itemDistribution: [],
     };
   }
 
@@ -167,7 +228,53 @@ export function syncFinalItemState(
     })),
     status,
     remainingQuantity: Math.max(0, item.quantity - allocated),
+    itemDistribution: buildItemDistribution(
+      allocations,
+      item.itemCode,
+      item.quantity,
+      assignedAt,
+    ),
   };
+}
+
+/**
+ * Business rule (user-approved):
+ * Once a final item has been analyzed (has components) or distributed
+ * (has allocations), its quantity can no longer be decreased — neither in
+ * the analytical BOQ nor the final BOQ. Increases are always allowed and
+ * become available for distribution.
+ */
+export interface FinalItemCommitState {
+  isAnalyzed: boolean;
+  status?: string;
+  itemStatus?: string;
+  components?: unknown[];
+  componentCount?: number;
+}
+
+export function isFinalItemCommitted(item: FinalItemCommitState | null | undefined): boolean {
+  if (!item) return false;
+  const componentCount = item.componentCount ?? item.components?.length ?? 0;
+  const analyzed = item.isAnalyzed && componentCount > 0;
+  const status = item.itemStatus ?? item.status ?? 'pending';
+  const distributed = status !== 'pending';
+  return analyzed || distributed;
+}
+
+/**
+ * Returns the analytical source items that attempt to DECREASE the quantity
+ * of a final BOQ item that has already been analyzed or distributed.
+ * Used to block the analytical→final sync before it corrupts allocations.
+ */
+export function findCommittedDecreaseViolations(
+  analyticalItems: AnalyticalSourceItem[],
+  current: FinalItemStateInput[],
+): AnalyticalSourceItem[] {
+  return analyticalItems.filter((a) => {
+    const existing = current.find((f) => f.itemCode === a.itemCode);
+    if (!existing) return false;
+    return isFinalItemCommitted(existing) && a.quantity < existing.quantity;
+  });
 }
 
 export interface AnalyticalSourceItem {
@@ -247,6 +354,9 @@ export function syncFinalFromAnalytical(
         isAnalyzed: hasComponents,
         status: newStatus,
         components: updatedComponents,
+        itemDistribution: hasComponents
+          ? []
+          : buildItemDistribution(allocations, a.itemCode, a.quantity, assignedAt),
       };
     }
 
@@ -256,6 +366,12 @@ export function syncFinalFromAnalytical(
       isAnalyzed: false,
       status: 'pending' as const,
       components: [],
+      itemDistribution: buildItemDistribution(
+        allocations,
+        a.itemCode,
+        a.quantity,
+        assignedAt,
+      ),
     };
   });
 }
@@ -273,6 +389,10 @@ export function applyFinalItemQuantityUpdate(
 ): FinalItemStateOutput | null {
   const allocated = getAllocatedQty(allocations, item.itemCode);
   if (newQuantity < allocated) {
+    return null;
+  }
+
+  if (isFinalItemCommitted(item) && newQuantity < item.quantity) {
     return null;
   }
 
@@ -328,6 +448,7 @@ export function applyFinalItemQuantityUpdate(
       status,
       remainingQuantity: Math.max(0, newQuantity - allocated),
       isAnalyzed: true,
+      itemDistribution: [],
     };
   }
 
@@ -345,6 +466,12 @@ export function applyFinalItemQuantityUpdate(
     components: [],
     status,
     remainingQuantity: Math.max(0, newQuantity - allocated),
+    itemDistribution: buildItemDistribution(
+      allocations,
+      item.itemCode,
+      newQuantity,
+      assignedAt,
+    ),
   };
 }
 
@@ -371,6 +498,42 @@ export function validateComponentDistribution(
         error: `الكمية الموزعة على المقاول ${d.contractorId} يجب أن تكون أكبر من صفر`,
       };
     }
+  }
+
+  return { ok: true };
+}
+
+/**
+ * Partial distribution validation.
+ * Allows distributing a portion now and the rest later, as long as the total
+ * (already allocated + new entries) does not exceed the component/item quantity.
+ */
+export function validatePartialComponentDistribution(
+  componentQuantity: number,
+  alreadyAllocated: number,
+  distribution: { contractorId: string; quantity: number }[],
+): { ok: true } | { ok: false; error: string } {
+  if (distribution.length === 0) {
+    return { ok: false, error: 'يجب توزيع كمية واحدة على الأقل' };
+  }
+
+  let total = 0;
+  for (const d of distribution) {
+    if (d.quantity <= 0) {
+      return {
+        ok: false,
+        error: `الكمية الموزعة على المقاول ${d.contractorId} يجب أن تكون أكبر من صفر`,
+      };
+    }
+    total += d.quantity;
+  }
+
+  const available = componentQuantity - alreadyAllocated;
+  if (total > available) {
+    return {
+      ok: false,
+      error: `مجموع الكميات الموزعة (${total}) يتجاوز الكمية المتاحة (${Math.max(0, available)})`,
+    };
   }
 
   return { ok: true };

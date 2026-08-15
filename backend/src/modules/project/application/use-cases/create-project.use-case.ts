@@ -45,6 +45,7 @@ export class CreateProjectUseCase {
       description: input.description,
       client: input.client,
       startDate: input.startDate,
+      plannedDurationMonths: input.plannedDurationMonths,
       status: input.status,
       progress: input.progress,
     });
@@ -89,6 +90,7 @@ export function toProjectResult(project: Project): ProjectResult {
     description: project.description,
     client: project.client,
     startDate: project.startDate,
+    plannedDurationMonths: project.plannedDurationMonths,
     status: project.status,
     progress: project.progress,
     createdAt: project.createdAt,

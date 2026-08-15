@@ -3,6 +3,7 @@ import { BaseTool } from './base.tool';
 import { AgentHttpClient } from './http-client';
 import { ToolResult } from '../dto/agent-response.dto';
 import { ListContractorExtractsTool } from './erp-resolution.tools';
+import { schema } from './tool-schemas';
 
 @Injectable()
 export class ListSubcontractorsTool extends BaseTool {
@@ -10,6 +11,7 @@ export class ListSubcontractorsTool extends BaseTool {
   readonly description = 'List all subcontractors';
   readonly requiresPermission = 'subcontractors.read';
   readonly requiredEntity = 'subcontractor';
+  readonly parameters = schema({});
 
   constructor(private readonly api: AgentHttpClient) { super(); }
 

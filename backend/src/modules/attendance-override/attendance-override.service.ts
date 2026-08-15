@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationService } from '@/common/services/notification.service';
 import { AuditService } from '@/modules/audit/audit.service';
@@ -85,26 +85,36 @@ export class AttendanceOverrideService {
         status: 'pending',
       },
     });
-    if (existingPending) {
-      throw new NotFoundException(
-        `A pending ${type} override request already exists for this employee`,
-      );
-    }
 
-    const override = await this.prisma.attendanceOverride.create({
-      data: {
-        attendanceId,
-        requestedBy: data.requestedBy,
-        approvedBy: null,
-        reason: data.reason,
-        status: 'pending',
-        type,
-        distance: data.distance ?? null,
-        employeeId,
-        date,
-        payload: (data.snapshot as any) ?? undefined,
-      },
-    });
+    let override;
+    if (existingPending) {
+      // Re-submission: refresh the pending request instead of failing, so the
+      // employee can update their reason/snapshot after a rejected or retried flow.
+      override = await this.prisma.attendanceOverride.update({
+        where: { id: existingPending.id },
+        data: {
+          reason: data.reason,
+          distance: data.distance ?? existingPending.distance,
+          payload: (data.snapshot as any) ?? existingPending.payload,
+          attendanceId: attendanceId ?? existingPending.attendanceId,
+        },
+      });
+    } else {
+      override = await this.prisma.attendanceOverride.create({
+        data: {
+          attendanceId,
+          requestedBy: data.requestedBy,
+          approvedBy: null,
+          reason: data.reason,
+          status: 'pending',
+          type,
+          distance: data.distance ?? null,
+          employeeId,
+          date,
+          payload: (data.snapshot as any) ?? undefined,
+        },
+      });
+    }
 
     const requester = employeeId
       ? await this.prisma.employee.findUnique({
@@ -127,11 +137,16 @@ export class AttendanceOverrideService {
       ip: data.ip,
     });
 
+    const isCheckIn = type === 'check_in';
     await this.notifications.createForRoles(this.MANAGER_ROLES, {
-      title: 'طلب تصحيح حضور',
-      titleEn: 'Attendance Override Request',
-      message: `طلب تصحيح حضور جديد${requester ? ` من ${requester.fullName}` : ''}: ${data.reason}`,
-      messageEn: `New attendance override request${requester ? ` by ${requester.fullName}` : ''}: ${data.reason}`,
+      title: isCheckIn ? 'طلب تسجيل حضور' : 'طلب تسجيل انصراف',
+      titleEn: isCheckIn ? 'Attendance Check-in Request' : 'Attendance Check-out Request',
+      message: isCheckIn
+        ? `طلب تسجيل حضور جديد${requester ? ` من ${requester.fullName}` : ''}: ${data.reason}`
+        : `طلب تسجيل انصراف جديد${requester ? ` من ${requester.fullName}` : ''}: ${data.reason}`,
+      messageEn: isCheckIn
+        ? `New attendance check-in request${requester ? ` by ${requester.fullName}` : ''}: ${data.reason}`
+        : `New attendance check-out request${requester ? ` by ${requester.fullName}` : ''}: ${data.reason}`,
       type: 'warning',
       entityType: 'attendance_override',
       entityId: override.id,
@@ -152,6 +167,33 @@ export class AttendanceOverrideService {
         },
       ),
     );
+
+    return { override };
+  }
+
+  async updateReason(id: string, reason: string, updatedBy?: string | null, ip?: string) {
+    const existing = await this.prisma.attendanceOverride.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundException('Override request not found');
+    if (existing.status !== 'pending') {
+      throw new ConflictException('Override request is no longer pending');
+    }
+    if (!reason || !reason.trim()) {
+      throw new BadRequestException('Override reason is required');
+    }
+
+    const override = await this.prisma.attendanceOverride.update({
+      where: { id },
+      data: { reason: reason.trim() },
+    });
+
+    await this.audit.log({
+      userId: updatedBy ?? existing.requestedBy,
+      action: 'attendance-override.reason-updated',
+      entity: 'attendanceOverride',
+      entityId: override.id,
+      metadata: { type: override.type },
+      ip,
+    });
 
     return { override };
   }
@@ -182,10 +224,10 @@ export class AttendanceOverrideService {
     if (existing.requestedBy && (await this.isValidUser(existing.requestedBy))) {
       await this.notifications.createForUser(existing.requestedBy, {
         type: 'success',
-        title: 'تمت الموافقة على تصحيح الحضور',
-        titleEn: 'Attendance Override Approved',
-        message: 'تمت الموافقة على طلب تصحيح الحضور الخاص بك',
-        messageEn: 'Your attendance override request was approved',
+        title: 'تمت الموافقة على طلب الحضور',
+        titleEn: 'Attendance Request Approved',
+        message: 'تمت الموافقة على طلب الحضور الخاص بك',
+        messageEn: 'Your attendance request was approved',
         entityType: 'attendance_override',
         entityId: override.id,
         link: '/attendance',
@@ -236,10 +278,10 @@ export class AttendanceOverrideService {
     if (existing.requestedBy && (await this.isValidUser(existing.requestedBy))) {
       await this.notifications.createForUser(existing.requestedBy, {
         type: 'error',
-        title: 'تم رفض تصحيح الحضور',
-        titleEn: 'Attendance Override Rejected',
-        message: `تم رفض طلب تصحيح الحضور الخاص بك${comment ? ` - ${comment}` : ''}`,
-        messageEn: `Your attendance override request was rejected${comment ? ` - ${comment}` : ''}`,
+        title: 'تم رفض طلب الحضور',
+        titleEn: 'Attendance Request Rejected',
+        message: `تم رفض طلب الحضور الخاص بك${comment ? ` - ${comment}` : ''}`,
+        messageEn: `Your attendance request was rejected${comment ? ` - ${comment}` : ''}`,
         entityType: 'attendance_override',
         entityId: override.id,
         link: '/attendance',
@@ -299,6 +341,51 @@ export class AttendanceOverrideService {
         return;
       }
 
+      // A soft-deleted attendance still holds the unique (employeeId, date) index,
+      // so restoring it is required instead of inserting a fresh record.
+      const softDeleted = await this.prisma.attendance.findFirst({
+        where: { employeeId: override.employeeId, date: override.date, deletedAt: { not: null } },
+      });
+
+      if (softDeleted) {
+        const restored = await this.prisma.attendance.update({
+          where: { id: softDeleted.id },
+          data: {
+            deletedAt: null,
+            checkIn: '',
+            checkOut: '',
+            status: 'present',
+            hoursWorked: 0,
+            checkInTime,
+            checkInLatitude: p.checkInLatitude ?? null,
+            checkInLongitude: p.checkInLongitude ?? null,
+            checkInAddress: p.checkInAddress ?? null,
+            checkInAccuracy: p.checkInAccuracy ?? null,
+            checkInSelfie: p.checkInSelfie ?? null,
+            checkOutTime: null,
+            checkOutLatitude: null,
+            checkOutLongitude: null,
+            checkOutAddress: null,
+            checkOutAccuracy: null,
+            checkOutSelfie: null,
+            workedMinutes: null,
+            distanceFromSite: p.distanceFromSite ?? override.distance,
+            attendanceStatus: 'checkedIn',
+            deviceInfo: p.deviceInfo ?? null,
+            isSynced: true,
+            projectId: p.projectId ?? null,
+            buildingId: p.buildingId ?? null,
+            notes: p.notes ?? '',
+          },
+        });
+
+        await this.prisma.attendanceOverride.update({
+          where: { id: override.id },
+          data: { attendanceId: restored.id },
+        });
+        return;
+      }
+
       const attendance = await this.prisma.attendance.create({
         data: {
           employeeId: override.employeeId,
@@ -330,11 +417,29 @@ export class AttendanceOverrideService {
       });
     }
 
-    if (type === 'check_out' && override.attendanceId) {
+    if (type === 'check_out') {
       const p = override.payload ?? {};
+
+      let attendanceId = override.attendanceId;
+      if (!attendanceId && override.employeeId && override.date) {
+        // Fallback: the request may reference an attendance by employee+date
+        // when no record id was known at submission time.
+        const byEmpDate = await this.prisma.attendance.findFirst({
+          where: { employeeId: override.employeeId, date: override.date, deletedAt: null },
+        });
+        if (byEmpDate) {
+          attendanceId = byEmpDate.id;
+          await this.prisma.attendanceOverride.update({
+            where: { id: override.id },
+            data: { attendanceId },
+          });
+        }
+      }
+
+      if (!attendanceId) return;
       const checkOutTime = p.checkOutTime ? new Date(p.checkOutTime) : new Date();
       const attendance = await this.prisma.attendance.findFirst({
-        where: { id: override.attendanceId, deletedAt: null },
+        where: { id: attendanceId, deletedAt: null },
       });
       if (!attendance || !attendance.checkInTime) return;
       if (attendance.checkOutTime) return;
@@ -346,7 +451,7 @@ export class AttendanceOverrideService {
       const mm = String(checkOutTime.getMinutes()).padStart(2, '0');
 
       await this.prisma.attendance.update({
-        where: { id: override.attendanceId },
+        where: { id: attendanceId },
         data: {
           checkOutTime,
           checkOutLatitude: p.checkOutLatitude ?? attendance.checkOutLatitude,
@@ -365,13 +470,29 @@ export class AttendanceOverrideService {
     }
   }
 
+  async findMine(employeeId: string | null | undefined) {
+    if (!employeeId) return { overrides: [] };
+    const overrides = await this.prisma.attendanceOverride.findMany({
+      where: { employeeId },
+      include: {
+        attendance: true,
+        employee: { select: { id: true, fullName: true, code: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    return { overrides };
+  }
+
   async findAll(status?: string) {
     const where: any = {};
     if (status) where.status = status;
 
     const overrides = await this.prisma.attendanceOverride.findMany({
       where,
-      include: { attendance: true },
+      include: {
+        attendance: true,
+        employee: { select: { id: true, fullName: true, code: true } },
+      },
       orderBy: { createdAt: 'desc' },
     });
     return { overrides };

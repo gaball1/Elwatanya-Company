@@ -33,16 +33,13 @@ export class CreateInventoryItemUseCase {
         );
       }
 
-      // Name must be unique within the same category (case/AR-insensitive).
+      // Name must be globally unique (case/AR-insensitive, across all categories).
       if (input.name) {
-        const conflict = await this.items.findNameConflict(
-          normalizeKey(input.name),
-          input.categoryId ?? '',
-        );
+        const conflict = await this.items.findNameConflict(normalizeKey(input.name));
         if (conflict) {
           return Result.fail(
             new Error(
-              `An item named "${conflict.name}" already exists in this category (id: ${conflict.id.toValue()}). To add stock, use Stock Movement / Receive instead of creating a duplicate item.`,
+              `An item named "${conflict.name}" already exists. Item names must be unique — to add stock, use Stock Movement / Receive instead of creating a duplicate item.`,
             ),
           );
         }
@@ -57,6 +54,7 @@ export class CreateInventoryItemUseCase {
       description: input.description,
       categoryId: input.categoryId,
       warehouseId: input.warehouseId,
+      projectId: input.projectId,
       unit: input.unit,
       quantity: input.quantity,
       minQuantity: input.minQuantity,
@@ -67,7 +65,32 @@ export class CreateInventoryItemUseCase {
     if (result.isFailure) return Result.fail(result.error as Error);
 
     const item = result.getValue();
-    await this.items.save(item);
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        await this.items.save(item);
+        if (input.quantity && input.quantity > 0) {
+          await tx.stockMovement.create({
+            data: {
+              itemId: item.id.toValue(),
+              type: 'RECEIVE',
+              quantity: input.quantity,
+              date: new Date(),
+              reason: input.reason?.trim() || 'افتتاح رصيد / إضافة صنف جديد',
+              notes: input.reason?.trim() || 'إضافة صنف جديد',
+            },
+          });
+        }
+      });
+    } catch (error: any) {
+      if (error?.code === 'P2002' || /unique/i.test(error?.message ?? '')) {
+        return Result.fail(
+          new Error(
+            `An inventory item with name "${input.name}" or code "${input.code}" already exists. Item names and codes must be unique.`,
+          ),
+        );
+      }
+      return Result.fail(error);
+    }
     return Result.ok(toResult(item));
   }
 }

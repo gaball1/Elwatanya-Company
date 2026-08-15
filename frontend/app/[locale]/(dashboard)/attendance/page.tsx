@@ -1,6 +1,7 @@
 "use client";
 
 import { useParams } from "next/navigation";
+import NextImage from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Card, Dialog } from "@/components/ui";
 import {
@@ -21,10 +22,10 @@ import {
   History,
   WifiOff,
   ChevronDown,
-  Layers,
+  Plus,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
-import { attendanceService, type Attendance, type CheckOutData } from "@/services/attendance.service";
+import { attendanceService, type Attendance, type AttendanceOverride, type CheckOutData } from "@/services/attendance.service";
 import { employeeService, type Employee } from "@/services/employee.service";
 import { projectService } from "@/services/project.service";
 import type { Project } from "@/services/project.service";
@@ -36,7 +37,7 @@ const GPS_ACCURACY_WARNING = 30;
 
 function compressImage(dataUrl: string, maxWidth: number, quality: number): Promise<string> {
   return new Promise((resolve, reject) => {
-    const img = new Image();
+    const img = document.createElement('img');
     img.onload = () => {
       const scale = Math.min(1, maxWidth / img.width);
       const w = Math.round(img.width * scale);
@@ -98,11 +99,31 @@ interface GpsState {
   address: string;
 }
 
-interface QueueItem {
-  type: 'checkIn' | 'checkOut';
-  data: any;
-  timestamp: string;
+interface CheckInQueueItemData {
+  employeeId: string;
+  date: string;
+  checkInTime: string;
+  checkInLatitude?: number;
+  checkInLongitude?: number;
+  checkInAddress?: string;
+  checkInAccuracy?: number;
+  checkInSelfie?: string;
+  deviceInfo?: string;
+  distanceFromSite?: number;
+  projectId?: string;
+  buildingId?: string;
+  shiftId?: string;
+  notes?: string;
 }
+
+interface CheckOutQueueItemData {
+  id: string;
+  body: CheckOutData;
+}
+
+type QueueItem =
+  | { type: 'checkIn'; data: CheckInQueueItemData; timestamp: string }
+  | { type: 'checkOut'; data: CheckOutQueueItemData; timestamp: string };
 
 interface TamperWarning {
   clockSkew: boolean;
@@ -127,6 +148,7 @@ export default function AttendancePage() {
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [todayRecord, setTodayRecord] = useState<Attendance | null>(null);
   const [attendanceHistory, setAttendanceHistory] = useState<Attendance[]>([]);
+  const [pendingOverrides, setPendingOverrides] = useState<AttendanceOverride[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [gps, setGps] = useState<GpsState | null>(null);
@@ -136,10 +158,6 @@ export default function AttendancePage() {
   const [showCamera, setShowCamera] = useState(false);
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
 
-  const [distance, setDistance] = useState<number | null>(null);
-  const [insideSite, setInsideSite] = useState<boolean | null>(null);
-  const [geoFenceAvailable, setGeoFenceAvailable] = useState<boolean>(true);
-
   const [actionLoading, setActionLoading] = useState(false);
   const [queuedItems, setQueuedItems] = useState<QueueItem[]>([]);
   const [showHistory, setShowHistory] = useState(false);
@@ -147,12 +165,12 @@ export default function AttendancePage() {
   const [selectedBuildingId, setSelectedBuildingId] = useState<string>("");
   const [selectedShiftId, setSelectedShiftId] = useState<string>("");
 
-  const [step, setStep] = useState<StepState>('detect');
+  const [, setStep] = useState<StepState>('detect');
   const [showOverrideDialog, setShowOverrideDialog] = useState(false);
   const [overrideReason, setOverrideReason] = useState("");
-  const [pendingCheckInPayload, setPendingCheckInPayload] = useState<any>(null);
-  const [pendingCheckOutPayload, setPendingCheckOutPayload] = useState<{ id: string; body: CheckOutData } | null>(null);
-  const [tamperWarnings, setTamperWarnings] = useState<TamperWarning>({ clockSkew: false, vpnDetected: false });
+  const [pendingCheckInPayload, setPendingCheckInPayload] = useState<{ data: CheckInQueueItemData; overrideId?: string } | null>(null);
+  const [pendingCheckOutPayload, setPendingCheckOutPayload] = useState<{ id: string; body: CheckOutData; overrideId?: string } | null>(null);
+  const [, setTamperWarnings] = useState<TamperWarning>({ clockSkew: false, vpnDetected: false });
 
   const [showManualLocation, setShowManualLocation] = useState(false);
   const [manualLat, setManualLat] = useState("");
@@ -160,23 +178,68 @@ export default function AttendancePage() {
 
   const isOnline = useMemo(() => typeof navigator !== 'undefined' ? navigator.onLine : true, []);
 
+  const loadMyOverrides = useCallback(async (employeeId?: string | null) => {
+    if (!employeeId) {
+      setPendingOverrides([]);
+      return;
+    }
+    try {
+      const items = await attendanceService.listMyOverrides();
+      setPendingOverrides(items.filter((o) => o.employeeId === employeeId));
+    } catch {
+      // ignore — pending state just won't be shown on error
+    }
+  }, []);
+
   useEffect(() => {
     const loadData = async () => {
       try {
         setLoading(true);
-        const [employees, projs, records, blds, shfs] = await Promise.all([
-          employeeService.list(),
-          projectService.getProjects(),
-          attendanceService.list(),
-          buildingService.list(),
-          shiftService.list(),
-        ]);
 
-        const emp = employees.find((e) => e.userId === user?.id) ?? employees[0] ?? null;
-        setEmployee(emp);
+        // Non-essential lookups fail gracefully so one 403 never blocks the page.
+        const loadList = async <T,>(fn: () => Promise<T>, fallback: T): Promise<T> => {
+          try {
+            return await fn();
+          } catch {
+            return fallback;
+          }
+        };
+
+        const [projs, blds, shfs] = await Promise.all([
+          loadList(() => projectService.getProjects(), []),
+          loadList(() => buildingService.list(), []),
+          loadList(() => shiftService.list(), []),
+        ]);
         setProjects(projs);
         setBuildings(blds);
         setShifts(shfs);
+
+        // Resolve the current user's employee record. Self-service accounts
+        // (linked user -> employee) use /employees/me + /attendance/me, so no
+        // employees.read/attendance.read permissions are required. Privileged
+        // accounts without a linked employee fall back to the full list.
+        let emp: Employee | null = null;
+        let records: Attendance[] = [];
+        const canListEmployees =
+          user?.roleNames?.includes("SUPER_ADMIN") || user?.permissions?.includes("employees.read");
+        try {
+          emp = await employeeService.getMe();
+          records = await attendanceService.listMine();
+        } catch {
+          // The privileged fallback (full list) is only reachable for accounts
+          // that may actually read employees; for everyone else it would 403.
+          if (canListEmployees) {
+            try {
+              const employees = await employeeService.list();
+              emp = employees.find((e) => e.userId === user?.id) ?? employees[0] ?? null;
+              records = await attendanceService.list();
+            } catch {
+              emp = null;
+              records = [];
+            }
+          }
+        }
+        setEmployee(emp);
 
         if (emp) {
           const todayStr = getTodayStr();
@@ -188,6 +251,7 @@ export default function AttendancePage() {
         } else {
           setAttendanceHistory(records.slice(0, 10));
         }
+        void loadMyOverrides(emp?.id);
 
         const stored = localStorage.getItem('attendanceQueue');
         if (stored) {
@@ -219,7 +283,23 @@ export default function AttendancePage() {
       }
     };
     loadData();
-  }, []);
+  }, [isArabic, showToast, user?.id, loadMyOverrides, user?.permissions, user?.roleNames]);
+
+  const todayStr = getTodayStr();
+  const pendingCheckIn = useMemo(
+    () =>
+      pendingOverrides.find(
+        (o) => o.type === 'check_in' && o.status === 'pending' && (o.date ?? '').startsWith(todayStr)
+      ) ?? null,
+    [pendingOverrides, todayStr]
+  );
+  const pendingCheckOut = useMemo(
+    () =>
+      pendingOverrides.find(
+        (o) => o.type === 'check_out' && o.status === 'pending' && (o.date ?? '').startsWith(todayStr)
+      ) ?? null,
+    [pendingOverrides, todayStr]
+  );
 
   const assignedProject = useMemo(() => {
     if (!employee || !projects.length) return null;
@@ -233,6 +313,21 @@ export default function AttendancePage() {
     if (!selectedBuildingId || !buildings.length) return null;
     return buildings.find((b) => b.id === selectedBuildingId) ?? null;
   }, [buildings, selectedBuildingId]);
+
+  // Recompute geofence status whenever GPS or the selected building changes so
+  // location is never stale between steps (detect -> selfie -> check-in/out).
+  const { distance, insideSite } = useMemo(() => {
+    const bld = selectedBuilding;
+    if (!gps || !bld || bld.latitude == null || bld.longitude == null || bld.allowedRadius == null) {
+      return { distance: null, insideSite: null, geoFenceAvailable: false };
+    }
+    const dist = haversine(gps.latitude, gps.longitude, bld.latitude, bld.longitude);
+    return {
+      distance: Math.round(dist),
+      insideSite: dist <= bld.allowedRadius,
+      geoFenceAvailable: true,
+    };
+  }, [gps, selectedBuilding]);
 
   const openManualLocation = useCallback(() => {
     const bld = selectedBuilding;
@@ -262,22 +357,10 @@ export default function AttendancePage() {
     };
     setGps(gpsVal);
 
-    const bld = selectedBuilding;
-    if (bld?.latitude != null && bld?.longitude != null && bld?.allowedRadius != null) {
-      const dist = haversine(lat, lng, bld.latitude, bld.longitude);
-      setDistance(Math.round(dist));
-      setInsideSite(dist <= bld.allowedRadius);
-      setGeoFenceAvailable(true);
-    } else {
-      setDistance(null);
-      setInsideSite(null);
-      setGeoFenceAvailable(false);
-    }
-
     setShowManualLocation(false);
     setStep('selfie');
     showToast(isArabic ? "تم تحديد الموقع يدوياً" : "Location set manually", "success");
-  }, [manualLat, manualLng, selectedBuilding, isArabic]);
+  }, [manualLat, manualLng, isArabic, showToast]);
 
   const getGps = useCallback((retryWithLowAccuracy = false) => {
     if (typeof window !== "undefined" && !window.isSecureContext && window.location.hostname !== "localhost") {
@@ -312,18 +395,6 @@ export default function AttendancePage() {
           }
           setGps({ latitude, longitude, accuracy, address });
 
-          const bld = selectedBuilding;
-          if (bld?.latitude != null && bld?.longitude != null && bld?.allowedRadius != null) {
-            const dist = haversine(latitude, longitude, bld.latitude, bld.longitude);
-            setDistance(Math.round(dist));
-            setInsideSite(dist <= bld.allowedRadius);
-            setGeoFenceAvailable(true);
-          } else {
-            setDistance(null);
-            setInsideSite(null);
-            setGeoFenceAvailable(false);
-          }
-
           setStep('selfie');
           setGettingGps(false);
           showToast(isArabic ? "تم تحديد الموقع" : "Location detected", "success");
@@ -343,7 +414,7 @@ export default function AttendancePage() {
       );
     };
     attempt(retryWithLowAccuracy);
-  }, [isArabic, selectedBuilding, openManualLocation]);
+  }, [isArabic, locale, openManualLocation, showToast]);
 
   const startCamera = useCallback(async () => {
     try {
@@ -356,7 +427,7 @@ export default function AttendancePage() {
     } catch {
       showToast(isArabic ? "صلاحية الكاميرا مطلوبة" : "Camera permission required", "error");
     }
-  }, [isArabic]);
+  }, [isArabic, showToast]);
 
   const captureSelfie = useCallback(async () => {
     if (!videoRef.current || !canvasRef.current) return;
@@ -381,7 +452,7 @@ export default function AttendancePage() {
     setShowCamera(false);
     setStep('checkin');
     showToast(isArabic ? "تم التقاط الصورة" : "Selfie captured", "success");
-  }, [cameraStream, isArabic]);
+  }, [cameraStream, isArabic, showToast]);
 
   const stopCamera = useCallback(() => {
     if (cameraStream) {
@@ -391,13 +462,16 @@ export default function AttendancePage() {
     setShowCamera(false);
   }, [cameraStream]);
 
-  const queueForSync = useCallback((type: 'checkIn' | 'checkOut', data: any) => {
-    const item: QueueItem = { type, data, timestamp: new Date().toISOString() };
+  const queueForSync = useCallback((type: 'checkIn' | 'checkOut', data: CheckInQueueItemData | CheckOutQueueItemData) => {
+    const timestamp = new Date().toISOString();
+    const item: QueueItem = type === 'checkIn'
+      ? { type, data: data as CheckInQueueItemData, timestamp }
+      : { type, data: data as CheckOutQueueItemData, timestamp };
     const updated = [...queuedItems, item];
     setQueuedItems(updated);
     localStorage.setItem('attendanceQueue', JSON.stringify(updated));
     showToast(isArabic ? "تم حفظ العملية محلياً، سيتم المزامنة لاحقاً" : "Saved offline, will sync later", "info");
-  }, [queuedItems, isArabic]);
+  }, [queuedItems, isArabic, showToast]);
 
   const syncQueuedItems = useCallback(async () => {
     if (!queuedItems.length) return;
@@ -416,7 +490,7 @@ export default function AttendancePage() {
     setQueuedItems(remaining);
     localStorage.setItem('attendanceQueue', JSON.stringify(remaining));
     if (remaining.length === 0) showToast(isArabic ? "تمت المزامنة" : "Synced", "success");
-  }, [queuedItems, isArabic]);
+  }, [queuedItems, isArabic, showToast]);
 
   useEffect(() => {
     const handleOnline = () => { if (queuedItems.length) syncQueuedItems(); };
@@ -425,7 +499,16 @@ export default function AttendancePage() {
   }, [queuedItems.length, syncQueuedItems]);
 
   const handleCheckIn = useCallback(async () => {
-    if (!employee || !gps) {
+    if (!employee) {
+      showToast(
+        isArabic
+          ? "لا يوجد موظف مرتبط بهذا الحساب. يرجى التواصل مع الإدارة لربط الموظف"
+          : "No employee is linked to this account. Contact your administrator to link an employee",
+        "error"
+      );
+      return;
+    }
+    if (!gps) {
       showToast(isArabic ? "يرجى تحديد الموقع أولاً" : "Please detect location first", "error");
       return;
     }
@@ -435,20 +518,22 @@ export default function AttendancePage() {
     if (insideSite === false) {
       if (selfieData) {
         setPendingCheckInPayload({
-          employeeId: employee.id,
-          date: getTodayStr(),
-          checkInTime: new Date().toISOString(),
-          checkInLatitude: gps.latitude,
-          checkInLongitude: gps.longitude,
-          checkInAddress: gps.address,
-          checkInAccuracy: gps.accuracy,
-          checkInSelfie: selfieData,
-          deviceInfo: getDeviceInfo(),
-          distanceFromSite: distance ?? undefined,
-          projectId: assignedProject?.id,
-          buildingId: selectedBuildingId || undefined,
-          shiftId: selectedShiftId || undefined,
-          notes: "",
+          data: {
+            employeeId: employee.id,
+            date: getTodayStr(),
+            checkInTime: new Date().toISOString(),
+            checkInLatitude: gps.latitude,
+            checkInLongitude: gps.longitude,
+            checkInAddress: gps.address,
+            checkInAccuracy: gps.accuracy,
+            checkInSelfie: selfieData,
+            deviceInfo: getDeviceInfo(),
+            distanceFromSite: distance ?? undefined,
+            projectId: assignedProject?.id,
+            buildingId: selectedBuildingId || undefined,
+            shiftId: selectedShiftId || undefined,
+            notes: "",
+          },
         });
         setPendingCheckOutPayload(null);
         setOverrideReason("");
@@ -490,16 +575,15 @@ export default function AttendancePage() {
       const result = await attendanceService.checkIn(payload);
       if (result.requiresApproval && result.override) {
         setActionLoading(false);
-        setPendingCheckInPayload(payload);
-        setOverrideReason("");
-        setShowOverrideDialog(true);
+        setPendingOverrides((prev) => [result.override!, ...prev]);
+        showToast(isArabic ? "تم إرسال طلب الاعتماد، وسيتم تسجيل الحضور بعد موافقة الإدارة" : "Check-in submitted for approval. Attendance will be recorded after approval", "success");
         return;
       }
       setTodayRecord(result.record ?? null);
       setStep('checkout');
       showToast(isArabic ? "تم تسجيل الحضور" : "Check-in successful", "success");
-    } catch (err: any) {
-      const msg = err?.message ?? "";
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "";
       if (msg.includes("already exists")) {
         showToast(isArabic ? "تم تسجيل الحضور مسبقاً" : "Already checked in", "warning");
       } else if (!navigator.onLine) {
@@ -510,34 +594,47 @@ export default function AttendancePage() {
     } finally {
       setActionLoading(false);
     }
-  }, [employee, gps, insideSite, selfieData, distance, assignedProject, selectedBuildingId, selectedShiftId, isArabic, queueForSync]);
+  }, [employee, gps, insideSite, selfieData, distance, assignedProject, selectedBuildingId, selectedShiftId, isArabic, showToast, queueForSync]);
 
   const submitOverride = useCallback(async () => {
     if (!overrideReason.trim()) return;
     setActionLoading(true);
     try {
       if (pendingCheckInPayload) {
-        await attendanceService.requestOverride({
-          requestedBy: user?.id ?? '',
-          reason: overrideReason.trim(),
-          type: 'check_in',
-          distance: distance ?? undefined,
-          snapshot: pendingCheckInPayload,
-        });
+        if (pendingCheckInPayload.overrideId) {
+          // The server already created the override during check-in; update the reason.
+          const override = await attendanceService.updateOverrideReason(pendingCheckInPayload.overrideId, overrideReason.trim());
+          setPendingOverrides((prev) => [override, ...prev.filter((o) => o.id !== override.id)]);
+        } else {
+          const override = await attendanceService.requestOverride({
+            requestedBy: user?.id ?? '',
+            reason: overrideReason.trim(),
+            type: 'check_in',
+            distance: distance ?? undefined,
+            snapshot: pendingCheckInPayload.data,
+          });
+          setPendingOverrides((prev) => [override, ...prev.filter((o) => o.id !== override.id)]);
+        }
         setShowOverrideDialog(false);
         setOverrideReason("");
         setPendingCheckInPayload(null);
         setStep('complete');
         showToast(isArabic ? "تم تقديم طلب التجاوز للمدير، وسيتم تسجيل الحضور بعد الموافقة" : "Override request submitted. Attendance will be recorded after manager approval", "success");
       } else if (pendingCheckOutPayload) {
-        await attendanceService.requestOverride({
-          attendanceId: pendingCheckOutPayload.id,
-          requestedBy: user?.id ?? '',
-          reason: overrideReason.trim(),
-          type: 'check_out',
-          distance: distance ?? undefined,
-          snapshot: pendingCheckOutPayload.body,
-        });
+        if (pendingCheckOutPayload.overrideId) {
+          const override = await attendanceService.updateOverrideReason(pendingCheckOutPayload.overrideId, overrideReason.trim());
+          setPendingOverrides((prev) => [override, ...prev.filter((o) => o.id !== override.id)]);
+        } else {
+          const override = await attendanceService.requestOverride({
+            attendanceId: pendingCheckOutPayload.id,
+            requestedBy: user?.id ?? '',
+            reason: overrideReason.trim(),
+            type: 'check_out',
+            distance: distance ?? undefined,
+            snapshot: pendingCheckOutPayload.body,
+          });
+          setPendingOverrides((prev) => [override, ...prev.filter((o) => o.id !== override.id)]);
+        }
         setShowOverrideDialog(false);
         setOverrideReason("");
         setPendingCheckOutPayload(null);
@@ -548,7 +645,7 @@ export default function AttendancePage() {
     } finally {
       setActionLoading(false);
     }
-  }, [pendingCheckInPayload, pendingCheckOutPayload, overrideReason, distance, isArabic, user]);
+  }, [pendingCheckInPayload, pendingCheckOutPayload, overrideReason, distance, isArabic, showToast, user]);
 
   const handleCheckOut = useCallback(async () => {
     if (!todayRecord || !gps) {
@@ -611,10 +708,9 @@ export default function AttendancePage() {
       }
       const result = await attendanceService.checkOut(todayRecord.id, payload);
       if (result.requiresApproval && result.override) {
-        setPendingCheckOutPayload({ id: todayRecord.id, body: payload });
-        setOverrideReason("");
-        setShowOverrideDialog(true);
         setActionLoading(false);
+        setPendingOverrides((prev) => [result.override!, ...prev]);
+        showToast(isArabic ? "تم إرسال طلب الانصراف، وسيتم التسجيل بعد موافقة الإدارة" : "Check-out submitted for approval. It will be recorded after approval", "success");
         return;
       }
       setTodayRecord(result.record ?? null);
@@ -628,7 +724,7 @@ export default function AttendancePage() {
     } finally {
       setActionLoading(false);
     }
-  }, [todayRecord, gps, selfieData, distance, isArabic, queueForSync]);
+  }, [todayRecord, gps, selfieData, distance, isArabic, showToast, queueForSync]);
 
   const selectedShift = useMemo(() => {
     if (!selectedShiftId || !shifts.length) return null;
@@ -667,23 +763,42 @@ export default function AttendancePage() {
     return diff > 0 ? diff : 0;
   }, [todayRecord, selectedShift]);
 
-  const overtimeMinutes = useMemo(() => {
-    if (!todayRecord?.checkOutTime) return 0;
-    const checkOut = new Date(todayRecord.checkOutTime);
-    if (selectedShift) {
-      const [eh, em] = selectedShift.endTime.split(':').map(Number);
-      const expectedEnd = new Date(checkOut);
-      expectedEnd.setHours(eh, em, 0, 0);
-      const diff = Math.round((checkOut.getTime() - expectedEnd.getTime()) / 60000);
-      return diff > 0 && selectedShift.overtimeEnabled ? diff : 0;
-    }
-    return 0;
-  }, [todayRecord, selectedShift]);
-
   const projectBuildings = useMemo(() => {
     if (!assignedProject) return [];
     return buildings.filter((b) => b.projectId === assignedProject.id);
   }, [buildings, assignedProject]);
+
+  // Keep the submitted check-in data visible on the page until check-out.
+  const recordedSelfie = useMemo(
+    () => selfieData ?? todayRecord?.checkInSelfie ?? null,
+    [selfieData, todayRecord]
+  );
+
+  const recordedCheckIn = useMemo(() => {
+    if (!todayRecord?.checkInTime) return null;
+    return {
+      latitude: todayRecord.checkInLatitude,
+      longitude: todayRecord.checkInLongitude,
+      address: todayRecord.checkInAddress,
+    };
+  }, [todayRecord]);
+
+  // Reset today's session so the employee can record attendance again — e.g.
+  // after a problem with the previous attempt or on a new day without reloading.
+  const startNewRecord = useCallback(() => {
+    setTodayRecord(null);
+    setGps(null);
+    setSelfieData(null);
+    setSelectedProjectId("");
+    setSelectedBuildingId("");
+    setSelectedShiftId("");
+    setPendingCheckInPayload(null);
+    setPendingCheckOutPayload(null);
+    setOverrideReason("");
+    setStep('detect');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    showToast(isArabic ? "ابدأ تسجيل حضور جديد" : "Start a new attendance record", "info");
+  }, [isArabic, showToast]);
 
   if (loading) {
     return (
@@ -729,14 +844,25 @@ export default function AttendancePage() {
             {employee?.fullName ?? user?.name ?? ""}
           </p>
         </div>
-        <button
-          onClick={() => setShowHistory(!showHistory)}
-          className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition"
-        >
-          <History size={16} />
-          {isArabic ? "السجل" : "History"}
-          <ChevronDown size={14} className={`transition-transform ${showHistory ? 'rotate-180' : ''}`} />
-        </button>
+        <div className="flex items-center gap-2">
+          {(todayRecord || pendingCheckIn || pendingCheckOut) && (
+            <button
+              onClick={startNewRecord}
+              className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm hover:bg-emerald-700 transition"
+            >
+              <Plus size={16} />
+              {isArabic ? "تسجيل جديد" : "New Record"}
+            </button>
+          )}
+          <button
+            onClick={() => setShowHistory(!showHistory)}
+            className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition"
+          >
+            <History size={16} />
+            {isArabic ? "السجل" : "History"}
+            <ChevronDown size={14} className={`transition-transform ${showHistory ? 'rotate-180' : ''}`} />
+          </button>
+        </div>
       </div>
 
       {/* Today's active record summary */}
@@ -836,7 +962,10 @@ export default function AttendancePage() {
               {projects.length > 1 && (
                 <select
                   value={selectedProjectId}
-                  onChange={(e) => setSelectedProjectId(e.target.value)}
+                  onChange={(e) => {
+                    setSelectedProjectId(e.target.value);
+                    setSelectedBuildingId("");
+                  }}
                   className="w-full mt-2 p-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300"
                 >
                   <option value="">{isArabic ? "اختر مشروعاً" : "Select project"}</option>
@@ -845,6 +974,43 @@ export default function AttendancePage() {
                   ))}
                 </select>
               )}
+              {projectBuildings.length > 0 && (
+                <div>
+                  <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+                    {isArabic ? "المبنى / الموقع" : "Building / Site"}
+                  </label>
+                  <select
+                    value={selectedBuildingId}
+                    onChange={(e) => setSelectedBuildingId(e.target.value)}
+                    className="w-full p-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300"
+                  >
+                    <option value="">{isArabic ? "اختر المبنى" : "Select building"}</option>
+                    {projectBuildings.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.name}
+                        {b.allowedRadius != null ? ` (${b.allowedRadius}m)` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              {shifts.length > 0 && (
+                <div>
+                  <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+                    {isArabic ? "الوردية" : "Shift"}
+                  </label>
+                  <select
+                    value={selectedShiftId}
+                    onChange={(e) => setSelectedShiftId(e.target.value)}
+                    className="w-full p-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300"
+                  >
+                    <option value="">{isArabic ? "الوردية الافتراضية" : "Default shift"}</option>
+                    {shifts.map((s) => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div className="flex items-center gap-3">
                 <Clock size={18} className="text-gray-400" />
                 <div>
@@ -852,7 +1018,7 @@ export default function AttendancePage() {
                     {isArabic ? "موعد الدوام" : "Shift"}
                   </p>
                   <p className="text-sm font-medium text-gray-800 dark:text-gray-200">
-                    08:00 - 17:00
+                    {selectedShift ? `${selectedShift.startTime} - ${selectedShift.endTime}` : "08:00 - 17:00"}
                   </p>
                 </div>
               </div>
@@ -902,6 +1068,33 @@ export default function AttendancePage() {
                     {isArabic ? "العنوان" : "Address"}
                   </p>
                   <p className="text-xs text-gray-700 dark:text-gray-300 line-clamp-2">{gps.address}</p>
+                </div>
+              )}
+            </div>
+          )}
+          {!gps && recordedCheckIn && (
+            <div className="mt-4 space-y-2 text-sm">
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">
+                {isArabic ? "موقع الحضور المسجل" : "Recorded Check-in Location"}
+              </p>
+              <div className="flex justify-between">
+                <span className="text-gray-500 dark:text-gray-400">{isArabic ? "خط العرض" : "Latitude"}</span>
+                <span className="font-mono text-gray-800 dark:text-gray-200">
+                  {recordedCheckIn.latitude != null ? recordedCheckIn.latitude.toFixed(6) : "—"}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500 dark:text-gray-400">{isArabic ? "خط الطول" : "Longitude"}</span>
+                <span className="font-mono text-gray-800 dark:text-gray-200">
+                  {recordedCheckIn.longitude != null ? recordedCheckIn.longitude.toFixed(6) : "—"}
+                </span>
+              </div>
+              {recordedCheckIn.address && (
+                <div className="pt-2 border-t border-gray-100 dark:border-gray-700">
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">
+                    {isArabic ? "العنوان" : "Address"}
+                  </p>
+                  <p className="text-xs text-gray-700 dark:text-gray-300 line-clamp-2">{recordedCheckIn.address}</p>
                 </div>
               )}
             </div>
@@ -989,19 +1182,27 @@ export default function AttendancePage() {
               </button>
             </div>
           </div>
-        ) : selfieData ? (
+        ) : recordedSelfie ? (
           <div className="space-y-3">
             <div className="relative w-48 h-48 mx-auto rounded-xl overflow-hidden border-2 border-green-400">
-              <img src={selfieData} alt="Selfie" className="w-full h-full object-cover" />
+              <NextImage src={recordedSelfie} alt="Selfie" fill className="object-cover" sizes="192px" />
               <div className="absolute bottom-1 left-1 bg-black/60 text-white text-[10px] px-2 py-0.5 rounded">
-                {new Date().toLocaleTimeString()}
+                {todayRecord?.checkInTime
+                  ? new Date(todayRecord.checkInTime).toLocaleTimeString(isArabic ? "ar-EG" : "en-US")
+                  : new Date().toLocaleTimeString(isArabic ? "ar-EG" : "en-US")}
               </div>
             </div>
-            <div className="flex gap-2 justify-center">
-              <button onClick={() => { setSelfieData(null); startCamera(); }} className="px-4 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition">
-                {isArabic ? "إعادة" : "Retake"}
-              </button>
-            </div>
+            {todayRecord?.checkInTime ? (
+              <p className="text-center text-xs text-gray-500 dark:text-gray-400">
+                {isArabic ? "صورة الحضور المسجلة" : "Recorded check-in selfie"}
+              </p>
+            ) : (
+              <div className="flex gap-2 justify-center">
+                <button onClick={() => { setSelfieData(null); startCamera(); }} className="px-4 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition">
+                  {isArabic ? "إعادة" : "Retake"}
+                </button>
+              </div>
+            )}
           </div>
         ) : (
           <button onClick={startCamera} className="w-full flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl text-gray-500 dark:text-gray-400 hover:border-primary hover:text-primary transition">
@@ -1065,6 +1266,29 @@ export default function AttendancePage() {
               </span>
             </div>
           </div>
+          {(todayRecord.checkInAddress || todayRecord.checkOutAddress ||
+            todayRecord.checkInLatitude != null || todayRecord.checkOutLatitude != null) && (
+            <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-700 space-y-2 text-xs text-gray-500 dark:text-gray-400">
+              {(todayRecord.checkInAddress || todayRecord.checkInLatitude != null) && (
+                <div className="flex items-start gap-2">
+                  <MapPin size={13} className="text-gray-400 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-medium">{isArabic ? "موقع الحضور" : "Check-in location"}: </span>
+                    {todayRecord.checkInAddress || (todayRecord.checkInLatitude?.toFixed(5) + ", " + todayRecord.checkInLongitude?.toFixed(5))}
+                  </div>
+                </div>
+              )}
+              {(todayRecord.checkOutAddress || todayRecord.checkOutLatitude != null) && (
+                <div className="flex items-start gap-2">
+                  <MapPin size={13} className="text-gray-400 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-medium">{isArabic ? "موقع الانصراف" : "Check-out location"}: </span>
+                    {todayRecord.checkOutAddress || (todayRecord.checkOutLatitude?.toFixed(5) + ", " + todayRecord.checkOutLongitude?.toFixed(5))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
           {(lateMinutes > 0 || earlyLeave > 0) && (
             <div className="mt-3 flex gap-4 text-xs text-gray-500 dark:text-gray-400">
               {lateMinutes > 0 && (
@@ -1085,10 +1309,37 @@ export default function AttendancePage() {
       )}
 
       {/* 6. Check-In / Check-Out Buttons */}
+      {(pendingCheckIn || pendingCheckOut) && (
+        <Card className={`p-4 border-amber-300 dark:border-amber-600 bg-amber-50 dark:bg-amber-950/40`}>
+          <div className="flex items-start gap-3">
+            <Clock size={20} className="text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+            <div className="min-w-0">
+              <h3 className="text-sm font-bold text-amber-800 dark:text-amber-300">
+                {pendingCheckIn && pendingCheckOut
+                  ? isArabic ? "بانتظار موافقة الإدارة على الحضور والانصراف" : "Waiting for manager approval on check-in & check-out"
+                  : pendingCheckIn
+                    ? isArabic ? "بانتظار موافقة الإدارة على تسجيل الحضور" : "Waiting for manager approval on check-in"
+                    : isArabic ? "بانتظار موافقة الإدارة على تسجيل الانصراف" : "Waiting for manager approval on check-out"}
+              </h3>
+              <p className="text-xs text-amber-700 dark:text-amber-400 mt-1">
+                {isArabic
+                  ? "تم إرسال طلبك وسيتم تسجيل الوقت تلقائياً بعد الموافقة."
+                  : "Your request was submitted and will be recorded automatically once approved."}
+              </p>
+              {(pendingCheckIn || pendingCheckOut) && (
+                <p className="text-[11px] text-amber-600 dark:text-amber-500 mt-2 flex items-center gap-1">
+                  <Clock size={12} />
+                  {new Date((pendingCheckIn ?? pendingCheckOut)!.createdAt).toLocaleTimeString(locale === 'ar' ? 'ar-EG' : 'en-US', { hour: '2-digit', minute: '2-digit' })}
+                </p>
+              )}
+            </div>
+          </div>
+        </Card>
+      )}
       <div className="grid grid-cols-2 gap-4">
         <button
           onClick={handleCheckIn}
-          disabled={actionLoading || !!todayRecord?.checkInTime || !gps || gettingGps}
+          disabled={actionLoading || !!todayRecord?.checkInTime || !!pendingCheckIn || !gps || gettingGps}
           className="flex flex-col items-center justify-center gap-2 px-6 py-6 bg-gradient-to-br from-green-500 to-green-600 text-white rounded-2xl hover:from-green-600 hover:to-green-700 transition disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-green-500/20"
         >
           <LogIn size={32} />
@@ -1101,7 +1352,7 @@ export default function AttendancePage() {
         </button>
         <button
           onClick={handleCheckOut}
-          disabled={actionLoading || !todayRecord || todayRecord.attendanceStatus !== 'checkedIn' || !!todayRecord.checkOutTime || !gps || gettingGps}
+          disabled={actionLoading || !todayRecord || todayRecord.attendanceStatus !== 'checkedIn' || !!todayRecord.checkOutTime || !!pendingCheckOut || !gps || gettingGps}
           className="flex flex-col items-center justify-center gap-2 px-6 py-6 bg-gradient-to-br from-amber-500 to-orange-600 text-white rounded-2xl hover:from-amber-600 hover:to-orange-700 transition disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-amber-500/20"
         >
           <LogOut size={32} />

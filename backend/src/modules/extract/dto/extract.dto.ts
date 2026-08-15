@@ -50,6 +50,11 @@ class ExtractItemDto {
   @IsNumber()
   @Min(0)
   unitPrice!: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  contractorBoqItemId?: string;
 }
 
 class ManualDeductionDto {
@@ -68,6 +73,21 @@ class ManualDeductionDto {
   @ApiProperty({ enum: ['manual'] })
   @IsString()
   type!: 'manual';
+}
+
+export class OtherAmountItemDto {
+  @ApiProperty()
+  @IsString()
+  id!: string;
+
+  @ApiProperty()
+  @IsString()
+  name!: string;
+
+  @ApiProperty()
+  @IsNumber()
+  @Min(0)
+  amount!: number;
 }
 
 export class SaveExtractDto {
@@ -104,6 +124,19 @@ export class SaveExtractDto {
   @IsNumber()
   @Min(0)
   previousPaid!: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  otherAmounts?: number;
+
+  @ApiPropertyOptional({ type: [OtherAmountItemDto] })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => OtherAmountItemDto)
+  otherAmountItems?: OtherAmountItemDto[];
 
   @ApiProperty({ type: [ExtractItemDto] })
   @IsArray()

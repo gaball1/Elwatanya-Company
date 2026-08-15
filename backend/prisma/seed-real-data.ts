@@ -297,6 +297,7 @@ async function seedProject(def: (typeof PROJECT_DEFS)[number], contractors: any[
       startDate,
       status: def.status,
       progress: def.progress,
+      plannedDurationMonths: def.scenario === 'healthy' ? 24 : def.scenario === 'loss' ? 30 : 20,
     },
   });
 

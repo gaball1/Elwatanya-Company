@@ -44,3 +44,11 @@ export class ApproveRejectDto {
   @MaxLength(1000)
   comment?: string;
 }
+
+export class UpdateReasonDto {
+  @ApiProperty({ example: 'Site equipment maintenance outside the allowed radius' })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(1000)
+  reason!: string;
+}

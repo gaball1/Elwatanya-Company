@@ -130,7 +130,7 @@ export default function PendingSignaturesPage() {
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-text-secondary flex items-center gap-1">
                     <Clock className="w-3 h-3" />
-                    {new Date(item.requestedAt).toLocaleDateString()}
+                    {new Date(item.requestedAt).toLocaleDateString(isArabic ? "ar-EG" : "en-US")}
                   </span>
                   <Button size="sm" icon={<Pen className="w-4 h-4" />} onClick={() => openSignDialog(item)}>
                     {isArabic ? "توقيع" : "Sign"}

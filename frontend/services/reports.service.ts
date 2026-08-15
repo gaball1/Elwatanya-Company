@@ -1,5 +1,6 @@
 import { apiClient } from '@/lib/api/apiClient';
 import { getAccessToken } from '@/lib/api/tokenStorage';
+import { safeFetch } from '@/lib/api/fetchTransport';
 
 export interface ReportDefinition {
   name: string;
@@ -7,7 +8,7 @@ export interface ReportDefinition {
   description: string;
   category: string;
   supportedFormats: string[];
-  parameterSchema: Record<string, any>;
+  parameterSchema: Record<string, unknown>;
   requiresProject: boolean;
   requiresBuilding: boolean;
 }
@@ -18,14 +19,14 @@ export const reportsService = {
     return data?.reports || (Array.isArray(data) ? data : []);
   },
 
-  async generateReport(reportName: string, format: string, params: Record<string, any> = {}): Promise<Blob> {
+  async generateReport(reportName: string, format: string, params: Record<string, unknown> = {}): Promise<Blob> {
     const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
     const token = getAccessToken() || '';
 
     const queryParams = new URLSearchParams({ format });
     const url = `${baseUrl}/reporting/${reportName}/generate?${queryParams}`;
 
-    const response = await fetch(url, {
+    const response = await safeFetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -38,7 +39,7 @@ export const reportsService = {
     return response.blob();
   },
 
-  async previewReport(reportName: string, params: Record<string, any> = {}): Promise<string> {
+  async previewReport(reportName: string, params: Record<string, unknown> = {}): Promise<string> {
     const queryParams = new URLSearchParams(
       Object.entries(params).filter(([, v]) => v !== undefined && v !== null) as [string, string][]
     ).toString();
@@ -46,6 +47,6 @@ export const reportsService = {
     const data = await apiClient<{ html?: string }>(`/reporting/${reportName}/preview${suffix}`, {
       method: 'GET',
     });
-    return (data as any)?.html || '';
+    return data?.html ?? '';
   },
 };

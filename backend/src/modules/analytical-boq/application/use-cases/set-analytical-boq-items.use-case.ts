@@ -11,20 +11,23 @@ import {
 } from '../errors/analytical-boq-application.error';
 import { toAnalyticalBoqItemResult } from './list-analytical-boq-items.use-case';
 import { SyncFinalFromAnalyticalUseCase } from '@/modules/final-boq/application/use-cases/sync-final-from-analytical.use-case';
-import { OwnershipService } from '@/common/services/ownership.service';
+import { IFinalBoqRepository } from '@/modules/final-boq/domain/final-boq.repository';
+import { OwnershipActor, OwnershipService } from '@/common/services/ownership.service';
 import { AuditService } from '@/modules/audit/audit.service';
+import { isFinalItemCommittedForItem } from './analytical-boq.guards';
 
 export class SetAnalyticalBoqItemsUseCase {
   constructor(
     private readonly analyticalBoq: IAnalyticalBoqRepository,
     private readonly buildings: IBuildingRepository,
     private readonly syncFinalFromAnalytical: SyncFinalFromAnalyticalUseCase,
+    private readonly finalBoq: IFinalBoqRepository,
     private readonly ownership: OwnershipService,
     private readonly audit: AuditService,
   ) {}
 
-  async execute(input: SetAnalyticalBoqItemsInput, userProjectId?: string | null, userId?: string): Promise<Result<AnalyticalBoqItemResult[]>> {
-    await this.ownership.verifyBuildingAccess(userProjectId, input.buildingId);
+  async execute(input: SetAnalyticalBoqItemsInput, user?: OwnershipActor, userId?: string): Promise<Result<AnalyticalBoqItemResult[]>> {
+    await this.ownership.verifyBuildingAccess(user, input.buildingId);
     const buildingId = new UniqueEntityId(input.buildingId);
     const building = await this.buildings.findById(buildingId);
     if (!building) {
@@ -66,9 +69,27 @@ export class SetAnalyticalBoqItemsUseCase {
       domainItems.push(created.getValue());
     }
 
+    const existingItems = await this.analyticalBoq.findByBuildingId(buildingId);
+    for (const existing of existingItems) {
+      const incoming = domainItems.find((d) => d.itemCode === existing.itemCode);
+      if (
+        (incoming === undefined || incoming.quantity < existing.quantity) &&
+        (await isFinalItemCommittedForItem(this.finalBoq, buildingId, existing.itemCode))
+      ) {
+        return Result.fail(
+          new AnalyticalBoqApplicationError(
+            AnalyticalBoqErrorCode.QUANTITY_CANNOT_DECREASE,
+            incoming === undefined
+              ? `لا يمكن حذف البند ${existing.itemCode} بعد تحليله أو توزيعه`
+              : `لا يمكن تقليل كمية البند ${existing.itemCode} بعد تحليله أو توزيعه`,
+          ),
+        );
+      }
+    }
+
     await this.analyticalBoq.replaceAllForBuilding(buildingId, domainItems);
     // Mirrors setAnalyticalItems → syncFinalFromAnalytical
-    await this.syncFinalFromAnalytical.execute({ buildingId: input.buildingId });
+    await this.syncFinalFromAnalytical.execute({ buildingId: input.buildingId }, user);
     if (userId) {
       this.audit.log({ userId, entity: 'analytical_boq', entityId: input.buildingId, action: 'REPLACE_ALL', before: null, after: { items: domainItems.map(i => ({ itemCode: i.itemCode, description: i.description })) } });
     }

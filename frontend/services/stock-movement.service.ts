@@ -8,6 +8,7 @@ export interface StockMovement {
   date: string;
   reference: string;
   notes: string;
+  reason: string;
   createdBy: string;
   issuedTo: string;
   supplier: string;
@@ -24,6 +25,7 @@ export interface CreateStockMovementData {
   date?: string;
   reference?: string;
   notes?: string;
+  reason?: string;
   createdBy?: string;
   issuedTo?: string;
   supplier?: string;
@@ -38,6 +40,7 @@ export interface UpdateStockMovementData {
   date?: string;
   reference?: string;
   notes?: string;
+  reason?: string;
   createdBy?: string;
   issuedTo?: string;
   supplier?: string;

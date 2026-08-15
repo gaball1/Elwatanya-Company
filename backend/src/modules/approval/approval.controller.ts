@@ -1,9 +1,10 @@
-import { BadRequestException, Body, Controller, Get, HttpCode, HttpStatus, NotFoundException, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, ForbiddenException, Get, HttpCode, HttpStatus, NotFoundException, Param, ParseUUIDPipe, Patch, Post, Query, Req } from '@nestjs/common';
 import { handleError } from '../../common/utils/handle-error';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { RequirePermission } from '../../common/decorators/permissions.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Permissions } from '../../common/constants/permissions.constant';
+import { isAdminUser } from '../../common/utils/is-admin.util';
 import { ListApprovalsUseCase } from './application/use-cases/list-approvals.use-case';
 import { RequestApprovalUseCase } from './application/use-cases/request-approval.use-case';
 import { ApproveApprovalUseCase } from './application/use-cases/approve-approval.use-case';
@@ -25,16 +26,32 @@ export class ApprovalController {
     private readonly cancelApproval: CancelApprovalUseCase,
   ) {}
 
+  /** General managers and project managers see the full company list; everyone else only their own requests. */
+  private canViewAll(user: any): boolean {
+    if (isAdminUser(user)) return true;
+    return user?.roleNames?.includes('PROJECT_MANAGER') ?? false;
+  }
+
+  /** Approve/reject authority belongs to the general manager and project manager. */
+  private canDecide(user: any): boolean {
+    if (isAdminUser(user)) return true;
+    return user?.roleNames?.includes('PROJECT_MANAGER') ?? false;
+  }
+
   @Get()
   @ApiOperation({ summary: 'List approval requests' })
   @RequirePermission(Permissions.Approvals.Read)
-  async list(@Query() query: ListApprovalsQueryDto) {
-    const result = await this.listApprovals.execute({
-      status: query.status,
-      entityType: query.entityType,
-      skip: query.skip ? parseInt(query.skip, 10) : undefined,
-      take: query.take ? parseInt(query.take, 10) : undefined,
-    });
+  async list(@Query() query: ListApprovalsQueryDto, @CurrentUser() user: any) {
+    const isAdmin = this.canViewAll(user);
+    const result = await this.listApprovals.execute(
+      {
+        status: query.status,
+        entityType: query.entityType,
+        skip: query.skip ? parseInt(query.skip, 10) : undefined,
+        take: query.take ? parseInt(query.take, 10) : undefined,
+      },
+      { userId: user?.sub, isAdmin },
+    );
     if (result.isFailure) handleError(result.error?.message, 'Failed to list approvals');
     const { items, total } = result.getValue();
     return { items, total };
@@ -43,8 +60,9 @@ export class ApprovalController {
   @Get(':id')
   @ApiOperation({ summary: 'Get approval request by id' })
   @RequirePermission(Permissions.Approvals.Read)
-  async getById(@Param('id', ParseUUIDPipe) id: string) {
-    const result = await this.listApprovals.execute({});
+  async getById(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: any) {
+    const isAdmin = this.canViewAll(user);
+    const result = await this.listApprovals.execute({}, { userId: user?.sub, isAdmin });
     if (result.isFailure) handleError(result.error?.message, 'Failed to get approval');
     const { items } = result.getValue();
     const approval = items.find((a) => a.id === id);
@@ -89,8 +107,11 @@ export class ApprovalController {
   @Patch(':id/approve')
   @ApiOperation({ summary: 'Approve a pending request' })
   @RequirePermission(Permissions.Approvals.Approve)
-  async approve(@Param('id', ParseUUIDPipe) id: string, @Body() dto: ApproveOrRejectDto, @CurrentUser('sub') userId: string) {
-    const result = await this.approveApproval.execute(id, userId, dto.comment);
+  async approve(@Param('id', ParseUUIDPipe) id: string, @Body() dto: ApproveOrRejectDto, @CurrentUser('sub') userId: string, @CurrentUser() user: any, @Req() req: any) {
+    if (!this.canDecide(user)) {
+      throw new ForbiddenException('Only the general manager or project manager can approve approval requests');
+    }
+    const result = await this.approveApproval.execute(id, userId, dto.comment, req?.ip);
     if (result.isFailure) handleError(result.error?.message, 'Failed to approve');
     return { approval: result.getValue() };
   }
@@ -98,8 +119,11 @@ export class ApprovalController {
   @Patch(':id/reject')
   @ApiOperation({ summary: 'Reject a pending request' })
   @RequirePermission(Permissions.Approvals.Reject)
-  async reject(@Param('id', ParseUUIDPipe) id: string, @Body() dto: ApproveOrRejectDto, @CurrentUser('sub') userId: string) {
-    const result = await this.rejectApproval.execute(id, userId, dto.comment);
+  async reject(@Param('id', ParseUUIDPipe) id: string, @Body() dto: ApproveOrRejectDto, @CurrentUser('sub') userId: string, @CurrentUser() user: any, @Req() req: any) {
+    if (!this.canDecide(user)) {
+      throw new ForbiddenException('Only the general manager or project manager can reject approval requests');
+    }
+    const result = await this.rejectApproval.execute(id, userId, dto.comment, req?.ip);
     if (result.isFailure) handleError(result.error?.message, 'Failed to reject');
     return { approval: result.getValue() };
   }

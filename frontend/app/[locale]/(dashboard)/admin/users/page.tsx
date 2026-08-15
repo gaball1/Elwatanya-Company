@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { userService, roleService } from "@/services/user.service";
 import { projectService } from "@/services/project.service";
+import { employeeService, type Employee } from "@/services/employee.service";
 import type { User, Role } from "@/services/user.service";
 import type { Project } from "@/services/project.service";
 
@@ -24,6 +25,7 @@ export default function AdminUsersPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
@@ -38,8 +40,8 @@ export default function AdminUsersPage() {
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
 
   // Form state
-  const [createForm, setCreateForm] = useState({ name: "", email: "", password: "" });
-  const [editForm, setEditForm] = useState({ name: "", email: "" });
+  const [createForm, setCreateForm] = useState({ name: "", email: "", password: "", employeeId: "" });
+  const [editForm, setEditForm] = useState<{ name: string; email: string; employeeId: string | null }>({ name: "", email: "", employeeId: null });
   const [resetPwdForm, setResetPwdForm] = useState({ newPassword: "" });
   const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>([]);
   const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>([]);
@@ -47,14 +49,16 @@ export default function AdminUsersPage() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [usersData, rolesData, projectsData] = await Promise.all([
+      const [usersData, rolesData, projectsData, employeesData] = await Promise.all([
         userService.list(),
         roleService.list(),
         projectService.getProjects(),
+        employeeService.list(),
       ]);
       setUsers(usersData);
       setRoles(rolesData);
       setProjects(projectsData);
+      setEmployees(employeesData);
     } catch (err) {
       showToast(isArabic ? "فشل تحميل البيانات" : "Failed to load data", "error");
     } finally {
@@ -78,16 +82,26 @@ export default function AdminUsersPage() {
     return result;
   }, [users, searchTerm, statusFilter]);
 
+  const availableEmployees = useMemo(() => {
+    const linkedIds = new Set(users.map((u) => u.employeeId).filter(Boolean) as string[]);
+    return employees.filter((e) => !linkedIds.has(e.id));
+  }, [employees, users]);
+
   const handleCreate = async () => {
     if (!createForm.name || !createForm.email || !createForm.password) {
       showToast(isArabic ? "يرجى ملء جميع الحقول" : "Please fill all fields", "error");
       return;
     }
     try {
-      await userService.create(createForm);
+      await userService.create({
+        email: createForm.email,
+        name: createForm.name,
+        password: createForm.password,
+        ...(createForm.employeeId ? { employeeId: createForm.employeeId } : {}),
+      });
       showToast(isArabic ? "تم إنشاء المستخدم" : "User created", "success");
       setShowCreateModal(false);
-      setCreateForm({ name: "", email: "", password: "" });
+      setCreateForm({ name: "", email: "", password: "", employeeId: "" });
       await loadData();
     } catch {
       showToast(isArabic ? "فشل إنشاء المستخدم" : "Failed to create user", "error");
@@ -101,6 +115,7 @@ export default function AdminUsersPage() {
       showToast(isArabic ? "تم تحديث المستخدم" : "User updated", "success");
       setShowEditModal(false);
       setSelectedUser(null);
+      setEditForm({ name: "", email: "", employeeId: null });
       await loadData();
     } catch {
       showToast(isArabic ? "فشل تحديث المستخدم" : "Failed to update user", "error");
@@ -265,6 +280,7 @@ export default function AdminUsersPage() {
             <thead>
               <tr className="bg-surface-secondary border-b border-border">
                 <th className="text-right px-4 py-3 font-medium text-text-muted">{isArabic ? "الاسم" : "Name"}</th>
+                <th className="text-right px-4 py-3 font-medium text-text-muted">{isArabic ? "الموظف" : "Employee"}</th>
                 <th className="text-right px-4 py-3 font-medium text-text-muted">{isArabic ? "البريد" : "Email"}</th>
                 <th className="text-right px-4 py-3 font-medium text-text-muted">{isArabic ? "الحالة" : "Status"}</th>
                 <th className="text-right px-4 py-3 font-medium text-text-muted">{isArabic ? "الصلاحيات" : "Roles"}</th>
@@ -276,13 +292,13 @@ export default function AdminUsersPage() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-10 text-text-muted">
+                  <td colSpan={8} className="text-center py-10 text-text-muted">
                     {isArabic ? "جاري التحميل..." : "Loading..."}
                   </td>
                 </tr>
               ) : filteredUsers.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-10 text-text-muted">
+                  <td colSpan={8} className="text-center py-10 text-text-muted">
                     {isArabic ? "لا يوجد مستخدمين" : "No users found"}
                   </td>
                 </tr>
@@ -298,6 +314,13 @@ export default function AdminUsersPage() {
                           <p className="text-xs text-text-muted">{user.roles.length > 0 ? user.roles.map(r => r.name).join(", ") : user.role}</p>
                         </div>
                       </div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className="text-xs text-text-secondary">
+                      {user.employee?.fullName
+                        ? `${user.employee.fullName}${user.employee.code ? ` (${user.employee.code})` : ""}`
+                        : (isArabic ? "غير مرتبط" : "Not linked")}
+                    </span>
                   </td>
                   <td className="px-4 py-3 text-text-secondary">{user.email}</td>
                   <td className="px-4 py-3">{statusBadge(user.status)}</td>
@@ -331,7 +354,7 @@ export default function AdminUsersPage() {
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-center gap-1">
                       <button
-                        onClick={() => { setSelectedUser(user); setEditForm({ name: user.name, email: user.email }); setShowEditModal(true); }}
+                        onClick={() => { setSelectedUser(user); setEditForm({ name: user.name, email: user.email, employeeId: user.employeeId ?? null }); setShowEditModal(true); }}
                         className="p-1.5 rounded-lg hover:bg-surface-secondary text-text-muted hover:text-text-primary transition-colors"
                         title={isArabic ? "تعديل" : "Edit"}
                       >
@@ -398,6 +421,26 @@ export default function AdminUsersPage() {
           <Input placeholder={isArabic ? "الاسم" : "Name"} value={createForm.name} onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })} />
           <Input placeholder={isArabic ? "البريد الإلكتروني" : "Email"} type="email" value={createForm.email} onChange={(e) => setCreateForm({ ...createForm, email: e.target.value })} />
           <Input placeholder={isArabic ? "كلمة المرور" : "Password"} type="password" value={createForm.password} onChange={(e) => setCreateForm({ ...createForm, password: e.target.value })} />
+          <div>
+            <label className="block text-xs font-medium text-text-muted mb-1">
+              {isArabic ? "ربط الموظف (اختياري)" : "Link Employee (optional)"}
+            </label>
+            <select
+              value={createForm.employeeId}
+              onChange={(e) => setCreateForm({ ...createForm, employeeId: e.target.value })}
+              className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-sm text-text-primary"
+            >
+              <option value="">{isArabic ? "— بدون ربط —" : "— Not linked —"}</option>
+              {availableEmployees.map((emp) => (
+                <option key={emp.id} value={emp.id}>
+                  {emp.fullName}{emp.code ? ` (${emp.code})` : ""}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-text-muted mt-1">
+              {isArabic ? "يربط حساب المستخدم بملف الموظف ليتمكن من تسجيل الحضور الذاتي" : "Links the account to an employee so they can self-record attendance"}
+            </p>
+          </div>
           <div className="flex gap-2 justify-end">
             <Button variant="outline" onClick={() => setShowCreateModal(false)}>{isArabic ? "إلغاء" : "Cancel"}</Button>
             <Button onClick={handleCreate}>{isArabic ? "إنشاء" : "Create"}</Button>
@@ -411,6 +454,26 @@ export default function AdminUsersPage() {
           <h2 className="text-lg font-bold">{isArabic ? "تعديل المستخدم" : "Edit User"}</h2>
           <Input placeholder={isArabic ? "الاسم" : "Name"} value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} />
           <Input placeholder={isArabic ? "البريد الإلكتروني" : "Email"} type="email" value={editForm.email} onChange={(e) => setEditForm({ ...editForm, email: e.target.value })} />
+          <div>
+            <label className="block text-xs font-medium text-text-muted mb-1">
+              {isArabic ? "ربط الموظف" : "Link Employee"}
+            </label>
+            <select
+              value={editForm.employeeId ?? ""}
+              onChange={(e) => setEditForm({ ...editForm, employeeId: e.target.value || null })}
+              className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-sm text-text-primary"
+            >
+              <option value="">{isArabic ? "— بدون ربط —" : "— Not linked —"}</option>
+              {[...availableEmployees.filter((emp) => emp.id !== editForm.employeeId), ...(editForm.employeeId ? employees.filter((emp) => emp.id === editForm.employeeId) : [])].map((emp) => (
+                <option key={emp.id} value={emp.id}>
+                  {emp.fullName}{emp.code ? ` (${emp.code})` : ""}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-text-muted mt-1">
+              {isArabic ? "يربط حساب المستخدم بملف الموظف ليتمكن من تسجيل الحضور الذاتي" : "Links the account to an employee so they can self-record attendance"}
+            </p>
+          </div>
           <div className="flex gap-2 justify-end">
             <Button variant="outline" onClick={() => setShowEditModal(false)}>{isArabic ? "إلغاء" : "Cancel"}</Button>
             <Button onClick={handleEdit}>{isArabic ? "حفظ" : "Save"}</Button>

@@ -68,7 +68,8 @@ export class ConversationService {
     }
 
     if (intent.startsWith('list_') || intent.startsWith('show_') || intent === 'search') {
-      parts.push(ar ? this.formatListResultAr(intent, result.data) : this.formatListResult(intent, result.data));
+      const showFull = (this.context.get(conversationId) as any)._showFullList === true;
+      parts.push(ar ? this.formatListResultAr(intent, result.data, showFull) : this.formatListResult(intent, result.data, showFull));
     }
 
     if (intent === 'get_attendance_analysis') {
@@ -243,7 +244,7 @@ export class ConversationService {
     return ar ? `واجهت مشكلة: ${error}` : `I ran into an issue: ${error}`;
   }
 
-  private formatListResult(intent: string, data: any): string {
+  private formatListResult(intent: string, data: any, showFull = false): string {
     const items = Array.isArray(data) ? data : data?.items || data?.projects || [];
     const entity = intent.replace('list_', '').replace('show_', '').replace(/_/g, ' ');
 
@@ -251,8 +252,8 @@ export class ConversationService {
       return `There are no ${entity} at the moment.`;
     }
 
-    if (items.length <= 3) {
-      const names = items.map((i: any) => i.name || i.fullName || i.code || `record ${items.indexOf(i) + 1}`).join(', ');
+    if (items.length <= 3 || showFull) {
+      const names = items.slice(0, 30).map((i: any) => i.name || i.fullName || i.code || `record ${items.indexOf(i) + 1}`).join(', ');
       return `I found ${items.length} ${entity}: ${names}.`;
     }
 
@@ -526,17 +527,35 @@ export class ConversationService {
     return lines.join('\n') || 'لا توجد بيانات متاحة.';
   }
 
-  private formatListResultAr(intent: string, data: any): string {
+  private formatListResultAr(intent: string, data: any, showFull = false): string {
     const items = Array.isArray(data) ? data : data?.items || data?.projects || [];
     const entity = intent.replace('list_', '').replace('show_', '').replace(/_/g, ' ');
+    const arEntities: Record<string, string> = {
+      projects: 'مشروع', project: 'مشروع',
+      buildings: 'مبنى', building: 'مبنى',
+      employees: 'موظف', employee: 'موظف',
+      attendance: 'سجل حضور',
+      approvals: 'موافقة', approval: 'موافقة',
+      suppliers: 'مورد', supplier: 'مورد',
+      clients: 'عميل', client: 'عميل',
+      subcontractors: 'مقاول', subcontractor: 'مقاول',
+      warehouses: 'مخزن', warehouse: 'مخزن',
+      'inventory items': 'صنف', 'inventory item': 'صنف',
+      'project funds': 'صندوق', 'project fund': 'صندوق',
+      purchases: 'مشتريات', purchase: 'مشتريات',
+      extracts: 'مستخلص', extract: 'مستخلص',
+      payments: 'دفعة', payment: 'دفعة',
+      reports: 'تقرير', report: 'تقرير',
+    };
+    const entityAr = arEntities[entity] || entity;
     if (items.length === 0) {
-      return `لا توجد ${entity} حالياً.`;
+      return `لا توجد ${entityAr} حالياً.`;
     }
-    if (items.length <= 5) {
-      const names = items.map((i: any) => i.name || i.fullName || i.code || `سجل ${items.indexOf(i) + 1}`).join('، ');
-      return `وجدت ${items.length} ${entity}: ${names}.`;
+    if (items.length <= 5 || showFull) {
+      const names = items.slice(0, 30).map((i: any) => i.name || i.fullName || i.code || `سجل ${items.indexOf(i) + 1}`).join('، ');
+      return `وجدت ${items.length} ${entityAr}: ${names}.`;
     }
-    return `وجدت ${items.length} ${entity}. هل تريد أن أعرض لك القائمة كاملة؟`;
+    return `وجدت ${items.length} ${entityAr}. هل تريد أن أعرض لك القائمة كاملة؟`;
   }
 
   private formatCreateResultAr(intent: string, data: any): string {

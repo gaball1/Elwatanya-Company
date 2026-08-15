@@ -16,12 +16,13 @@ import {
   RemoveFinalBoqComponentInput,
   FinalBoqItemResult,
 } from '../dto/final-boq.dto';
+import { validateComponentsWithinBudget, getComponentAllocatedQty } from '../../domain/final-boq-rules';
 import {
   FinalBoqApplicationError,
   FinalBoqErrorCode,
 } from '../errors/final-boq-application.error';
 import { getOrCreateFinalBoq, toFinalBoqItemResult } from './final-boq-mappers';
-import { OwnershipService } from '@/common/services/ownership.service';
+import { OwnershipActor, OwnershipService } from '@/common/services/ownership.service';
 import { AuditService } from '@/modules/audit/audit.service';
 
 /** Mirrors analyzeFinalItem */
@@ -34,8 +35,8 @@ export class AnalyzeFinalBoqItemUseCase {
     private readonly audit: AuditService,
   ) {}
 
-  async execute(input: AnalyzeFinalBoqItemInput, userProjectId?: string | null, userId?: string): Promise<Result<FinalBoqItemResult>> {
-    await this.ownership.verifyBuildingAccess(userProjectId, input.buildingId);
+  async execute(input: AnalyzeFinalBoqItemInput, user?: OwnershipActor, userId?: string): Promise<Result<FinalBoqItemResult>> {
+    await this.ownership.verifyBuildingAccess(user, input.buildingId);
     const buildingId = new UniqueEntityId(input.buildingId);
     const building = await this.buildings.findById(buildingId);
     if (!building) {
@@ -49,6 +50,19 @@ export class AnalyzeFinalBoqItemUseCase {
     if (!item) {
       return Result.fail(
         new FinalBoqApplicationError(FinalBoqErrorCode.ITEM_NOT_FOUND, 'Final BOQ item not found'),
+      );
+    }
+
+    const budget = validateComponentsWithinBudget(
+      item.totalValue,
+      input.components.map((c) => ({ quantity: item.quantity, unitPrice: c.unitPrice })),
+    );
+    if (!budget.ok) {
+      return Result.fail(
+        new FinalBoqApplicationError(
+          FinalBoqErrorCode.COMPONENT_PRICE_EXCEEDS_ITEM,
+          budget.error,
+        ),
       );
     }
 
@@ -74,8 +88,8 @@ export class AddFinalBoqComponentUseCase {
     private readonly audit: AuditService,
   ) {}
 
-  async execute(input: AddFinalBoqComponentInput, userProjectId?: string | null, userId?: string): Promise<Result<FinalBoqItemResult>> {
-    await this.ownership.verifyBuildingAccess(userProjectId, input.buildingId);
+  async execute(input: AddFinalBoqComponentInput, user?: OwnershipActor, userId?: string): Promise<Result<FinalBoqItemResult>> {
+    await this.ownership.verifyBuildingAccess(user, input.buildingId);
     const buildingId = new UniqueEntityId(input.buildingId);
     const building = await this.buildings.findById(buildingId);
     if (!building) {
@@ -89,6 +103,19 @@ export class AddFinalBoqComponentUseCase {
     if (!item) {
       return Result.fail(
         new FinalBoqApplicationError(FinalBoqErrorCode.ITEM_NOT_FOUND, 'Final BOQ item not found'),
+      );
+    }
+
+    const budget = validateComponentsWithinBudget(item.totalValue, [
+      ...item.components.map((c) => ({ quantity: c.quantity, unitPrice: c.unitPrice })),
+      { quantity: item.quantity, unitPrice: input.unitPrice },
+    ]);
+    if (!budget.ok) {
+      return Result.fail(
+        new FinalBoqApplicationError(
+          FinalBoqErrorCode.COMPONENT_PRICE_EXCEEDS_ITEM,
+          budget.error,
+        ),
       );
     }
 
@@ -118,8 +145,8 @@ export class RemoveFinalBoqComponentUseCase {
     private readonly audit: AuditService,
   ) {}
 
-  async execute(input: RemoveFinalBoqComponentInput, userProjectId?: string | null, userId?: string): Promise<Result<FinalBoqItemResult>> {
-    await this.ownership.verifyBuildingAccess(userProjectId, input.buildingId);
+  async execute(input: RemoveFinalBoqComponentInput, user?: OwnershipActor, userId?: string): Promise<Result<FinalBoqItemResult>> {
+    await this.ownership.verifyBuildingAccess(user, input.buildingId);
     const buildingId = new UniqueEntityId(input.buildingId);
     const building = await this.buildings.findById(buildingId);
     if (!building) {
@@ -167,8 +194,8 @@ export class UpdateFinalBoqComponentUseCase {
     private readonly audit: AuditService,
   ) {}
 
-  async execute(input: UpdateFinalBoqComponentInput, userProjectId?: string | null, userId?: string): Promise<Result<FinalBoqItemResult | null>> {
-    await this.ownership.verifyBuildingAccess(userProjectId, input.buildingId);
+  async execute(input: UpdateFinalBoqComponentInput, user?: OwnershipActor, userId?: string): Promise<Result<FinalBoqItemResult | null>> {
+    await this.ownership.verifyBuildingAccess(user, input.buildingId);
     const buildingId = new UniqueEntityId(input.buildingId);
     const building = await this.buildings.findById(buildingId);
     if (!building) {
@@ -186,11 +213,46 @@ export class UpdateFinalBoqComponentUseCase {
     }
 
     const componentId = new UniqueEntityId(input.componentId);
-    if (!item.findComponent(componentId)) {
+    const component = item.findComponent(componentId);
+    if (!component) {
       return Result.fail(
         new FinalBoqApplicationError(
           FinalBoqErrorCode.COMPONENT_NOT_FOUND,
           'Component not found',
+        ),
+      );
+    }
+
+    const nextQuantity = input.quantity ?? component.quantity;
+    const nextUnitPrice = input.unitPrice ?? component.unitPrice;
+
+    const allocationRefs = await this.allocations.getAllocationsForBuilding(buildingId);
+    if (
+      input.quantity !== undefined &&
+      input.quantity < component.quantity &&
+      getComponentAllocatedQty(allocationRefs, item.itemCode, component.id.toValue()) > 0
+    ) {
+      return Result.fail(
+        new FinalBoqApplicationError(
+          FinalBoqErrorCode.QUANTITY_CANNOT_DECREASE,
+          `لا يمكن تقليل كمية المكوّن ${component.name} بعد توزيعه`,
+        ),
+      );
+    }
+
+    const budget = validateComponentsWithinBudget(
+      item.totalValue,
+      item.components.map((c) =>
+        c.id.equals(componentId)
+          ? { quantity: nextQuantity, unitPrice: nextUnitPrice }
+          : { quantity: c.quantity, unitPrice: c.unitPrice },
+      ),
+    );
+    if (!budget.ok) {
+      return Result.fail(
+        new FinalBoqApplicationError(
+          FinalBoqErrorCode.COMPONENT_PRICE_EXCEEDS_ITEM,
+          budget.error,
         ),
       );
     }
@@ -214,7 +276,6 @@ export class UpdateFinalBoqComponentUseCase {
     if (userId) {
       this.audit.log({ userId, entity: 'final_boq', entityId: item.id.toValue(), action: 'UPDATE_COMPONENT', before: null, after: { itemCode: item.businessCode, componentId: input.componentId, quantity: input.quantity, unitPrice: input.unitPrice } });
     }
-    const allocationRefs = await this.allocations.getAllocationsForBuilding(buildingId);
     return Result.ok(toFinalBoqItemResult(item, allocationRefs));
   }
 }

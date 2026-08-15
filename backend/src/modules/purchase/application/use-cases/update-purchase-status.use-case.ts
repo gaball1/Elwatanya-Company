@@ -1,6 +1,7 @@
 import { Result } from '@/shared/kernel/result';
 import { UniqueEntityId } from '@/shared/kernel/unique-entity-id.vo';
 import { IPurchaseRepository } from '../../domain/purchase.repository';
+import { PurchaseStatus } from '../../domain/purchase.entity';
 import { PurchaseResult, toResult } from '../dto/purchase.dto';
 import { FinancialService } from '@/common/services/financial.service';
 import { PrismaService } from '@/prisma/prisma.service';
@@ -18,9 +19,13 @@ export class UpdatePurchaseStatusUseCase {
     private readonly stockService: PurchaseStockService,
   ) {}
 
-  async execute(id: string, status: PurchaseStatusAction): Promise<Result<PurchaseResult>> {
+  async execute(id: string, status: PurchaseStatusAction, warehouseId?: string): Promise<Result<PurchaseResult>> {
     const purchase = await this.purchaseRepo.findById(new UniqueEntityId(id));
     if (!purchase) return Result.fail(new Error('Purchase not found'));
+
+    if (status === 'received' && !warehouseId) {
+      return Result.fail(new Error('Destination warehouse is required when receiving a purchase'));
+    }
 
     const wasReceived = purchase.status === 'received';
 
@@ -52,10 +57,32 @@ export class UpdatePurchaseStatusUseCase {
       createdBy: purchase.createdBy || 'system',
       date: purchase.date,
       purchaseId: purchase.id.toValue(),
+      warehouseId: warehouseId || '',
     };
 
     try {
       await this.prisma.$transaction(async (tx) => {
+        // Atomic status transition guards against concurrent double-transitions
+        // (e.g. two simultaneous "received" calls would otherwise double stock-in).
+        const allowedFrom: Record<PurchaseStatusAction, PurchaseStatus[]> = {
+          approved: ['pending', 'approved'],
+          received: ['approved'],
+          cancelled: ['pending', 'approved', 'received'],
+        };
+        const transitioned = await this.purchaseRepo.transition(
+          purchase.id.toValue(),
+          allowedFrom[status],
+          status,
+          tx,
+        );
+        if (!transitioned) {
+          throw new Error(
+            status === 'received'
+              ? 'Purchase is already received or was cancelled'
+              : `Purchase is already ${status} or was cancelled`,
+          );
+        }
+
         await this.purchaseRepo.save(purchase, tx);
 
         if (status === 'cancelled') {
@@ -77,6 +104,7 @@ export class UpdatePurchaseStatusUseCase {
           // Physical receipt -> stock-in, then permanently link the purchase to its item.
           const itemId = await this.stockService.stockIn(stockCtx, tx);
           purchase.linkInventoryItem(itemId);
+          if (warehouseId) purchase.assignWarehouse(warehouseId);
           await this.purchaseRepo.save(purchase, tx);
         }
       });

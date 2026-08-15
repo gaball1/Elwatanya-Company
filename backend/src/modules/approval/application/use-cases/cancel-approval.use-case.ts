@@ -12,24 +12,35 @@ export class CancelApprovalUseCase {
 
   async execute(id: string, cancelledBy: string, reason?: string): Promise<Result<Approval>> {
     try {
-      const approval = await this.repo.findById(id);
-      if (!approval) return Result.fail(new Error('Approval request not found'));
-      if (approval.status !== 'draft' && approval.status !== 'pending') {
+      // Try pending first; if that race fails, try draft. Atomic transitions guarantee a
+      // single winner when approve/reject/cancel fire concurrently.
+      let updated = await this.repo.transition(id, 'pending', 'cancelled', {
+        approvedBy: cancelledBy,
+        comment: reason ?? undefined,
+      });
+      if (!updated) {
+        updated = await this.repo.transition(id, 'draft', 'cancelled', {
+          approvedBy: cancelledBy,
+          comment: reason ?? undefined,
+        });
+      }
+      if (!updated) {
+        const existing = await this.repo.findById(id);
+        if (!existing) return Result.fail(new Error('Approval request not found'));
         return Result.fail(new Error('Only draft or pending requests can be cancelled'));
       }
-      const updated = await this.repo.update(id, { status: 'cancelled', approvedBy: cancelledBy, comment: reason ?? approval.comment ?? '' });
       await this.eventBus.publish(
         new ApprovalCancelledEvent(
-          approval.id,
+          updated.id,
           'approval',
           {
-            id: approval.id,
-            entityType: approval.entityType,
-            entityId: approval.entityId,
-            title: approval.entityType,
+            id: updated.id,
+            entityType: updated.entityType,
+            entityId: updated.entityId,
+            title: updated.entityType,
             cancelledBy,
             reason: reason ?? undefined,
-            recipientIds: [approval.requestedBy],
+            recipientIds: [updated.requestedBy],
           },
         ),
       );

@@ -48,6 +48,7 @@ export default function StockMovementsPage() {
     date: new Date().toISOString().split("T")[0],
     reference: "",
     notes: "",
+    reason: "",
     issuedTo: "",
     supplier: "",
     fromWarehouse: "",
@@ -99,7 +100,7 @@ export default function StockMovementsPage() {
 
   const openAddModal = () => {
     setEditingMovement(null);
-    setForm({ itemId: "", type: "ISSUE", quantity: "0", date: new Date().toISOString().split("T")[0], reference: "", notes: "", issuedTo: "", supplier: "", fromWarehouse: "", toWarehouse: "" });
+    setForm({ itemId: "", type: "ISSUE", quantity: "0", date: new Date().toISOString().split("T")[0], reference: "", notes: "", reason: "", issuedTo: "", supplier: "", fromWarehouse: "", toWarehouse: "" });
     setShowModal(true);
   };
 
@@ -112,6 +113,7 @@ export default function StockMovementsPage() {
       date: movement.date.split("T")[0],
       reference: movement.reference,
       notes: movement.notes,
+      reason: movement.reason,
       issuedTo: movement.issuedTo,
       supplier: movement.supplier,
       fromWarehouse: movement.fromWarehouse,
@@ -131,6 +133,7 @@ export default function StockMovementsPage() {
         date: form.date,
         reference: form.reference,
         notes: form.notes,
+        reason: form.reason,
         issuedTo: form.issuedTo,
         supplier: form.supplier,
         fromWarehouse: form.fromWarehouse,
@@ -146,8 +149,8 @@ export default function StockMovementsPage() {
       setShowModal(false);
       setEditingMovement(null);
       await fetchData();
-    } catch {
-      showToast(isArabic ? "خطأ في حفظ البيانات" : "Error saving data", "error");
+    } catch (error: any) {
+      showToast(error?.message || (isArabic ? "خطأ في حفظ البيانات" : "Error saving data"), "error");
     }
   };
 
@@ -159,14 +162,14 @@ export default function StockMovementsPage() {
       setShowDeleteConfirm(false);
       setDeletingId(null);
       await fetchData();
-    } catch {
-      showToast(isArabic ? "خطأ في الحذف" : "Error deleting", "error");
+    } catch (error: any) {
+      showToast(error?.message || (isArabic ? "خطأ في الحذف" : "Error deleting"), "error");
     }
   };
 
   const exportToCsv = () => {
-    const headers = [isArabic ? "الصنف" : "Item", isArabic ? "النوع" : "Type", isArabic ? "الكمية" : "Quantity", isArabic ? "التاريخ" : "Date", isArabic ? "المرجع" : "Reference", isArabic ? "ملاحظات" : "Notes"];
-    const rows = filteredAndSorted.map((m) => [getItemName(m.itemId), m.type, m.quantity, m.date, m.reference, m.notes]);
+    const headers = [isArabic ? "الصنف" : "Item", isArabic ? "النوع" : "Type", isArabic ? "الكمية" : "Quantity", isArabic ? "التاريخ" : "Date", isArabic ? "المرجع" : "Reference", isArabic ? "السبب" : "Reason", isArabic ? "ملاحظات" : "Notes"];
+    const rows = filteredAndSorted.map((m) => [getItemName(m.itemId), m.type, m.quantity, m.date, m.reference, m.reason, m.notes]);
     const csv = [headers, ...rows].map((r) => r.join(",")).join("\n");
     const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
@@ -179,8 +182,8 @@ export default function StockMovementsPage() {
   };
 
   const handlePrintPDF = () => {
-    const headers = [isArabic ? "الصنف" : "Item", isArabic ? "النوع" : "Type", isArabic ? "الكمية" : "Qty", isArabic ? "التاريخ" : "Date", isArabic ? "المرجع" : "Ref", isArabic ? "ملاحظات" : "Notes"];
-    const rows = filteredAndSorted.map((m) => [getItemName(m.itemId), m.type, m.quantity.toString(), m.date, m.reference, m.notes]);
+    const headers = [isArabic ? "الصنف" : "Item", isArabic ? "النوع" : "Type", isArabic ? "الكمية" : "Qty", isArabic ? "التاريخ" : "Date", isArabic ? "المرجع" : "Ref", isArabic ? "السبب" : "Reason", isArabic ? "ملاحظات" : "Notes"];
+    const rows = filteredAndSorted.map((m) => [getItemName(m.itemId), m.type, m.quantity.toString(), m.date, m.reference, m.reason, m.notes]);
     printAsPDF(rows, headers, isArabic ? "حركات المخزون" : "Stock Movements Report", isArabic);
   };
 
@@ -243,7 +246,8 @@ export default function StockMovementsPage() {
                   </div>
                   <div>
                     <p className="text-sm font-medium text-text-primary">{getItemName(movement.itemId)}</p>
-                    <p className="text-xs text-text-muted">{movement.reference || movement.type} — {new Date(movement.date).toLocaleDateString()}</p>
+                    <p className="text-xs text-text-muted">{movement.reference || movement.type} — {new Date(movement.date).toLocaleDateString(isArabic ? "ar-EG" : "en-US")}</p>
+                    {movement.reason && <p className="text-xs text-text-secondary mt-0.5">{movement.reason}</p>}
                   </div>
                 </div>
                 <div className="flex items-center gap-4">
@@ -288,6 +292,7 @@ export default function StockMovementsPage() {
               <input type="number" step="0.01" placeholder={isArabic ? "الكمية" : "Quantity"} value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} className="w-full p-3 border rounded-xl" required />
               <input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} className="w-full p-3 border rounded-xl" />
               <input type="text" placeholder={isArabic ? "المرجع" : "Reference"} value={form.reference} onChange={(e) => setForm({ ...form, reference: e.target.value })} className="w-full p-3 border rounded-xl" />
+              <input type="text" placeholder={isArabic ? "السبب (وصف العملية)" : "Reason"} value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })} className="w-full p-3 border rounded-xl" />
               <textarea placeholder={isArabic ? "ملاحظات" : "Notes"} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} className="w-full p-3 border rounded-xl resize-none" rows={2} />
               {form.type === "ISSUE" && <input type="text" placeholder={isArabic ? "صرف إلى" : "Issued To"} value={form.issuedTo} onChange={(e) => setForm({ ...form, issuedTo: e.target.value })} className="w-full p-3 border rounded-xl" />}
               {form.type === "TRANSFER" && (

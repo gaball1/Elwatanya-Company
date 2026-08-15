@@ -10,6 +10,7 @@ export class PrismaWarehouseRepository implements IWarehouseRepository {
 
   async save(warehouse: Warehouse): Promise<void> {
     const data = {
+      projectId: warehouse.projectId,
       code: warehouse.code,
       name: warehouse.name,
       location: warehouse.location,
@@ -36,9 +37,34 @@ export class PrismaWarehouseRepository implements IWarehouseRepository {
     return record ? this.toDomain(record) : null;
   }
 
-  async findAll(): Promise<Warehouse[]> {
+  async findByCodeIncludingDeleted(code: string): Promise<Warehouse | null> {
+    const record = await this.prisma.warehouse.findFirst({
+      where: { code },
+    });
+    return record ? this.toDomain(record) : null;
+  }
+
+  async findByNameIncludingDeleted(name: string): Promise<Warehouse | null> {
+    const record = await this.prisma.warehouse.findFirst({
+      where: { name },
+    });
+    return record ? this.toDomain(record) : null;
+  }
+
+  async findAll(projectId?: string): Promise<Warehouse[]> {
+    const whereClause: any = { deletedAt: null };
+    if (projectId !== undefined) {
+      // Return warehouses for this project AND company-wide warehouses (projectId = null)
+      whereClause.OR = [
+        { projectId },
+        { projectId: null },
+      ];
+    } else {
+      whereClause.projectId = null; // by default return company warehouses
+    }
+
     const records = await this.prisma.warehouse.findMany({
-      where: { deletedAt: null },
+      where: whereClause,
       orderBy: { createdAt: 'desc' },
     });
     return records.map((r) => this.toDomain(r));
@@ -46,6 +72,7 @@ export class PrismaWarehouseRepository implements IWarehouseRepository {
 
   private toDomain(record: {
     id: string;
+    projectId: string | null;
     code: string;
     name: string;
     location: string;
@@ -56,6 +83,7 @@ export class PrismaWarehouseRepository implements IWarehouseRepository {
   }): Warehouse {
     return Warehouse.reconstitute(
       {
+        projectId: record.projectId,
         code: record.code,
         name: record.name,
         location: record.location,

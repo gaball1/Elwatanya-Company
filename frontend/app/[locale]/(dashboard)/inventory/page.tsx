@@ -2,6 +2,7 @@
 "use client";
 
 import { useParams } from "next/navigation";
+import Link from "next/link";
 import { useState, useMemo, useCallback, useEffect } from "react";
 import { Card } from "@/components/ui";
 import { Can } from '@/components/Can';
@@ -20,6 +21,8 @@ import {
   ClipboardCheck,
 } from "lucide-react";
 import { inventoryItemService, type InventoryItem } from "@/services/inventory-item.service";
+import { categoryService, type Category } from "@/services/category.service";
+import { warehouseService, type Warehouse } from "@/services/warehouse.service";
 import { approvalService } from "@/services/approval.service";
 import { useToast } from "@/components/ui/Toast";
 import { printAsPDF } from "@/lib/printUtils";
@@ -42,29 +45,50 @@ export default function InventoryPage() {
   const [approvalStatus, setApprovalStatus] = useState<"draft" | "pending">("pending");
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [warehouseFilter, setWarehouseFilter] = useState("all");
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [sortBy, setSortBy] = useState<"name" | "quantity" | "price">("name");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
 
   const fetchItems = useCallback(async () => {
     try {
       setLoading(true);
-      const data = await inventoryItemService.list();
+      const data = await inventoryItemService.list(
+        categoryFilter === "all" ? undefined : categoryFilter,
+        warehouseFilter === "all" ? undefined : warehouseFilter,
+        (params.id as string) || undefined
+      );
       setItems(data);
     } catch (error) {
       showToast(isArabic ? "حدث خطأ في تحميل البيانات" : "Failed to load data", "error");
     } finally {
       setLoading(false);
     }
-  }, [isArabic]);
+  }, [isArabic, categoryFilter, warehouseFilter, params.id]);
 
-  useEffect(() => { fetchItems(); }, [fetchItems]);
+  useEffect(() => {
+    fetchItems();
+    categoryService
+      .list()
+      .then((cats) => setCategories(cats))
+      .catch(() => setCategories([]));
+    warehouseService
+      .list((params.id as string) || undefined)
+      .then((ws) => setWarehouses(ws))
+      .catch(() => setWarehouses([]));
+  }, [fetchItems, params.id]);
 
   const [form, setForm] = useState({
     code: "",
     name: "",
     description: "",
+    categoryId: "",
+    warehouseId: "",
     unit: "",
     quantity: "0",
+    reason: "",
     minQuantity: "0",
     price: "0",
     status: "active",
@@ -80,6 +104,9 @@ export default function InventoryPage() {
     let filtered = [...items];
     if (statusFilter !== "all") {
       filtered = filtered.filter((i) => i.status === statusFilter);
+    }
+    if (categoryFilter !== "all") {
+      filtered = filtered.filter((i) => i.categoryId === categoryFilter);
     }
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
@@ -97,7 +124,7 @@ export default function InventoryPage() {
       return sortOrder === "asc" ? comparison : -comparison;
     });
     return filtered;
-  }, [items, searchTerm, statusFilter, sortBy, sortOrder]);
+  }, [items, searchTerm, statusFilter, categoryFilter, sortBy, sortOrder]);
 
   const handleInputChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
@@ -112,8 +139,11 @@ export default function InventoryPage() {
       code: "",
       name: "",
       description: "",
+      categoryId: "",
+      warehouseId: "",
       unit: "",
       quantity: "0",
+      reason: "",
       minQuantity: "0",
       price: "0",
       status: "active",
@@ -127,8 +157,11 @@ export default function InventoryPage() {
       code: item.code,
       name: item.name,
       description: item.description || "",
+      categoryId: item.categoryId || "",
+      warehouseId: item.warehouseId || "",
       unit: item.unit || "",
       quantity: String(item.quantity),
+      reason: "",
       minQuantity: String(item.minQuantity),
       price: String(item.price),
       status: item.status,
@@ -144,8 +177,12 @@ export default function InventoryPage() {
           code: form.code,
           name: form.name,
           description: form.description || undefined,
+          categoryId: form.categoryId || undefined,
+          warehouseId: form.warehouseId || undefined,
+          projectId: (params.id as string) || undefined,
           unit: form.unit || undefined,
           quantity: Number(form.quantity),
+          reason: form.reason || undefined,
           minQuantity: Number(form.minQuantity),
           price: Number(form.price),
           status: form.status,
@@ -312,6 +349,24 @@ export default function InventoryPage() {
                 {statusOptions.map((opt) => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
               </select>
             </div>
+            {categories.length > 0 && (
+              <div className="relative">
+                <Filter className="absolute right-3 top-1/2 transform -translate-y-1/2 text-text-muted w-4 h-4" />
+                <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} className="pr-10 pl-4 py-2 border border-border rounded-lg appearance-none focus:outline-none focus:border-gold">
+                  <option value="all">{isArabic ? "كل التصنيفات" : "All categories"}</option>
+                  {categories.map((cat) => (<option key={cat.id} value={cat.id}>{cat.name}</option>))}
+                </select>
+              </div>
+            )}
+            {warehouses.length > 0 && (
+              <div className="relative">
+                <Filter className="absolute right-3 top-1/2 transform -translate-y-1/2 text-text-muted w-4 h-4" />
+                <select value={warehouseFilter} onChange={(e) => setWarehouseFilter(e.target.value)} className="pr-10 pl-4 py-2 border border-border rounded-lg appearance-none focus:outline-none focus:border-gold">
+                  <option value="all">{isArabic ? "كل المخازن" : "All warehouses"}</option>
+                  {warehouses.map((w) => (<option key={w.id} value={w.id}>{w.name}</option>))}
+                </select>
+              </div>
+            )}
           </div>
           <div className="flex gap-2 items-center">
             <span className="text-sm text-text-secondary">{isArabic ? "ترتيب حسب:" : "Sort by:"}</span>
@@ -378,6 +433,12 @@ export default function InventoryPage() {
                     </div>
                   )}
                   <div className="mt-4 space-y-2 text-sm text-text-secondary">
+                    {item.categoryName && (
+                      <div className="flex items-center gap-2"><span className="font-semibold text-text-primary">{isArabic ? "التصنيف" : "Category"}:</span><span>{item.categoryName}</span></div>
+                    )}
+                    {item.warehouseId && (
+                      <div className="flex items-center gap-2"><span className="font-semibold text-text-primary">{isArabic ? "المخزن" : "Warehouse"}:</span><Link href={`/${locale}/warehouses/${item.warehouseId}`} className="text-primary hover:text-gold hover:underline">{warehouses.find((w) => w.id === item.warehouseId)?.name || item.warehouseId}</Link></div>
+                    )}
                     <div className="flex items-center gap-2"><span className="font-semibold text-text-primary">{isArabic ? "الوحدة" : "Unit"}:</span><span>{item.unit || "—"}</span></div>
                     <div className="flex items-center gap-2"><span className="font-semibold text-text-primary">{isArabic ? "الكمية" : "Qty"}:</span><span className={lowStock ? "text-danger font-bold" : ""}>{item.quantity}</span></div>
                     <div className="flex items-center gap-2"><span className="font-semibold text-text-primary">{isArabic ? "الحد الأدنى" : "Min Qty"}:</span><span>{item.minQuantity}</span></div>
@@ -406,9 +467,22 @@ export default function InventoryPage() {
             <form onSubmit={handleSubmit} className="p-5 space-y-4">
               <input type="text" name="code" placeholder={isArabic ? "كود الصنف" : "Item Code"} value={form.code} onChange={handleInputChange} className="w-full p-3 border rounded-xl" required />
               <input type="text" name="name" placeholder={isArabic ? "اسم الصنف" : "Item Name"} value={form.name} onChange={handleInputChange} className="w-full p-3 border rounded-xl" required />
+              <select name="categoryId" value={form.categoryId} onChange={handleInputChange} className="w-full p-3 border rounded-xl">
+                <option value="">{isArabic ? "— بدون تصنيف —" : "— No category —"}</option>
+                {categories.map((cat) => (<option key={cat.id} value={cat.id}>{cat.name}</option>))}
+              </select>
+              {warehouses.length > 0 && (
+                <select name="warehouseId" value={form.warehouseId} onChange={handleInputChange} className="w-full p-3 border rounded-xl">
+                  <option value="">{isArabic ? "— بدون مخزن —" : "— No warehouse —"}</option>
+                  {warehouses.map((w) => (<option key={w.id} value={w.id}>{w.name}</option>))}
+                </select>
+              )}
               <textarea name="description" placeholder={isArabic ? "الوصف" : "Description"} value={form.description} onChange={handleInputChange} className="w-full p-3 border rounded-xl" rows={2} />
               <input type="text" name="unit" placeholder={isArabic ? "الوحدة (مثل: قطعة، كجم)" : "Unit (e.g. piece, kg)"} value={form.unit} onChange={handleInputChange} className="w-full p-3 border rounded-xl" />
               <input type="number" name="quantity" placeholder={isArabic ? "الكمية" : "Quantity"} value={form.quantity} onChange={handleInputChange} className="w-full p-3 border rounded-xl" min="0" />
+              {!editingItem && (
+                <input type="text" name="reason" placeholder={isArabic ? "السبب (توريد / افتتاح رصيد)" : "Reason (supply / opening balance)"} value={form.reason} onChange={handleInputChange} className="w-full p-3 border rounded-xl" />
+              )}
               <input type="number" name="minQuantity" placeholder={isArabic ? "الحد الأدنى للكمية" : "Min Quantity"} value={form.minQuantity} onChange={handleInputChange} className="w-full p-3 border rounded-xl" min="0" />
               <input type="number" step="0.01" name="price" placeholder={isArabic ? "السعر" : "Price"} value={form.price} onChange={handleInputChange} className="w-full p-3 border rounded-xl" min="0" />
               <select name="status" value={form.status} onChange={handleInputChange} className="w-full p-3 border rounded-xl">

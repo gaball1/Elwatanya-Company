@@ -11,6 +11,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Query,
 } from '@nestjs/common';
 import { handleError } from '../../common/utils/handle-error';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
@@ -36,8 +37,8 @@ export class WarehouseController {
   @Get()
   @ApiOperation({ summary: 'List warehouses' })
   @RequirePermission(Permissions.Warehouses.Read)
-  async list() {
-    const result = await this.listWarehouses.execute();
+  async list(@Query('projectId') projectId?: string) {
+    const result = await this.listWarehouses.execute(projectId);
     return { items: result.getValue() };
   }
 
@@ -57,6 +58,7 @@ export class WarehouseController {
   @RequirePermission(Permissions.Warehouses.Create)
   async create(@Body() dto: CreateWarehouseDto) {
     const result = await this.createWarehouse.execute({
+      projectId: dto.projectId,
       code: dto.code,
       name: dto.name,
       location: dto.location,
@@ -72,6 +74,7 @@ export class WarehouseController {
   async update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateWarehouseDto) {
     const result = await this.updateWarehouse.execute({
       id,
+      projectId: dto.projectId,
       code: dto.code,
       name: dto.name,
       location: dto.location,

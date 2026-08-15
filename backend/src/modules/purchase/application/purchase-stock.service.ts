@@ -14,6 +14,7 @@ export interface StockInContext {
   createdBy: string;
   date: Date;
   purchaseId: string;
+  warehouseId: string;
 }
 
 /**
@@ -23,7 +24,7 @@ export interface StockInContext {
  *
  * Matching rules:
  *  - explicit link (purchase.inventoryItemId) wins;
- *  - otherwise match by normalized name + category;
+ *  - otherwise match by normalized name (item names are globally unique);
  *  - otherwise auto-create a new inventory item from the purchase data.
  */
 @Injectable()
@@ -35,7 +36,7 @@ export class PurchaseStockService {
     const unitCost = new Prisma.Decimal(ctx.unitPrice);
 
     // 1. Find or create the inventory item.
-    let item = await this.findItemByName(ctx.itemName, ctx.categoryId, tx);
+    let item = await this.findItemByName(ctx.itemName, ctx.warehouseId, tx);
     if (!item) {
       item = await this.createItem(ctx, tx);
     }
@@ -114,14 +115,14 @@ export class PurchaseStockService {
 
   private async findItemByName(
     name: string,
-    categoryId: string | undefined,
+    warehouseId: string,
     tx: Prisma.TransactionClient,
   ) {
     const nameNorm = normalizeKey(name);
     return tx.inventoryItem.findFirst({
       where: {
         nameNorm,
-        ...(categoryId ? { categoryId } : { categoryId: null }),
+        warehouseId,
         deletedAt: null,
       },
     });
@@ -130,9 +131,11 @@ export class PurchaseStockService {
   private async createItem(ctx: StockInContext, tx: Prisma.TransactionClient) {
     let code = `INV-${randomBytes(4).toString('hex').toUpperCase()}`;
     // Ensure globally-unique code even within a long-lived transaction.
-    while (await tx.inventoryItem.findUnique({ where: { code } })) {
+    while (await tx.inventoryItem.findFirst({ where: { code, warehouseId: ctx.warehouseId } })) {
       code = `INV-${randomBytes(4).toString('hex').toUpperCase()}`;
     }
+
+    const warehouse = await tx.warehouse.findUnique({ where: { id: ctx.warehouseId } });
 
     return tx.inventoryItem.create({
       data: {
@@ -141,6 +144,8 @@ export class PurchaseStockService {
         nameNorm: normalizeKey(ctx.itemName),
         unit: ctx.unit,
         categoryId: ctx.categoryId ?? null,
+        warehouseId: ctx.warehouseId,
+        projectId: warehouse?.projectId ?? null,
         quantity: 0, // stock is applied by the caller (stockIn) so it is not double-counted
         price: ctx.unitPrice,
         avgCost: ctx.unitPrice,

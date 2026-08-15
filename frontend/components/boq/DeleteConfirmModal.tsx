@@ -5,6 +5,8 @@ interface DeleteConfirmModalProps {
   message: string;
   onCancel: () => void;
   onConfirm: () => void;
+  confirmDisabled?: boolean;
+  confirmLabel?: string;
 }
 
 export default function DeleteConfirmModal({
@@ -12,6 +14,8 @@ export default function DeleteConfirmModal({
   message,
   onCancel,
   onConfirm,
+  confirmDisabled = false,
+  confirmLabel,
 }: DeleteConfirmModalProps) {
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -24,8 +28,12 @@ export default function DeleteConfirmModal({
           <button onClick={onCancel} className="flex-1 px-4 py-2 border rounded-xl">
             {isArabic ? "إلغاء" : "Cancel"}
           </button>
-          <button onClick={onConfirm} className="flex-1 px-4 py-2 bg-danger text-white rounded-xl">
-            {isArabic ? "حذف" : "Delete"}
+          <button
+            onClick={onConfirm}
+            disabled={confirmDisabled}
+            className="flex-1 px-4 py-2 bg-danger text-white rounded-xl disabled:opacity-50"
+          >
+            {confirmLabel ?? (isArabic ? "حذف" : "Delete")}
           </button>
         </div>
       </div>

@@ -51,7 +51,7 @@ export class AnalyticsDataService {
     ] = await Promise.all([
       this.prisma.project.findUnique({
         where: { id: projectId },
-        select: { id: true, name: true, code: true, status: true, startDate: true, progress: true, client: true },
+        select: { id: true, name: true, code: true, status: true, startDate: true, progress: true, client: true, plannedDurationMonths: true },
       }),
       this.prisma.building.findMany({
         where: { projectId, deletedAt: null },
@@ -182,7 +182,7 @@ export class AnalyticsDataService {
 
     return {
       project: project
-        ? { id: project.id, name: project.name, code: project.code, status: project.status, startDate: project.startDate, progress: NUM(project.progress), client: project.client }
+        ? { id: project.id, name: project.name, code: project.code, status: project.status, startDate: project.startDate, plannedDurationMonths: NUM(project.plannedDurationMonths) || 24, progress: NUM(project.progress), client: project.client }
         : null,
       buildings: buildings.map((b) => ({ id: b.id, name: b.name, code: b.code, status: b.status, startDate: b.startDate })),
       employerItems: employerItems.map((i): EmployerBoqItemRow => ({ buildingId: i.buildingId, itemCode: STR(i.itemCode), description: STR(i.description), unit: STR(i.unit), quantity: NUM(i.quantity), unitPrice: NUM(i.unitPrice), totalValue: NUM(i.totalValue) })),
@@ -241,7 +241,7 @@ export class AnalyticsDataService {
       paymentAgg,
       purchaseAgg,
       miscAgg,
-      inventoryAgg,
+      inventoryItems,
       fundAgg,
       pendingApprovals,
       attendanceToday,
@@ -260,7 +260,10 @@ export class AnalyticsDataService {
       this.prisma.payment.aggregate({ _sum: { amount: true } }),
       this.prisma.purchase.aggregate({ _sum: { total: true } }),
       this.prisma.miscellaneous.aggregate({ _sum: { amount: true } }),
-      this.prisma.inventoryItem.aggregate({ _sum: { quantity: true } }),
+      this.prisma.inventoryItem.findMany({
+        where: { deletedAt: null },
+        select: { quantity: true, price: true },
+      }),
       this.prisma.projectFund.aggregate({ _sum: { currentBalance: true } }),
       this.prisma.approval.count({ where: { status: 'pending' } }),
       this.prisma.attendance.count({
@@ -301,7 +304,7 @@ export class AnalyticsDataService {
       paymentsTotal: NUM(paymentAgg._sum?.amount),
       purchasesTotal: NUM(purchaseAgg._sum?.total),
       miscTotal: NUM(miscAgg._sum?.amount),
-      inventoryValue: NUM(inventoryAgg._sum?.quantity),
+      inventoryValue: inventoryItems.reduce((acc, i) => acc + NUM(i.quantity) * NUM(i.price), 0),
       cashBalance: NUM(fundAgg._sum?.currentBalance),
       pendingApprovals,
       attendanceToday,

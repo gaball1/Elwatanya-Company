@@ -46,7 +46,7 @@ export class StockMovementController {
     const result = await this.createMovement.execute({
       itemId: dto.itemId, type: dto.type as any, quantity: dto.quantity,
       date: dto.date ? new Date(dto.date) : undefined, reference: dto.reference,
-      notes: dto.notes, createdBy: dto.createdBy, issuedTo: dto.issuedTo,
+      reason: dto.reason, notes: dto.notes, createdBy: dto.createdBy, issuedTo: dto.issuedTo,
       supplier: dto.supplier, fromWarehouse: dto.fromWarehouse, toWarehouse: dto.toWarehouse,
     });
     if (result.isFailure) handleError(result.error?.message, 'Failed to create stock movement');
@@ -60,7 +60,7 @@ export class StockMovementController {
     const result = await this.updateMovement.execute({
       id, itemId: dto.itemId, type: dto.type as any, quantity: dto.quantity,
       date: dto.date ? new Date(dto.date) : undefined, reference: dto.reference,
-      notes: dto.notes, createdBy: dto.createdBy, issuedTo: dto.issuedTo,
+      reason: dto.reason, notes: dto.notes, createdBy: dto.createdBy, issuedTo: dto.issuedTo,
       supplier: dto.supplier, fromWarehouse: dto.fromWarehouse, toWarehouse: dto.toWarehouse,
     });
     if (result.isFailure) handleError(result.error?.message, 'Failed to update stock movement');

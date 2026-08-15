@@ -6,7 +6,9 @@ export interface Approval {
   entityId: string;
   status: string;
   requestedBy: string;
+  requestedByName?: string;
   approvedBy?: string | null;
+  approvedByName?: string | null;
   approvedAt?: string | null;
   comment: string;
   createdAt: string;

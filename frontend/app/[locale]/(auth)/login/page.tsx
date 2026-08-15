@@ -1,4 +1,3 @@
-/* eslint-disable */
 "use client";
 
 import { useState } from "react";
@@ -9,6 +8,18 @@ import Image from "next/image";
 import { useAuth } from "@/hooks/useAuth";
 import { Mail, Lock, ArrowLeft, Eye, EyeOff, LogIn } from "lucide-react";
 import { motion } from "framer-motion";
+import { ApiError } from "@/lib/api/apiClient";
+import { isNetworkError } from "@/lib/api/fetchTransport";
+
+function getLoginError(err: unknown, t: (key: string) => string): string {
+  if (err instanceof ApiError) {
+    if (err.status === 401) return t("invalidCredentials");
+    if (err.status === 429) return t("tooManyAttempts");
+    return err.message || t("loginFailed");
+  }
+  if (isNetworkError(err)) return t("networkError");
+  return t("loginFailed");
+}
 
 export default function LoginPage() {
   const t = useTranslations("auth");
@@ -22,28 +33,28 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  console.log("[LOGIN_PAGE] RENDERED, locale:", locale);
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log("[LOGIN_PAGE] submit() - ENTERED, email:", email, "password length:", password.length);
     setLoading(true);
     setError("");
-    console.log("[LOGIN_PAGE] submit() - calling login()");
-    const success = await login(email, password);
-    console.log("[LOGIN_PAGE] submit() - login() RETURNED:", success);
-    if (success) {
-      console.log("[LOGIN_PAGE] submit() - SUCCESS, calling router.push(/ar/admin)");
-      console.log("[LOGIN_PAGE] submit() - ABOUT TO NAVIGATE to /ar/admin");
-      router.push(`/${locale}/admin`);
-      console.log("[LOGIN_PAGE] submit() - router.push() CALLED - navigation initiated");
-      return;
-    } else {
-      console.log("[LOGIN_PAGE] submit() - FAILED, setting error message");
-      setError(t("invalidCredentials") || "Invalid email or password");
+    try {
+      const user = await login(email, password);
+      if (user) {
+        const perms = user.permissions ?? [];
+        const canManage =
+          perms.includes("attendance.update") ||
+          perms.includes("attendance.write") ||
+          user.roleNames?.includes("SUPER_ADMIN") === true;
+        const destination = canManage ? "admin" : "attendance";
+        router.push(`/${locale}/${destination}`);
+        return;
+      }
+      setError(t("invalidCredentials"));
+    } catch (err) {
+      setError(getLoginError(err, t));
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
-    console.log("[LOGIN_PAGE] submit() - COMPLETED (loading=false)");
   };
 
   return (
@@ -125,6 +136,7 @@ export default function LoginPage() {
                   <input
                     id="email"
                     type="email"
+                    suppressHydrationWarning
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="example@company.com"
@@ -154,6 +166,7 @@ export default function LoginPage() {
                   <input
                     id="password"
                     type={showPassword ? "text" : "password"}
+                    suppressHydrationWarning
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="••••••••"
@@ -164,6 +177,7 @@ export default function LoginPage() {
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
                     className="absolute left-4 top-1/2 -translate-y-1/2 text-text-muted hover:text-primary transition-colors p-1 rounded-lg hover:bg-surface/50"
+                    suppressHydrationWarning
                   >
                     {showPassword ? (
                       <EyeOff className="w-5 h-5" />
@@ -179,6 +193,7 @@ export default function LoginPage() {
                   <input
                     type="checkbox"
                     className="w-4 h-4 rounded border-border-dark text-gold focus:ring-gold focus:ring-offset-0"
+                    suppressHydrationWarning
                   />
                   <span className="text-sm text-text-secondary">تذكرني</span>
                 </label>
@@ -200,6 +215,7 @@ export default function LoginPage() {
                 type="submit"
                 disabled={loading}
                 className="w-full py-3.5 bg-primary hover:bg-primary-dark text-white font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                suppressHydrationWarning
               >
                 {loading ? (
                   <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -225,6 +241,7 @@ export default function LoginPage() {
               whileTap={{ scale: 0.98 }}
               type="button"
               className="w-full py-3.5 bg-surface hover:bg-surface-secondary border border-border rounded-xl transition-all duration-200 flex items-center justify-center gap-3 mb-6"
+              suppressHydrationWarning
             >
               <svg className="w-5 h-5" viewBox="0 0 24 24">
                 <path

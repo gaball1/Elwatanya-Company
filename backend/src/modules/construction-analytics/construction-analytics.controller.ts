@@ -1,8 +1,12 @@
 import { Controller, Get, Param, Query } from '@nestjs/common';
-import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AnalyticsService } from './application/analytics.service';
+import { RequirePermission } from '../../common/decorators/permissions.decorator';
+import { Permissions } from '../../common/constants/permissions.constant';
 
 @ApiTags('Construction Analytics')
+@ApiBearerAuth()
+@RequirePermission(Permissions.Reports.Read)
 @Controller('analytics')
 export class ConstructionAnalyticsController {
   constructor(private readonly service: AnalyticsService) {}

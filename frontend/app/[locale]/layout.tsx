@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { routing } from "@/i18n/routing";
 import { AuthProvider } from "@/contexts/AuthContext";
 import ThemeWrapper from "@/components/ThemeWrapper";
+import PageProgress from "@/components/shared/PageProgress";
 
 export function generateStaticParams() {
   return routing.locales.map((locale) => ({ locale }));
@@ -28,7 +29,10 @@ export default async function LocaleLayout({
   return (
     <NextIntlClientProvider messages={messages}>
       <AuthProvider>
-        <ThemeWrapper>{children}</ThemeWrapper>
+        <ThemeWrapper>
+          <PageProgress />
+          {children}
+        </ThemeWrapper>
       </AuthProvider>
     </NextIntlClientProvider>
   );

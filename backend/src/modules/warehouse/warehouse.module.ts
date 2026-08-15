@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '@/prisma/prisma.module';
+import { EventBusImpl } from '@/modules/domain-events/event-bus.impl';
 import { WAREHOUSE_REPOSITORY } from './domain/warehouse.repository';
 import { IWarehouseRepository } from './domain/warehouse.repository';
 import { PrismaWarehouseRepository } from './infrastructure/prisma-warehouse.repository';
@@ -7,6 +8,8 @@ import { ListWarehousesUseCase } from './application/use-cases/list-warehouses.u
 import { CreateWarehouseUseCase } from './application/use-cases/create-warehouse.use-case';
 import { UpdateWarehouseUseCase } from './application/use-cases/update-warehouse.use-case';
 import { DeleteWarehouseUseCase } from './application/use-cases/delete-warehouse.use-case';
+import { ProjectWarehouseSubscriber } from './application/project-warehouse.subscriber';
+import { PrismaService } from '@/prisma/prisma.service';
 import { WarehouseController } from './warehouse.controller';
 
 @Module({
@@ -33,6 +36,12 @@ import { WarehouseController } from './warehouse.controller';
       provide: DeleteWarehouseUseCase,
       useFactory: (repo: IWarehouseRepository) => new DeleteWarehouseUseCase(repo),
       inject: [WAREHOUSE_REPOSITORY],
+    },
+    {
+      provide: ProjectWarehouseSubscriber,
+      useFactory: (eventBus: EventBusImpl, prisma: PrismaService, createWarehouse: CreateWarehouseUseCase) =>
+        new ProjectWarehouseSubscriber(eventBus, prisma, createWarehouse),
+      inject: [EventBusImpl, PrismaService, CreateWarehouseUseCase],
     },
   ],
   exports: [WAREHOUSE_REPOSITORY],

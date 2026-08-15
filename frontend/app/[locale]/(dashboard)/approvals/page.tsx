@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { approvalService, type Approval } from "@/services/approval.service";
 import { useToast } from "@/components/ui/Toast";
+import { useUser } from "@/hooks/useUser";
 import { printAsPDF } from "@/lib/printUtils";
 import { shortRef } from "@/lib/formatRef";
 
@@ -32,6 +33,8 @@ const ENTITY_LABELS: Record<string, { ar: string; en: string }> = {
   "client-statement": { ar: "كشف عميل", en: "Client Statement" },
   "subcontractor-statement": { ar: "كشف مقاول", en: "Subcontractor Statement" },
   inventory: { ar: "مخزون", en: "Inventory" },
+  estimate: { ar: "مقايسة", en: "Estimate" },
+  boq: { ar: "مقايسة بنود", en: "BOQ" },
 };
 
 const STATUS_LABELS: Record<string, { ar: string; en: string }> = {
@@ -47,6 +50,12 @@ export default function ApprovalsPage() {
   const locale = (params.locale as string) ?? "ar";
   const isArabic = locale === "ar";
   const { showToast, ToastComponent } = useToast();
+  const { user } = useUser();
+  const canDecide = !!(
+    user?.roleNames?.some((r) => ["SUPER_ADMIN", "ADMIN", "GENERAL_MANAGER", "PROJECT_MANAGER"].includes(r)) ||
+    user?.role === "CEO"
+  );
+  const isOwnRequest = (approval: Approval) => !!user && approval.requestedBy === user.id;
 
   const [approvals, setApprovals] = useState<Approval[]>([]);
   const [total, setTotal] = useState(0);
@@ -98,7 +107,12 @@ export default function ApprovalsPage() {
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
       filtered = filtered.filter(
-        (a) => a.entityType.toLowerCase().includes(term) || a.entityId.toLowerCase().includes(term) || a.comment?.toLowerCase().includes(term)
+        (a) =>
+          a.entityType.toLowerCase().includes(term) ||
+          a.entityId.toLowerCase().includes(term) ||
+          a.comment?.toLowerCase().includes(term) ||
+          a.requestedByName?.toLowerCase().includes(term) ||
+          a.approvedByName?.toLowerCase().includes(term)
       );
     }
     return filtered;
@@ -182,6 +196,8 @@ export default function ApprovalsPage() {
     const headers = [
       isArabic ? "النوع" : "Type",
       isArabic ? "المرجع" : "Reference",
+      isArabic ? "مقدم الطلب" : "Requester",
+      isArabic ? "الموافق" : "Approver",
       isArabic ? "الحالة" : "Status",
       isArabic ? "الملاحظات" : "Comment",
       isArabic ? "تاريخ الطلب" : "Request Date",
@@ -189,6 +205,8 @@ export default function ApprovalsPage() {
     const rows = filteredApprovals.map((a) => [
       getEntityLabel(a.entityType),
       a.entityId,
+      a.requestedByName || "—",
+      a.approvedByName || "—",
       a.status,
       a.comment || "—",
       a.createdAt,
@@ -197,8 +215,16 @@ export default function ApprovalsPage() {
   }, [filteredApprovals, isArabic]);
 
   const exportToExcel = useCallback(() => {
-    const headers = ["النوع", "المرجع", "الحالة", "الملاحظات", "تاريخ الطلب"];
-    const rows = filteredApprovals.map((a) => [getEntityLabel(a.entityType), a.entityId, a.status, a.comment || "", a.createdAt]);
+    const headers = ["النوع", "المرجع", "مقدم الطلب", "الموافق", "الحالة", "الملاحظات", "تاريخ الطلب"];
+    const rows = filteredApprovals.map((a) => [
+      getEntityLabel(a.entityType),
+      a.entityId,
+      a.requestedByName || "",
+      a.approvedByName || "",
+      a.status,
+      a.comment || "",
+      a.createdAt,
+    ]);
     const csvContent = [headers, ...rows].map((row) => row.join(",")).join("\n");
     const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
@@ -279,6 +305,8 @@ export default function ApprovalsPage() {
                 <tr className="border-b bg-surface-secondary">
                   <th className="text-right px-4 py-3 font-semibold text-text-primary">{isArabic ? "النوع" : "Type"}</th>
                   <th className="text-right px-4 py-3 font-semibold text-text-primary">{isArabic ? "المرجع" : "Reference"}</th>
+                  <th className="text-right px-4 py-3 font-semibold text-text-primary">{isArabic ? "مقدم الطلب" : "Requester"}</th>
+                  <th className="text-right px-4 py-3 font-semibold text-text-primary">{isArabic ? "الموافق" : "Approver"}</th>
                   <th className="text-right px-4 py-3 font-semibold text-text-primary">{isArabic ? "الحالة" : "Status"}</th>
                   <th className="text-right px-4 py-3 font-semibold text-text-primary">{isArabic ? "الملاحظات" : "Comment"}</th>
                   <th className="text-right px-4 py-3 font-semibold text-text-primary">{isArabic ? "تاريخ الطلب" : "Date"}</th>
@@ -301,13 +329,25 @@ export default function ApprovalsPage() {
                         <code className="text-xs text-text-muted bg-surface-secondary px-2 py-1 rounded">{shortRef(approval.entityId)}</code>
                       </td>
                       <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <User size={14} className="text-text-muted" />
+                          <span className="text-text-primary">{approval.requestedByName || "—"}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <CheckCircle2 size={14} className="text-text-muted" />
+                          <span className="text-text-primary">{approval.approvedByName || "—"}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
                         <span className={`inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full font-medium ${badge.color}`}>
                           <BadgeIcon size={14} />
                           {STATUS_LABELS[approval.status] ? (isArabic ? STATUS_LABELS[approval.status].ar : STATUS_LABELS[approval.status].en) : approval.status}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-text-secondary max-w-[200px] truncate">{approval.comment || "—"}</td>
-                      <td className="px-4 py-3 text-text-secondary text-xs">{new Date(approval.createdAt).toLocaleDateString()}</td>
+                      <td className="px-4 py-3 text-text-secondary text-xs">{new Date(approval.createdAt).toLocaleDateString(isArabic ? "ar-EG" : "en-US")}</td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-center gap-2">
                           {approval.status === "draft" && (
@@ -328,18 +368,22 @@ export default function ApprovalsPage() {
                           )}
                           {approval.status === "pending" && (
                             <>
-                              <Can permission="approvals.approve">
-                                <button onClick={() => openActionModal(approval, "approve")} className="flex items-center gap-1 px-3 py-1.5 text-xs bg-success-light text-success-dark rounded-lg hover:bg-success hover:text-white transition">
-                                  <CheckCircle2 size={14} />
-                                  {isArabic ? "موافقة" : "Approve"}
-                                </button>
-                              </Can>
-                              <Can permission="approvals.reject">
-                                <button onClick={() => openActionModal(approval, "reject")} className="flex items-center gap-1 px-3 py-1.5 text-xs bg-danger-light text-danger-dark rounded-lg hover:bg-danger hover:text-white transition">
-                                  <XCircle size={14} />
-                                  {isArabic ? "رفض" : "Reject"}
-                                </button>
-                              </Can>
+                              {canDecide && !isOwnRequest(approval) && (
+                                <>
+                                  <Can permission="approvals.approve">
+                                    <button onClick={() => openActionModal(approval, "approve")} className="flex items-center gap-1 px-3 py-1.5 text-xs bg-success-light text-success-dark rounded-lg hover:bg-success hover:text-white transition">
+                                      <CheckCircle2 size={14} />
+                                      {isArabic ? "موافقة" : "Approve"}
+                                    </button>
+                                  </Can>
+                                  <Can permission="approvals.reject">
+                                    <button onClick={() => openActionModal(approval, "reject")} className="flex items-center gap-1 px-3 py-1.5 text-xs bg-danger-light text-danger-dark rounded-lg hover:bg-danger hover:text-white transition">
+                                      <XCircle size={14} />
+                                      {isArabic ? "رفض" : "Reject"}
+                                    </button>
+                                  </Can>
+                                </>
+                              )}
                               <Can permission="approvals.create">
                                 <button onClick={() => handleDraftAction(approval, "cancel")} className="flex items-center gap-1 px-3 py-1.5 text-xs bg-surface-tertiary text-text-secondary rounded-lg hover:bg-text-muted hover:text-white transition">
                                   <XCircle size={14} />

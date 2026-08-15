@@ -6,16 +6,25 @@ import { UpdateStockMovementInput, StockMovementResult } from '../dto/stock-move
 import { toResult } from './list-stock-movements.use-case';
 import { EventBusImpl } from '@/modules/domain-events/event-bus.impl';
 import { StockMovementUpdatedEvent } from '@/modules/domain-events/events';
+import { PrismaService } from '@/prisma/prisma.service';
+import { StockEffectService } from '../stock-effect.service';
 
 export class UpdateStockMovementUseCase {
   constructor(
     private readonly stockMovements: IStockMovementRepository,
+    private readonly prisma: PrismaService,
     private readonly eventBus: EventBusImpl,
+    private readonly stockEffect: StockEffectService,
   ) {}
 
   async execute(input: UpdateStockMovementInput): Promise<Result<StockMovementResult>> {
     const stockMovement = await this.stockMovements.findById(new UniqueEntityId(input.id));
     if (!stockMovement) return Result.fail(new Error('Stock movement not found'));
+
+    const originalType = stockMovement.type;
+    const originalItemId = stockMovement.itemId;
+    const originalQuantity = stockMovement.quantity;
+    const originalToWarehouse = stockMovement.toWarehouse;
 
     const updateResult = stockMovement.update({
       itemId: input.itemId,
@@ -23,6 +32,7 @@ export class UpdateStockMovementUseCase {
       quantity: input.quantity,
       date: input.date,
       reference: input.reference,
+      reason: input.reason,
       notes: input.notes,
       createdBy: input.createdBy,
       issuedTo: input.issuedTo,
@@ -33,7 +43,44 @@ export class UpdateStockMovementUseCase {
 
     if (updateResult.isFailure) return Result.fail(updateResult.error as Error);
 
-    await this.stockMovements.save(stockMovement);
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        // Reverse the original movement effect, then re-apply the new one.
+        await this.stockEffect.reverse(tx, {
+          type: originalType,
+          itemId: originalItemId,
+          quantity: originalQuantity,
+          toWarehouse: originalToWarehouse,
+        });
+        await this.stockEffect.applyCreate(tx, {
+          type: stockMovement.type,
+          itemId: stockMovement.itemId,
+          quantity: stockMovement.quantity,
+          fromWarehouse: stockMovement.fromWarehouse,
+          toWarehouse: stockMovement.toWarehouse,
+        });
+        await tx.stockMovement.update({
+          where: { id: stockMovement.id.toValue() },
+          data: {
+            itemId: stockMovement.itemId,
+            type: stockMovement.type,
+            quantity: stockMovement.quantity,
+            date: stockMovement.date,
+            reference: stockMovement.reference,
+            reason: stockMovement.reason,
+            notes: stockMovement.notes,
+            createdBy: stockMovement.createdBy,
+            issuedTo: stockMovement.issuedTo,
+            supplier: stockMovement.supplier,
+            fromWarehouse: stockMovement.fromWarehouse,
+            toWarehouse: stockMovement.toWarehouse,
+            updatedAt: new Date(),
+          },
+        });
+      });
+    } catch (error: any) {
+      return Result.fail(error instanceof Error ? error : new Error(String(error)));
+    }
 
     await this.eventBus.publish(
       new StockMovementUpdatedEvent(

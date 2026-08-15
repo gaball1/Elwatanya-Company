@@ -1,0 +1,38 @@
+# Dependencies
+**/node_modules/
+
+# Build output
+**/dist/
+**/.next/
+**/out/
+**/build/
+
+# Runtime user data
+**/uploads/
+**/generated-pdfs/
+backups/
+
+# Secrets / env
+**/.env
+**/.env.*
+!.env.example
+!**/.env.example
+
+# Logs & temp
+**/*.log
+**/*.err
+tmp_*
+*.pid
+*.tsbuildinfo
+
+# Git / IDE / OS
+.git/
+.gitignore
+.idea/
+.vscode/
+.cursor/
+.DS_Store
+Thumbs.db
+
+# Test artifacts
+coverage/

@@ -1,8 +1,12 @@
 import { Controller, Get, Post, Param, Body, Query } from '@nestjs/common';
-import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ConstructionBiService } from './application/construction-bi.service';
+import { RequirePermission } from '../../common/decorators/permissions.decorator';
+import { Permissions } from '../../common/constants/permissions.constant';
 
 @ApiTags('Construction BI')
+@ApiBearerAuth()
+@RequirePermission(Permissions.Reports.Read)
 @Controller('bi')
 export class ConstructionBiController {
   constructor(private readonly service: ConstructionBiService) {}
@@ -16,13 +20,14 @@ export class ConstructionBiController {
   @Get('kpis/:key')
   @ApiOperation({ summary: 'Evaluate a single KPI' })
   evaluateKpi(@Param('key') key: string, @Query('projectId') projectId?: string) {
-    return this.service.evaluateKpi(key, projectId);
+    return this.service.evaluateKpi(key, projectId ?? undefined);
   }
 
   @Post('evaluate')
   @ApiOperation({ summary: 'Evaluate all KPIs for a project' })
+  @RequirePermission(Permissions.Reports.Read, Permissions.Reports.Generate)
   evaluateAll(@Body('projectId') projectId?: string) {
-    return this.service.evaluateAll(projectId);
+    return this.service.evaluateAll(projectId ?? undefined);
   }
 
   @Get('dashboard/:projectId')

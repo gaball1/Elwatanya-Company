@@ -2,7 +2,7 @@ import { Result } from '@/shared/kernel/result';
 import { UniqueEntityId } from '@/shared/kernel/unique-entity-id.vo';
 import { IBuildingRepository } from '../../domain/building.repository';
 import { IProjectRepository } from '@/modules/project/domain/project.repository';
-import { OwnershipService } from '@/common/services/ownership.service';
+import { OwnershipActor, OwnershipService } from '@/common/services/ownership.service';
 import { BuildingResult } from '../dto/building.dto';
 import { toBuildingResult } from './create-building.use-case';
 import {
@@ -17,8 +17,8 @@ export class ListBuildingsByProjectUseCase {
     private readonly ownership: OwnershipService,
   ) {}
 
-  async execute(projectId: string, userProjectId?: string | null): Promise<Result<BuildingResult[]>> {
-    await this.ownership.verifyProjectAccess(userProjectId, projectId);
+  async execute(projectId: string, user?: OwnershipActor): Promise<Result<BuildingResult[]>> {
+    await this.ownership.verifyProjectAccess(user, projectId);
     const id = new UniqueEntityId(projectId);
     const project = await this.projects.findById(id);
     if (!project) {

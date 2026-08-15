@@ -25,6 +25,7 @@ import { useDebounce } from "@/hooks/useDebounce";
 import { usePagination } from "@/hooks/usePagination";
 import Pagination from "@/components/ui/Pagination";
 import { inventoryItemService, type InventoryItem } from "@/services/inventory-item.service";
+import { categoryService, type Category } from "@/services/category.service";
 import { approvalService } from "@/services/approval.service";
 import { Can } from "@/components/Can";
 import { printAsPDF } from "@/lib/printUtils";
@@ -46,7 +47,7 @@ const mapApiToLocal = (item: InventoryItem): InventoryItemExtended => ({
   outgoing: 0,
   total: item.quantity || 0,
   location: item.warehouseId ?? "",
-  category: item.categoryId ?? "",
+  category: item.categoryName ?? item.categoryId ?? "",
   transactions: [],
 });
 
@@ -59,10 +60,10 @@ export default function ProjectInventoryPage() {
 
   // ✅ State - جلب البيانات من API
   const [items, setItems] = useState<InventoryItemExtended[]>([]);
+  const [allCategories, setAllCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState("all");
-  const [showAddModal, setShowAddModal] = useState(false);
+  const [categoryFilter, setCategoryFilter] = useState("all");  const [showAddModal, setShowAddModal] = useState(false);
   const [showTransactionModal, setShowTransactionModal] = useState(false);
   const [selectedItem, setSelectedItem] = useState<InventoryItemExtended | null>(
     null
@@ -102,21 +103,33 @@ export default function ProjectInventoryPage() {
 
   useEffect(() => {
     fetchItems();
+    categoryService
+      .list()
+      .then(setAllCategories)
+      .catch(() => {});
   }, [fetchItems]);
 
   const debouncedSearch = useDebounce(searchTerm, 300);
 
-  // ✅ الحصول على التصنيفات الفريدة
-  const categories = useMemo(() => {
-    const cats = new Set(items.map((item) => item.category));
-    return Array.from(cats);
-  }, [items]);
+  // ✅ الحصول على اسم تصنيف معرّف
+  const getCategoryName = useCallback(
+    (id?: string | null) => {
+      if (!id) return "";
+      const found = allCategories.find((cat) => cat.id === id);
+      if (found) return found.name;
+      const fromItem = items.find((item) => item.categoryId === id);
+      return fromItem?.categoryName ?? "";
+    },
+    [allCategories, items]
+  );
 
   // ✅ فلترة الأصناف
   const filteredItems = useMemo(() => {
     let filtered = [...items];
     if (categoryFilter !== "all") {
-      filtered = filtered.filter((item) => item.category === categoryFilter);
+      filtered = filtered.filter(
+        (item) => (item.categoryId ?? "") === categoryFilter
+      );
     }
     if (debouncedSearch) {
       const term = debouncedSearch.toLowerCase();
@@ -176,7 +189,7 @@ export default function ProjectInventoryPage() {
     setFormData({
       code: item.code,
       name: item.name,
-      category: item.category,
+      category: item.categoryId ?? "",
       quantity: item.quantity,
       unit: item.unit,
       price: item.price,
@@ -420,7 +433,7 @@ export default function ProjectInventoryPage() {
             outgoing: editingItem.outgoing,
             total: previousBalance + editingItem.incoming - editingItem.outgoing,
             location: location,
-            category: category,
+            category: getCategoryName(category) || category,
             transactions: editingItem.transactions,
           };
 
@@ -455,7 +468,7 @@ export default function ProjectInventoryPage() {
           mapped.previousBalance = previousBalance;
           mapped.total = previousBalance;
           mapped.location = location;
-          mapped.category = category;
+          mapped.category = getCategoryName(category) || category;
 
           setItems([mapped, ...items]);
           showToast(
@@ -472,7 +485,7 @@ export default function ProjectInventoryPage() {
       setShowAddModal(false);
       setEditingItem(null);
     },
-    [items, editingItem, formData, showToast, isArabic, checkDuplicate]
+    [items, editingItem, formData, showToast, isArabic, checkDuplicate, getCategoryName]
   );
 
   // ✅ حذف صنف
@@ -733,9 +746,9 @@ export default function ProjectInventoryPage() {
             <option value="all">
               {isArabic ? "كل التصنيفات" : "All Categories"}
             </option>
-            {categories.map((cat) => (
-              <option key={cat} value={cat}>
-                {cat}
+            {allCategories.map((cat) => (
+              <option key={cat.id} value={cat.id}>
+                {cat.name}
               </option>
             ))}
           </select>
@@ -804,8 +817,7 @@ export default function ProjectInventoryPage() {
                     <td className="p-3 text-center">
                       <span className="bg-surface-tertiary px-2 py-1 rounded-full text-xs">
                         {item.category}
-                      </span>
-                    </td>
+                      </span>                    </td>
                     <td className="p-3 text-center">
                       {item.previousBalance.toLocaleString()}
                     </td>
@@ -967,14 +979,22 @@ export default function ProjectInventoryPage() {
                 <label className="block text-sm font-medium text-text-primary mb-1">
                   {isArabic ? "التصنيف" : "Category"}
                 </label>
-                <input
-                  type="text"
+                <select
                   value={formData.category}
                   onChange={(e) => updateForm("category", e.target.value)}
                   className="w-full p-3 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-gold"
                   required
                   suppressHydrationWarning
-                />
+                >
+                  <option value="">
+                    {isArabic ? "— بدون تصنيف —" : "— No category —"}
+                  </option>
+                  {allCategories.map((cat) => (
+                    <option key={cat.id} value={cat.id}>
+                      {cat.name}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div className="grid grid-cols-3 gap-4">
                 <div>

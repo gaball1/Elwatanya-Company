@@ -7,5 +7,6 @@ export interface IAttendanceRepository {
   save(attendance: Attendance): Promise<void>;
   findById(id: UniqueEntityId): Promise<Attendance | null>;
   findAll(): Promise<Attendance[]>;
+  findAllByEmployee(employeeId: string): Promise<Attendance[]>;
   findByEmployeeAndDate(employeeId: string, date: Date): Promise<Attendance | null>;
 }

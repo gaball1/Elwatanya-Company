@@ -4,7 +4,9 @@ export interface InventoryItemResult {
   name: string;
   description: string;
   categoryId: string;
+  categoryName: string;
   warehouseId: string;
+  projectId: string | null;
   unit: string;
   quantity: number;
   minQuantity: number;
@@ -21,8 +23,10 @@ export interface CreateInventoryItemInput {
   description?: string;
   categoryId?: string;
   warehouseId?: string;
+  projectId?: string;
   unit?: string;
   quantity?: number;
+  reason?: string;
   minQuantity?: number;
   price?: number;
   status?: string;
@@ -35,6 +39,7 @@ export interface UpdateInventoryItemInput {
   description?: string;
   categoryId?: string;
   warehouseId?: string;
+  projectId?: string;
   unit?: string;
   quantity?: number;
   minQuantity?: number;

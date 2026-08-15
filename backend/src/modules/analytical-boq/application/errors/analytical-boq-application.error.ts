@@ -5,6 +5,7 @@ export enum AnalyticalBoqErrorCode {
   EMPLOYER_ITEM_NOT_FOUND = 'EMPLOYER_ITEM_NOT_FOUND',
   DUPLICATE_ITEM_CODE = 'DUPLICATE_ITEM_CODE',
   ALREADY_IMPORTED = 'ALREADY_IMPORTED',
+  QUANTITY_CANNOT_DECREASE = 'QUANTITY_CANNOT_DECREASE',
 }
 
 export class AnalyticalBoqApplicationError extends Error {

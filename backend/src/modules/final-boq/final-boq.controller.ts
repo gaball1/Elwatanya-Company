@@ -14,7 +14,7 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { RequirePermission } from '../../common/decorators/permissions.decorator';
-import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
 import { Permissions } from '../../common/constants/permissions.constant';
 import {
   BuildingApplicationError,
@@ -67,8 +67,8 @@ export class FinalBoqController {
   @Get('buildings/:buildingId/boq/final')
   @ApiOperation({ summary: 'List final BOQ items for a building (mirrors getFinalItems)' })
   @RequirePermission(Permissions.FinalBoq.Read)
-  async list(@Param('buildingId', ParseUUIDPipe) buildingId: string, @CurrentUser('projectId') projectId?: string) {
-    const result = await this.listFinalBoqItems.execute(buildingId, projectId);
+  async list(@Param('buildingId', ParseUUIDPipe) buildingId: string, @CurrentUser() user?: JwtPayload) {
+    const result = await this.listFinalBoqItems.execute(buildingId, user);
     if (result.isFailure) throw this.mapError(result.error);
     return result.getValue();
   }
@@ -79,10 +79,10 @@ export class FinalBoqController {
   @RequirePermission(Permissions.FinalBoq.Sync)
   async sync(
     @Param('buildingId', ParseUUIDPipe) buildingId: string,
-    @CurrentUser('projectId') projectId?: string,
+    @CurrentUser() user?: JwtPayload,
     @CurrentUser('sub') userId?: string,
   ) {
-    const result = await this.syncFinalFromAnalytical.execute({ buildingId }, projectId, userId);
+    const result = await this.syncFinalFromAnalytical.execute({ buildingId }, user, userId);
     if (result.isFailure) throw this.mapError(result.error);
     return { items: result.getValue() };
   }
@@ -94,13 +94,13 @@ export class FinalBoqController {
   async importFromEmployer(
     @Param('buildingId', ParseUUIDPipe) buildingId: string,
     @Body() dto: ImportFinalFromEmployerDto,
-    @CurrentUser('projectId') projectId?: string,
+    @CurrentUser() user?: JwtPayload,
     @CurrentUser('sub') userId?: string,
   ) {
     const result = await this.importFinalFromEmployer.execute({
       buildingId,
       itemCode: dto.itemCode,
-    }, projectId, userId);
+    }, user, userId);
     if (result.isFailure) throw this.mapError(result.error);
     return { item: result.getValue() };
   }
@@ -112,7 +112,7 @@ export class FinalBoqController {
     @Param('buildingId', ParseUUIDPipe) buildingId: string,
     @Param('itemCode') itemCode: string,
     @Body() dto: UpdateFinalBoqItemDto,
-    @CurrentUser('projectId') projectId?: string,
+    @CurrentUser() user?: JwtPayload,
     @CurrentUser('sub') userId?: string,
   ) {
     const result = await this.updateFinalBoqItem.execute({
@@ -123,7 +123,7 @@ export class FinalBoqController {
       unitPrice: dto.unitPrice,
       unit: dto.unit,
       status: dto.status,
-    }, projectId, userId);
+    }, user, userId);
     if (result.isFailure) throw this.mapError(result.error);
     return { item: result.getValue() };
   }
@@ -135,7 +135,7 @@ export class FinalBoqController {
     @Param('buildingId', ParseUUIDPipe) buildingId: string,
     @Param('itemCode') itemCode: string,
     @Body() dto: UpdateFinalItemQuantityDto,
-    @CurrentUser('projectId') projectId?: string,
+    @CurrentUser() user?: JwtPayload,
     @CurrentUser('sub') userId?: string,
   ) {
     const result = await this.updateFinalItemQuantity.execute({
@@ -143,7 +143,7 @@ export class FinalBoqController {
       itemCode,
       quantity: dto.quantity,
       unitPrice: dto.unitPrice,
-    }, projectId, userId);
+    }, user, userId);
     if (result.isFailure) throw this.mapError(result.error);
     return { item: result.getValue() };
   }
@@ -155,10 +155,10 @@ export class FinalBoqController {
   async remove(
     @Param('buildingId', ParseUUIDPipe) buildingId: string,
     @Param('itemCode') itemCode: string,
-    @CurrentUser('projectId') projectId?: string,
+    @CurrentUser() user?: JwtPayload,
     @CurrentUser('sub') userId?: string,
   ) {
-    const result = await this.removeFinalBoqItem.execute(buildingId, itemCode, projectId, userId);
+    const result = await this.removeFinalBoqItem.execute(buildingId, itemCode, user, userId);
     if (result.isFailure) throw this.mapError(result.error);
   }
 
@@ -170,14 +170,14 @@ export class FinalBoqController {
     @Param('buildingId', ParseUUIDPipe) buildingId: string,
     @Param('itemCode') itemCode: string,
     @Body() dto: AnalyzeFinalBoqItemDto,
-    @CurrentUser('projectId') projectId?: string,
+    @CurrentUser() user?: JwtPayload,
     @CurrentUser('sub') userId?: string,
   ) {
     const result = await this.analyzeFinalBoqItem.execute({
       buildingId,
       itemCode,
       components: dto.components,
-    }, projectId, userId);
+    }, user, userId);
     if (result.isFailure) throw this.mapError(result.error);
     return { item: result.getValue() };
   }
@@ -190,7 +190,7 @@ export class FinalBoqController {
     @Param('buildingId', ParseUUIDPipe) buildingId: string,
     @Param('itemCode') itemCode: string,
     @Body() dto: AddFinalBoqComponentDto,
-    @CurrentUser('projectId') projectId?: string,
+    @CurrentUser() user?: JwtPayload,
     @CurrentUser('sub') userId?: string,
   ) {
     const result = await this.addFinalBoqComponent.execute({
@@ -199,7 +199,7 @@ export class FinalBoqController {
       name: dto.name,
       unit: dto.unit,
       unitPrice: dto.unitPrice,
-    }, projectId, userId);
+    }, user, userId);
     if (result.isFailure) throw this.mapError(result.error);
     return { item: result.getValue() };
   }
@@ -212,7 +212,7 @@ export class FinalBoqController {
     @Param('itemCode') itemCode: string,
     @Param('componentId', ParseUUIDPipe) componentId: string,
     @Body() dto: UpdateFinalBoqComponentDto,
-    @CurrentUser('projectId') projectId?: string,
+    @CurrentUser() user?: JwtPayload,
     @CurrentUser('sub') userId?: string,
   ) {
     const result = await this.updateFinalBoqComponent.execute({
@@ -221,7 +221,7 @@ export class FinalBoqController {
       componentId,
       unitPrice: dto.unitPrice,
       quantity: dto.quantity,
-    }, projectId, userId);
+    }, user, userId);
     if (result.isFailure) throw this.mapError(result.error);
     return { item: result.getValue() };
   }
@@ -233,14 +233,14 @@ export class FinalBoqController {
     @Param('buildingId', ParseUUIDPipe) buildingId: string,
     @Param('itemCode') itemCode: string,
     @Param('componentId', ParseUUIDPipe) componentId: string,
-    @CurrentUser('projectId') projectId?: string,
+    @CurrentUser() user?: JwtPayload,
     @CurrentUser('sub') userId?: string,
   ) {
     const result = await this.removeFinalBoqComponent.execute({
       buildingId,
       itemCode,
       componentId,
-    }, projectId, userId);
+    }, user, userId);
     if (result.isFailure) throw this.mapError(result.error);
     return { item: result.getValue() };
   }

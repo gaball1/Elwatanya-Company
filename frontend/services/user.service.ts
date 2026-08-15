@@ -37,11 +37,11 @@ export const userService = {
     return apiClient<User>(`/admin/users/${id}`, { method: 'GET' });
   },
 
-  async create(body: { email: string; name: string; password: string }): Promise<User> {
+  async create(body: { email: string; name: string; password: string; employeeId?: string }): Promise<User> {
     return apiClient<User>('/admin/users', { method: 'POST', body });
   },
 
-  async update(id: string, body: { email?: string; name?: string; status?: string }): Promise<User> {
+  async update(id: string, body: { email?: string; name?: string; status?: string; employeeId?: string | null }): Promise<User> {
     return apiClient<User>(`/admin/users/${id}`, { method: 'PATCH', body });
   },
 

@@ -30,3 +30,12 @@ export class DistributeComponentDto {
   @Type(() => DistributionEntryDto)
   distribution!: DistributionEntryDto[];
 }
+
+export class DistributeItemDto {
+  @ApiProperty({ type: [DistributionEntryDto] })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => DistributionEntryDto)
+  distribution!: DistributionEntryDto[];
+}

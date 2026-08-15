@@ -3,12 +3,24 @@ import createNextIntlPlugin from "next-intl/plugin";
 import path from "path";
 
 const nextConfig: NextConfig = {
+  output: "standalone",
   images: {
     unoptimized: true,
   },
-  // Explicitly set Turbopack root to the project root (contains package.json)
+  // Turbopack root: monorepo root where deps are hoisted (contains package.json + lockfile)
   turbopack: {
-    root: path.resolve(__dirname),
+    root: path.resolve(__dirname, ".."),
+  },
+  // Monorepo: trace files from the repo root so shared deps are bundled.
+  outputFileTracingRoot: path.resolve(__dirname, ".."),
+  async rewrites() {
+    const backendUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001/api/v1";
+    return [
+      {
+        source: "/api/v1/:path*",
+        destination: `${backendUrl}/:path*`,
+      },
+    ];
   },
 };
 

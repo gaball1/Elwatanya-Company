@@ -20,6 +20,5 @@ export * from './white-label.tools';
 export * from './reporting.tools';
 export * from './pdf.tools';
 export * from './signature.tools';
-export * from './document-number.tools';
 export * from './construction-bi.tools';
 export * from './analytics.tools';

@@ -6,7 +6,7 @@ export interface SignatureWorkflow {
   description?: string;
   entityType: string;
   isActive: boolean;
-  steps: any[];
+  steps: unknown[];
   createdAt: string;
 }
 
@@ -20,21 +20,21 @@ export interface SignatureRequest {
   requestedBy: string;
   requestedAt: string;
   completedAt?: string;
-  actions: any[];
+  actions: unknown[];
 }
 
 export const signatureWorkflowService = {
   async listWorkflows(entityType?: string): Promise<SignatureWorkflow[]> {
     const path = entityType ? `/signature-workflow/workflows?entityType=${entityType}` : '/signature-workflow/workflows';
-    const data = await apiClient<any>(path, { method: 'GET' });
-    return data?.workflows || data || [];
+    const data = await apiClient<SignatureWorkflow[] | { workflows?: SignatureWorkflow[] }>(path, { method: 'GET' });
+    return Array.isArray(data) ? data : data.workflows ?? [];
   },
 
   async getWorkflow(id: string): Promise<SignatureWorkflow> {
     return apiClient<SignatureWorkflow>(`/signature-workflow/workflows/${id}`, { method: 'GET' });
   },
 
-  async createWorkflow(body: { name: string; description?: string; entityType: string; steps: any[] }): Promise<SignatureWorkflow> {
+  async createWorkflow(body: { name: string; description?: string; entityType: string; steps: unknown[] }): Promise<SignatureWorkflow> {
     return apiClient<SignatureWorkflow>('/signature-workflow/workflows', { method: 'POST', body });
   },
 
@@ -43,8 +43,8 @@ export const signatureWorkflowService = {
   },
 
   async getPending(): Promise<SignatureRequest[]> {
-    const data = await apiClient<any>('/signature-workflow/pending', { method: 'GET' });
-    return data?.requests || data || [];
+    const data = await apiClient<SignatureRequest[] | { requests?: SignatureRequest[] }>('/signature-workflow/pending', { method: 'GET' });
+    return Array.isArray(data) ? data : data.requests ?? [];
   },
 
   async submit(entityType: string, entityId: string, workflowId: string): Promise<SignatureRequest> {
@@ -54,8 +54,8 @@ export const signatureWorkflowService = {
     });
   },
 
-  async sign(requestId: string, status: 'signed' | 'rejected', comment?: string, imageUrl?: string): Promise<any> {
-    return apiClient(`/signature-workflow/requests/${requestId}/sign`, {
+  async sign(requestId: string, status: 'signed' | 'rejected', comment?: string, imageUrl?: string): Promise<SignatureRequest> {
+    return apiClient<SignatureRequest>(`/signature-workflow/requests/${requestId}/sign`, {
       method: 'POST',
       body: { status, comment, imageUrl },
     });
@@ -63,8 +63,8 @@ export const signatureWorkflowService = {
 
   async getStatus(entityType: string, entityId: string): Promise<SignatureRequest | null> {
     try {
-      const data = await apiClient<any>(`/signature-workflow/status/${entityType}/${entityId}`, { method: 'GET' });
-      return data?.request || data || null;
+      const data = await apiClient<SignatureRequest | { request?: SignatureRequest }>(`/signature-workflow/status/${entityType}/${entityId}`, { method: 'GET' });
+      return "request" in data && data.request ? data.request : (data as SignatureRequest);
     } catch {
       return null;
     }

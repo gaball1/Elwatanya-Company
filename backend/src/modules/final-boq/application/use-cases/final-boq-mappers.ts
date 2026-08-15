@@ -84,6 +84,7 @@ export function toFinalBoqItemResult(
         distribution: c.distribution,
       }),
     ),
+    itemDistribution: synced.itemDistribution,
   };
 }
 

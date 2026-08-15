@@ -18,6 +18,8 @@ export interface NotificationProps {
   entityId: string | null;
   link: string | null;
   deletedAt: Date | null;
+  targetRoles: string[];
+  targetPermissions: string[];
 }
 
 const VALID_TYPES: NotificationType[] = ['info', 'warning', 'error'];
@@ -46,8 +48,21 @@ export class Notification extends AggregateRoot {
   get entityType(): string | null { return this.props.entityType; }
   get entityId(): string | null { return this.props.entityId; }
   get link(): string | null { return this.props.link; }
+  get targetRoles(): string[] { return this.props.targetRoles; }
+  get targetPermissions(): string[] { return this.props.targetPermissions; }
   get deletedAt(): Date | null { return this.props.deletedAt; }
   get isDeleted(): boolean { return this.props.deletedAt !== null; }
+
+  /** Whether this notification is visible to a user holding the given roles/permissions (or as a plain broadcast). */
+  public isVisibleTo(roles: string[] = [], permissions: string[] = []): boolean {
+    if (this.userId) return true; // personal notifications are always visible to their owner
+    const roleMatch = this.props.targetRoles.some((r) => roles.includes(r));
+    const permissionMatch = this.props.targetPermissions.some((p) => permissions.includes(p));
+    if (this.props.targetRoles.length > 0 || this.props.targetPermissions.length > 0) {
+      return roleMatch || permissionMatch;
+    }
+    return true; // untargeted broadcast reaches everyone
+  }
 
   public static create(input: {
     title: string;
@@ -60,6 +75,8 @@ export class Notification extends AggregateRoot {
     entityType?: string | null;
     entityId?: string | null;
     link?: string | null;
+    targetRoles?: string[];
+    targetPermissions?: string[];
   }): Result<Notification> {
     const guard1 = Guard.againstNullOrUndefined(input.title, 'title');
     const guard2 = Guard.againstNullOrUndefined(input.message, 'message');
@@ -90,6 +107,8 @@ export class Notification extends AggregateRoot {
         entityType: input.entityType ?? null,
         entityId: input.entityId ?? null,
         link: input.link ?? null,
+        targetRoles: Array.from(new Set((input.targetRoles ?? []).filter((r) => typeof r === 'string' && r.trim().length > 0))),
+        targetPermissions: Array.from(new Set((input.targetPermissions ?? []).filter((p) => typeof p === 'string' && p.trim().length > 0))),
         deletedAt: null,
       }),
     );

@@ -15,29 +15,31 @@ export class ConstructionBiService {
     const kpiList = [
       this.createKpi('ev', 'Earned Value (EV)', 'القيمة المكتسبة', 'earned_value', 'currency', true, async (p) => {
         const value = await this.getApprovedStatementsTotal(p.projectId);
-        return { key: 'ev', value, display: `${value.toLocaleString()} ${p.currency || 'EGP'}`, status: 'good' };
+        const target = await this.getEmployerBoqTotal(p.projectId);
+        return { key: 'ev', value, display: `${value.toLocaleString()} ${p.currency || 'EGP'}`, status: 'good', target, threshold: { warning: 0.95, critical: 0.8 } };
       }),
       this.createKpi('pv', 'Planned Value (PV)', 'القيمة المخططة', 'earned_value', 'currency', true, async (p) => {
         const boq = await this.getEmployerBoqTotal(p.projectId);
         const progress = await this.getProjectProgress(p.projectId);
         const pv = boq * (progress / 100);
-        return { key: 'pv', value: pv, display: `${pv.toLocaleString()} ${p.currency || 'EGP'}`, status: 'good' };
+        return { key: 'pv', value: pv, display: `${pv.toLocaleString()} ${p.currency || 'EGP'}`, status: 'good', target: boq };
       }),
       this.createKpi('ac', 'Actual Cost (AC)', 'التكلفة الفعلية', 'earned_value', 'currency', false, async (p) => {
         const payments = await this.getPaymentsTotal(p.projectId);
-        return { key: 'ac', value: payments, display: `${payments.toLocaleString()} ${p.currency || 'EGP'}`, status: 'good' };
+        const target = await this.getEmployerBoqTotal(p.projectId);
+        return { key: 'ac', value: payments, display: `${payments.toLocaleString()} ${p.currency || 'EGP'}`, status: 'good', target, threshold: { warning: 0.95, critical: 0.8 } };
       }),
       this.createKpi('cpi', 'Cost Performance Index (CPI)', 'مؤشر أداء التكلفة', 'earned_value', 'ratio', true, async (p) => {
         const ev = await this.getKpiValue('ev', p);
         const ac = await this.getKpiValue('ac', p);
         const cpi = ac > 0 ? ev / ac : 1;
-        return { key: 'cpi', value: cpi, display: cpi.toFixed(2), trend: cpi >= 1 ? 'up' : 'down', threshold: { warning: 0.95, critical: 0.8 }, status: cpi >= 1 ? 'good' : cpi >= 0.8 ? 'warning' : 'critical' };
+        return { key: 'cpi', value: cpi, display: cpi.toFixed(2), trend: cpi >= 1 ? 'up' : 'down', target: 1, threshold: { warning: 0.95, critical: 0.8 }, status: cpi >= 1 ? 'good' : cpi >= 0.8 ? 'warning' : 'critical' };
       }),
       this.createKpi('spi', 'Schedule Performance Index (SPI)', 'مؤشر أداء الجدول', 'earned_value', 'ratio', true, async (p) => {
         const ev = await this.getKpiValue('ev', p);
         const pv = await this.getKpiValue('pv', p);
         const spi = pv > 0 ? ev / pv : 1;
-        return { key: 'spi', value: spi, display: spi.toFixed(2), trend: spi >= 1 ? 'up' : 'down', threshold: { warning: 0.95, critical: 0.8 }, status: spi >= 1 ? 'good' : spi >= 0.8 ? 'warning' : 'critical' };
+        return { key: 'spi', value: spi, display: spi.toFixed(2), trend: spi >= 1 ? 'up' : 'down', target: 1, threshold: { warning: 0.95, critical: 0.8 }, status: spi >= 1 ? 'good' : spi >= 0.8 ? 'warning' : 'critical' };
       }),
       this.createKpi('burn_rate', 'Burn Rate', 'معدل الصرف', 'financial', 'currency/month', false, async (p) => {
         const totalPayments = await this.getPaymentsTotal(p.projectId);
@@ -55,49 +57,49 @@ export class ConstructionBiService {
         const cpi = await this.getKpiValue('cpi', p);
         const spi = await this.getKpiValue('spi', p);
         const score = ((cpi + spi) / 2) * 100;
-        return { key: 'project_health', value: score, display: `${score.toFixed(0)}%`, status: score >= 80 ? 'good' : score >= 60 ? 'warning' : 'critical', details: { cpi: cpi.toFixed(2), spi: spi.toFixed(2) } };
+        return { key: 'project_health', value: score, display: `${score.toFixed(0)}%`, target: 100, status: score >= 80 ? 'good' : score >= 60 ? 'warning' : 'critical', details: { cpi: cpi.toFixed(2), spi: spi.toFixed(2) } };
       }),
       this.createKpi('delay_risk', 'Delay Risk', 'مخاطر التأخير', 'risk', 'percent', false, async (p) => {
         const spi = await this.getKpiValue('spi', p);
         const risk = Math.max(0, (1 - spi) * 100);
-        return { key: 'delay_risk', value: risk, display: `${risk.toFixed(0)}%`, status: risk < 10 ? 'good' : risk < 25 ? 'warning' : 'critical' };
+        return { key: 'delay_risk', value: risk, display: `${risk.toFixed(0)}%`, target: 100, status: risk < 10 ? 'good' : risk < 25 ? 'warning' : 'critical' };
       }),
       this.createKpi('contractor_performance', 'Contractor Performance', 'أداء المقاول', 'performance', 'score', true, async (p) => {
         const stats = await this.getStatementStats(p.projectId);
         const score = stats.total > 0 ? (stats.final / stats.total) * 100 : 100;
-        return { key: 'contractor_performance', value: score, display: `${score.toFixed(0)}%`, status: score >= 80 ? 'good' : score >= 60 ? 'warning' : 'critical', details: stats };
+        return { key: 'contractor_performance', value: score, display: `${score.toFixed(0)}%`, target: 100, status: score >= 80 ? 'good' : score >= 60 ? 'warning' : 'critical', details: stats };
       }),
       this.createKpi('boq_profit', 'BOQ Profit', 'ربح بنود الكميات', 'boq', 'currency', true, async (p) => {
         const employerTotal = await this.getEmployerBoqTotal(p.projectId);
         const contractorTotal = await this.getContractorBoqTotal(p.projectId);
         const profit = employerTotal - contractorTotal;
-        return { key: 'boq_profit', value: profit, display: `${profit.toLocaleString()} ${p.currency || 'EGP'}`, status: profit >= 0 ? 'good' : 'critical', details: { employerTotal, contractorTotal } };
+        return { key: 'boq_profit', value: profit, display: `${profit.toLocaleString()} ${p.currency || 'EGP'}`, status: profit >= 0 ? 'good' : 'critical', target: employerTotal, details: { employerTotal, contractorTotal } };
       }),
       this.createKpi('boq_margin', 'BOQ Margin', 'هامش ربح بنود الكميات', 'boq', 'percent', true, async (p) => {
         const employerTotal = await this.getEmployerBoqTotal(p.projectId);
         const contractorTotal = await this.getContractorBoqTotal(p.projectId);
         const margin = employerTotal > 0 ? ((employerTotal - contractorTotal) / employerTotal) * 100 : 0;
-        return { key: 'boq_margin', value: margin, display: `${margin.toFixed(1)}%`, status: margin >= 15 ? 'good' : margin >= 5 ? 'warning' : 'critical' };
+        return { key: 'boq_margin', value: margin, display: `${margin.toFixed(1)}%`, target: 15, status: margin >= 15 ? 'good' : margin >= 5 ? 'warning' : 'critical' };
       }),
       this.createKpi('attendance_rate', 'Attendance Rate', 'نسبة الحضور', 'resources', 'percent', true, async (p) => {
         const att = await this.getAttendanceData(p.projectId);
-        return { key: 'attendance_rate', value: att.attendanceRate, display: `${att.attendanceRate.toFixed(1)}%`, status: att.attendanceRate >= 90 ? 'good' : att.attendanceRate >= 70 ? 'warning' : 'critical', details: { present: att.present, total: att.totalRecords } };
+        return { key: 'attendance_rate', value: att.attendanceRate, display: `${att.attendanceRate.toFixed(1)}%`, target: 100, status: att.attendanceRate >= 90 ? 'good' : att.attendanceRate >= 70 ? 'warning' : 'critical', details: { present: att.present, total: att.totalRecords } };
       }),
       this.createKpi('absence_rate', 'Absence Rate', 'نسبة الغياب', 'resources', 'percent', false, async (p) => {
         const att = await this.getAttendanceData(p.projectId);
-        return { key: 'absence_rate', value: att.absenceRate, display: `${att.absenceRate.toFixed(1)}%`, status: att.absenceRate <= 10 ? 'good' : att.absenceRate <= 30 ? 'warning' : 'critical', details: { absent: att.absent, total: att.total } };
+        return { key: 'absence_rate', value: att.absenceRate, display: `${att.absenceRate.toFixed(1)}%`, target: 100, status: att.absenceRate <= 10 ? 'good' : att.absenceRate <= 30 ? 'warning' : 'critical', details: { absent: att.absent, total: att.total } };
       }),
       this.createKpi('late_rate', 'Late Arrival Rate', 'نسبة التأخير', 'resources', 'percent', false, async (p) => {
         const att = await this.getAttendanceData(p.projectId);
-        return { key: 'late_rate', value: att.lateRate, display: `${att.lateRate.toFixed(1)}%`, status: att.lateRate <= 10 ? 'good' : att.lateRate <= 20 ? 'warning' : 'critical', details: { late: att.late, total: att.total } };
+        return { key: 'late_rate', value: att.lateRate, display: `${att.lateRate.toFixed(1)}%`, target: 100, status: att.lateRate <= 10 ? 'good' : att.lateRate <= 20 ? 'warning' : 'critical', details: { late: att.late, total: att.total } };
       }),
       this.createKpi('avg_work_hours', 'Average Working Hours', 'متوسط ساعات العمل', 'resources', 'hours', true, async (p) => {
         const att = await this.getAttendanceData(p.projectId);
-        return { key: 'avg_work_hours', value: att.averageWorkingHours, display: `${att.averageWorkingHours.toFixed(1)}h`, status: att.averageWorkingHours >= 8 ? 'good' : 'warning' };
+        return { key: 'avg_work_hours', value: att.averageWorkingHours, display: `${att.averageWorkingHours.toFixed(1)}h`, target: 8, status: att.averageWorkingHours >= 8 ? 'good' : 'warning' };
       }),
       this.createKpi('overtime_hours', 'Overtime Hours', 'ساعات العمل الإضافي', 'resources', 'hours', false, async (p) => {
         const att = await this.getAttendanceData(p.projectId);
-        return { key: 'overtime_hours', value: att.overtimeHours, display: `${att.overtimeHours.toFixed(1)}h`, status: att.overtimeHours > 0 ? 'warning' : 'good' };
+        return { key: 'overtime_hours', value: att.overtimeHours, display: `${att.overtimeHours.toFixed(1)}h`, target: 100, status: att.overtimeHours > 0 ? 'warning' : 'good' };
       }),
       this.createKpi('active_workforce', 'Active Workforce', 'القوى العاملة النشطة', 'resources', 'count', true, async (p) => {
         const att = await this.getAttendanceData(p.projectId);
@@ -119,7 +121,8 @@ export class ConstructionBiService {
   async evaluateKpi(key: string, projectId?: string): Promise<KpiResult | null> {
     const kpi = this.kpis.find((k) => k.key === key);
     if (!kpi) return null;
-    return kpi.calculate({ projectId, currency: 'EGP' });
+    const result = await kpi.calculate({ projectId, currency: 'EGP' });
+    return this.enrich(kpi, result);
   }
 
   async evaluateAll(projectId?: string): Promise<KpiResult[]> {
@@ -127,10 +130,10 @@ export class ConstructionBiService {
     for (const kpi of this.kpis) {
       try {
         const result = await kpi.calculate({ projectId, currency: 'EGP' });
-        results.push(result);
+        results.push(this.enrich(kpi, result));
       } catch (err: any) {
         this.logger.error(`KPI ${kpi.key} failed: ${err.message}`);
-        results.push({ key: kpi.key, value: 0, display: 'N/A', status: 'critical', details: { error: err.message } });
+        results.push(this.enrich(kpi, { key: kpi.key, value: 0, display: 'N/A', status: 'critical', details: { error: err.message } }));
       }
     }
     return results;
@@ -143,7 +146,16 @@ export class ConstructionBiService {
       select: { name: true, status: true, progress: true, startDate: true },
     });
 
+    const goodCount = kpis.filter((k) => k.status === 'good').length;
+    const warningCount = kpis.filter((k) => k.status === 'warning').length;
+    const dangerCount = kpis.filter((k) => k.status === 'danger' || k.status === 'critical').length;
+
     const summary = {
+      overallScore: kpis.length > 0 ? Math.round((goodCount / kpis.length) * 100) : 0,
+      totalKpis: kpis.length,
+      goodCount,
+      warningCount,
+      dangerCount,
       projectName: project?.name || 'Unknown',
       status: project?.status || 'unknown',
       progress: project?.progress || 0,
@@ -154,7 +166,33 @@ export class ConstructionBiService {
       statements: await this.getStatementStats(projectId),
       attendance: await this.getAttendanceBreakdown(projectId),
     };
-    return { summary, kpis, details };
+    return {
+      projectId,
+      projectName: project?.name || 'Unknown',
+      kpis,
+      summary,
+      details,
+    };
+  }
+
+  /** Merges the KPI definition metadata into the raw result so the response matches the frontend contract. */
+  private enrich(kpi: KpiDefinition, result: KpiResult): KpiResult {
+    const target = result.target ?? 0;
+    const percentage = target > 0 ? Math.round((result.value / target) * 1000) / 10 : 0;
+    const status = (result.status === 'critical' ? 'danger' : result.status ?? 'good') as KpiResult['status'];
+    return {
+      ...result,
+      key: kpi.key,
+      name: kpi.name,
+      nameArabic: kpi.nameArabic,
+      description: kpi.description,
+      category: kpi.category,
+      unit: kpi.unit,
+      target,
+      percentage,
+      status,
+      trend: result.trend ?? 'stable',
+    };
   }
 
   /** Full attendance intelligence for the project (reused by attendance KPIs and dashboard). */
@@ -230,11 +268,17 @@ export class ConstructionBiService {
   }
 
   private async getProjectProgress(projectId: string): Promise<number> {
+    if (!projectId) {
+      const projects = await this.prisma.project.findMany({ where: { deletedAt: null }, select: { progress: true } });
+      if (projects.length === 0) return 0;
+      return projects.reduce((s, p) => s + (p.progress || 0), 0) / projects.length;
+    }
     const project = await this.prisma.project.findUnique({ where: { id: projectId }, select: { progress: true } });
     return project?.progress || 0;
   }
 
   private async getProjectMonths(projectId: string): Promise<number> {
+    if (!projectId) return 1;
     const project = await this.prisma.project.findUnique({ where: { id: projectId }, select: { startDate: true } });
     if (!project?.startDate) return 1;
     return Math.max(1, Math.ceil((Date.now() - project.startDate.getTime()) / (1000 * 60 * 60 * 24 * 30)));

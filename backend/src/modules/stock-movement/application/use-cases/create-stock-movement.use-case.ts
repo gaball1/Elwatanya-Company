@@ -6,12 +6,15 @@ import { toResult } from './list-stock-movements.use-case';
 import { PrismaService } from '@/prisma/prisma.service';
 import { EventBusImpl } from '@/modules/domain-events/event-bus.impl';
 import { StockMovementCreatedEvent } from '@/modules/domain-events/events';
+import { Prisma } from '@prisma/client';
+import { StockEffectService } from '../stock-effect.service';
 
 export class CreateStockMovementUseCase {
   constructor(
     private readonly stockMovements: IStockMovementRepository,
     private readonly prisma: PrismaService,
     private readonly eventBus: EventBusImpl,
+    private readonly stockEffect: StockEffectService,
   ) {}
 
   async execute(input: CreateStockMovementInput): Promise<Result<StockMovementResult>> {
@@ -21,6 +24,7 @@ export class CreateStockMovementUseCase {
       quantity: input.quantity,
       date: input.date,
       reference: input.reference,
+      reason: input.reason,
       notes: input.notes,
       createdBy: input.createdBy,
       issuedTo: input.issuedTo,
@@ -32,7 +36,40 @@ export class CreateStockMovementUseCase {
     if (result.isFailure) return Result.fail(result.error as Error);
 
     const stockMovement = result.getValue();
-    await this.stockMovements.save(stockMovement);
+
+    try {
+      // Apply the quantity effect and persist the movement atomically so the
+      // on-hand quantity can never drift from the recorded movement.
+      await this.prisma.$transaction(async (tx) => {
+        await this.stockEffect.applyCreate(tx, {
+          type: stockMovement.type,
+          itemId: stockMovement.itemId,
+          quantity: stockMovement.quantity,
+          fromWarehouse: stockMovement.fromWarehouse,
+          toWarehouse: stockMovement.toWarehouse,
+        });
+        await tx.stockMovement.create({
+          data: {
+            id: stockMovement.id.toValue(),
+            itemId: stockMovement.itemId,
+            type: stockMovement.type,
+            quantity: new Prisma.Decimal(stockMovement.quantity),
+            date: stockMovement.date,
+            reference: stockMovement.reference,
+            reason: stockMovement.reason,
+            notes: stockMovement.notes,
+            createdBy: stockMovement.createdBy,
+            issuedTo: stockMovement.issuedTo,
+            supplier: stockMovement.supplier,
+            fromWarehouse: stockMovement.fromWarehouse,
+            toWarehouse: stockMovement.toWarehouse,
+            deletedAt: null,
+          },
+        });
+      });
+    } catch (error: any) {
+      return Result.fail(error instanceof Error ? error : new Error(String(error)));
+    }
 
     await this.eventBus.publish(
       new StockMovementCreatedEvent(

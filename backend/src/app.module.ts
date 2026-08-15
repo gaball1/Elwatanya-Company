@@ -15,6 +15,7 @@ import { EmployerBoqModule } from "./modules/employer-boq/employer-boq.module";
 import { AnalyticalBoqModule } from "./modules/analytical-boq/analytical-boq.module";
 import { FinalBoqModule } from "./modules/final-boq/final-boq.module";
 import { SubcontractorModule } from "./modules/subcontractor/subcontractor.module";
+import { SubcontractorContractModule } from "./modules/subcontractor-contract/subcontractor-contract.module";
 import { ContractorBoqModule } from "./modules/contractor-boq/contractor-boq.module";
 import { DistributionModule } from "./modules/distribution/distribution.module";
 import { ExtractModule } from "./modules/extract/extract.module";
@@ -38,6 +39,7 @@ import { FundTransactionModule } from "./modules/fund-transaction/fund-transacti
 import { MiscellaneousModule } from "./modules/miscellaneous/miscellaneous.module";
 import { NotificationModule } from "./modules/notification/notification.module";
 import { ProjectBoardModule } from "./modules/project-board/project-board.module";
+import { ProjectBoardDocumentModule } from "./modules/project-board-document/project-board-document.module";
 import { ClientStatementModule } from "./modules/client-statement/client-statement.module";
 import { SubcontractorStatementModule } from "./modules/subcontractor-statement/subcontractor-statement.module";
 import { PurchaseModule } from "./modules/purchase/purchase.module";
@@ -51,7 +53,6 @@ import { ProfileModule } from "./modules/profile/profile.module";
 import { ShiftModule } from "./modules/shift/shift.module";
 import { AiAgentModule } from "./modules/ai-agent/ai-agent.module";
 import { CompanyModule } from "./modules/company/company.module";
-import { DocumentEngineModule } from "./modules/document-engine/document-engine.module";
 import { SettingsModule } from "./modules/settings/settings.module";
 import { WhiteLabelModule } from "./modules/white-label/white-label.module";
 import { DomainEventsModule } from "./modules/domain-events/domain-events.module";
@@ -67,7 +68,6 @@ import { ImportExportModule } from "./modules/import-export/import-export.module
 import { PdfEngineModule } from "./modules/pdf-engine/pdf-engine.module";
 import { ConstructionBiModule } from "./modules/construction-bi/construction-bi.module";
 import { ConstructionAnalyticsModule } from "./modules/construction-analytics/construction-analytics.module";
-import { DocumentNumberModule } from "./modules/document-number/document-number.module";
 import { SignatureWorkflowModule } from "./modules/signature-workflow/signature-workflow.module";
 import { ReportingEngineModule } from "./modules/reporting-engine/reporting-engine.module";
 import { GlobalExceptionFilter } from "./common/filters/global-exception.filter";
@@ -109,6 +109,7 @@ import { LoggerModule } from "nestjs-pino";
     FinalBoqModule,
     SubcontractorModule,
     ContractorBoqModule,
+    SubcontractorContractModule,
     DistributionModule,
     ExtractModule,
     PaymentModule,
@@ -131,6 +132,7 @@ import { LoggerModule } from "nestjs-pino";
     MiscellaneousModule,
     NotificationModule,
     ProjectBoardModule,
+    ProjectBoardDocumentModule,
     ClientStatementModule,
     SubcontractorStatementModule,
     AuditModule,
@@ -141,7 +143,6 @@ import { LoggerModule } from "nestjs-pino";
     ShiftModule,
     AiAgentModule,
     CompanyModule,
-    DocumentEngineModule,
     SettingsModule,
     WhiteLabelModule,
     DomainEventsModule,
@@ -157,7 +158,6 @@ import { LoggerModule } from "nestjs-pino";
     PdfEngineModule,
     ConstructionBiModule,
     ConstructionAnalyticsModule,
-    DocumentNumberModule,
     SignatureWorkflowModule,
     ReportingEngineModule,
   ],
@@ -197,6 +197,14 @@ import { LoggerModule } from "nestjs-pino";
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
-    consumer.apply(CorrelationIdMiddleware, (helmet.default ?? helmet)()).forRoutes('*');
+    consumer.apply(
+      CorrelationIdMiddleware,
+      // crossOriginResourcePolicy: the PDF engine renders documents in a
+      // headless browser (opaque origin) and fetches public company assets
+      // (logo, stamp, signature, watermark) as <img> sources. Helmet's
+      // default same-origin CORP would block those loads and silently drop
+      // branding from generated PDFs.
+      (helmet.default ?? helmet)({ crossOriginResourcePolicy: { policy: 'cross-origin' } }),
+    ).forRoutes('*');
   }
 }

@@ -51,6 +51,14 @@ export class PrismaBuildingRepository implements IBuildingRepository {
     return records.map((record) => this.toDomain(record));
   }
 
+  async findAll(): Promise<Building[]> {
+    const records = await this.prisma.building.findMany({
+      where: { deletedAt: null },
+      orderBy: { createdAt: 'asc' },
+    });
+    return records.map((record) => this.toDomain(record));
+  }
+
   async existsByNameInProject(
     projectId: UniqueEntityId,
     name: string,

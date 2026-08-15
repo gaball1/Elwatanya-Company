@@ -5,6 +5,8 @@ import { ReportingEngineService } from './application/reporting-engine.service';
 import { ReportFormat } from './domain/report-definition.entity';
 import { GenerateReportParams } from './domain/report-handler.interface';
 import { sendFileResponse } from '../../common/pdf-header.util';
+import { RequirePermission } from '@/common/decorators/permissions.decorator';
+import { Permissions } from '@/common/constants/permissions.constant';
 
 @ApiTags('Reporting Engine')
 @Controller('reporting')
@@ -13,12 +15,14 @@ export class ReportingEngineController {
 
   @Get('reports')
   @ApiOperation({ summary: 'List all available reports' })
+  @RequirePermission(Permissions.Reports.Read)
   getAvailableReports() {
     return this.service.getAvailableReports();
   }
 
   @Post(':reportName/generate')
   @ApiOperation({ summary: 'Generate a report in specified format' })
+  @RequirePermission(Permissions.Reports.Generate)
   async generateReport(
     @Param('reportName') reportName: string,
     @Query('format') format: ReportFormat,
@@ -36,6 +40,7 @@ export class ReportingEngineController {
 
   @Get(':reportName/preview')
   @ApiOperation({ summary: 'Preview a report as HTML' })
+  @RequirePermission(Permissions.Reports.Read)
   async previewReport(
     @Param('reportName') reportName: string,
     @Query() params: GenerateReportParams,

@@ -7,6 +7,7 @@ export interface IBuildingRepository {
   save(building: Building): Promise<void>;
   findById(id: UniqueEntityId): Promise<Building | null>;
   findByProjectId(projectId: UniqueEntityId): Promise<Building[]>;
+  findAll(): Promise<Building[]>;
   existsByNameInProject(
     projectId: UniqueEntityId,
     name: string,

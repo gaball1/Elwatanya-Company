@@ -2,12 +2,11 @@ import { Result } from '@/shared/kernel/result';
 import { UniqueEntityId } from '@/shared/kernel/unique-entity-id.vo';
 import { IAttendanceRepository } from '../../domain/attendance.repository';
 import { CheckOutInput, AttendanceResult } from '../dto/attendance.dto';
-import { toResult } from './list-attendance.use-case';
 import { EventBusImpl } from '@/modules/domain-events/event-bus.impl';
-import { AttendanceCheckedOutEvent } from '@/modules/domain-events/events';
 import { PrismaService } from '@/prisma/prisma.service';
 import { evaluateGeofence } from '../geofence.util';
 import { AttendanceOverrideService } from '@/modules/attendance-override/attendance-override.service';
+import { toResult } from './list-attendance.use-case';
 
 export type CheckOutOutcome =
   | { record: AttendanceResult }
@@ -27,75 +26,59 @@ export class CheckOutUseCase {
 
     // Server-side geofence enforcement on check-out.
     const breach = await this.evaluateGeofence(entity.buildingId, input);
-    if (breach) {
-      const requestedBy = await this.resolveRequestedBy(entity.employeeId);
-      const { override } = await this.overrideService.create({
-        requestedBy: requestedBy ?? entity.employeeId,
-        reason: breach.reason,
-        type: 'check_out',
-        attendanceId: entity.id.toValue(),
-        distance: breach.distance,
-        snapshot: {
-          employeeId: entity.employeeId,
-          date: entity.date,
-          checkOutTime: input.checkOutTime,
-          checkOutLatitude: input.checkOutLatitude ?? null,
-          checkOutLongitude: input.checkOutLongitude ?? null,
-          checkOutAddress: input.checkOutAddress ?? null,
-          checkOutAccuracy: input.checkOutAccuracy ?? null,
-          checkOutSelfie: input.checkOutSelfie ?? null,
-          notes: input.notes ?? null,
-        },
-      });
+    const hasCoords = input.checkOutLatitude != null && input.checkOutLongitude != null;
 
-      return Result.ok({
-        override: { id: override.id, reason: override.reason, status: override.status, distance: breach.distance },
-        requiresApproval: true,
+    // Inside the geofence (or no geofence configured) with valid GPS:
+    // apply the check-out to the same attendance record so check-in and
+    // check-out live in the same row for the same employee + date.
+    if (!breach && hasCoords) {
+      const applied = entity.doCheckOut({
+        checkOutTime: input.checkOutTime,
+        checkOutLatitude: input.checkOutLatitude,
+        checkOutLongitude: input.checkOutLongitude,
+        checkOutAddress: input.checkOutAddress,
+        checkOutAccuracy: input.checkOutAccuracy,
+        checkOutSelfie: input.checkOutSelfie,
+        distanceFromSite: input.distanceFromSite,
+        notes: input.notes,
       });
+      if (applied.isFailure) return Result.fail(applied.error as Error);
+      await this.attendance.save(entity);
+      return Result.ok({ record: toResult(entity) });
     }
 
-    const result = entity.doCheckOut({
-      checkOutTime: input.checkOutTime,
-      checkOutLatitude: input.checkOutLatitude,
-      checkOutLongitude: input.checkOutLongitude,
-      checkOutAddress: input.checkOutAddress,
-      checkOutAccuracy: input.checkOutAccuracy,
-      checkOutSelfie: input.checkOutSelfie,
-      distanceFromSite: input.distanceFromSite,
-      notes: input.notes,
+    // Outside the geofence or missing GPS → submit for manager approval.
+    const requestedBy = await this.resolveRequestedBy(entity.employeeId);
+
+    const { override } = await this.overrideService.create({
+      requestedBy: requestedBy ?? entity.employeeId,
+      reason: breach ? breach.reason : 'Location data missing; check-out requires valid GPS coordinates',
+      type: 'check_out',
+      attendanceId: entity.id.toValue(),
+      distance: breach ? breach.distance : input.distanceFromSite ?? null,
+      snapshot: {
+        employeeId: entity.employeeId,
+        date: entity.date,
+        checkOutTime: input.checkOutTime,
+        checkOutLatitude: input.checkOutLatitude ?? null,
+        checkOutLongitude: input.checkOutLongitude ?? null,
+        checkOutAddress: input.checkOutAddress ?? null,
+        checkOutAccuracy: input.checkOutAccuracy ?? null,
+        checkOutSelfie: input.checkOutSelfie ?? null,
+        distanceFromSite: input.distanceFromSite ?? null,
+        notes: input.notes ?? null,
+      },
     });
 
-    if (result.isFailure) return Result.fail(result.error as Error);
-
-    await this.attendance.save(entity);
-
-    if (entity.employeeId) {
-      const user = await this.prisma.user.findUnique({
-        where: { employeeId: entity.employeeId },
-        select: { id: true },
-      });
-      const employee = await this.prisma.employee.findUnique({
-        where: { id: entity.employeeId },
-        select: { fullName: true },
-      });
-      await this.eventBus.publish(
-        new AttendanceCheckedOutEvent(
-          entity.id.toValue(),
-          'attendance',
-          {
-            id: entity.id.toValue(),
-            employeeId: entity.employeeId,
-            employeeName: employee?.fullName,
-            checkInTime: entity.checkInTime?.toISOString() ?? '',
-            checkOutTime: input.checkOutTime.toISOString(),
-            workedMinutes: entity.workedMinutes ?? 0,
-            recipientIds: user ? [user.id] : [],
-          },
-        ),
-      );
-    }
-
-    return Result.ok({ record: toResult(entity) });
+    return Result.ok({
+      override: {
+        id: override.id,
+        reason: override.reason,
+        status: override.status,
+        distance: breach ? breach.distance : input.distanceFromSite ?? null,
+      },
+      requiresApproval: true,
+    });
   }
 
   private async evaluateGeofence(

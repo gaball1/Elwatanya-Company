@@ -1,0 +1,129 @@
+# =============================================================================
+# El Wataniya ERP - PRODUCTION stack
+#   Postgres + Backend (NestJS) + Frontend (Next.js standalone)
+#   Builds both app images from the repo root (monorepo workspaces).
+#
+# Usage:
+#   docker compose -f docker-compose.prod.yml build
+#   docker compose -f docker-compose.prod.yml up -d
+#   docker compose -f docker-compose.prod.yml ps
+#   docker compose -f docker-compose.prod.yml logs -f backend
+#
+# Production must supply strong secrets and the backend API base the frontend
+# should proxy to. Example:
+#   docker compose -f docker-compose.prod.yml build \
+#     --build-arg NEXT_PUBLIC_API_URL=http://backend:3001/api/v1
+# =============================================================================
+name: elwataniya-prod
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-elwataniya}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-elwataniya_erp}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-elwataniya} -d ${POSTGRES_DB:-elwataniya_erp}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+          cpus: "1.0"
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - backend
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: "3001"
+      DATABASE_URL: postgresql://${POSTGRES_USER:-elwataniya}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-elwataniya_erp}?schema=public
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-1d}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?set JWT_REFRESH_SECRET}
+      JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN:-7d}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
+      ALLOW_PUBLIC_REGISTRATION: ${ALLOW_PUBLIC_REGISTRATION:-false}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      AI_AGENT_API_URL: ${AI_AGENT_API_URL:-}
+      PDF_MAX_CONCURRENT_RENDERS: ${PDF_MAX_CONCURRENT_RENDERS:-4}
+    volumes:
+      - backend_uploads:/app/uploads
+      - backend_pdfs:/app/generated-pdfs
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "const c=require('net').connect(3001,'localhost');c.on('connect',()=>process.exit(0));c.on('error',()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+          cpus: "2.0"
+    security_opt:
+      - no-new-privileges:true
+    init: true
+    networks:
+      - backend
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        # The Next.js rewrites proxy /api/v1/* here at build time.
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://backend:3001/api/v1}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      HOSTNAME: "0.0.0.0"
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "const c=require('net').connect(3000,'localhost');c.on('connect',()=>process.exit(0));c.on('error',()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+          cpus: "1.0"
+    security_opt:
+      - no-new-privileges:true
+    init: true
+    networks:
+      - backend
+
+volumes:
+  postgres_data:
+  backend_uploads:
+  backend_pdfs:
+
+networks:
+  backend:
+    driver: bridge

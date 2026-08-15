@@ -4,6 +4,7 @@ import { DomainEvent } from '@/modules/domain-events/domain/event-bus.interface'
 import { PrismaService } from '@/prisma/prisma.service';
 import { Prisma } from '@prisma/client';
 import { PurchaseStockService } from '@/modules/purchase/application/purchase-stock.service';
+import { applyFundBalanceEffects, balanceEffectsFor } from '@/modules/fund-transaction/application/fund-balance.util';
 
 interface EntityTarget {
   model: 'purchase' | 'leave' | 'fundTransaction' | 'clientStatement' | 'subcontractorStatement' | 'statement';
@@ -50,7 +51,7 @@ export class ApprovalEntitySyncSubscriber implements OnModuleInit {
   /**
    * Applies an approval outcome to the underlying entity atomically:
    * - flips the entity status to the target approved/rejected status
-   * - credits the عهدة fund when a "request" fund-transaction is approved
+   * - reconciles the عهدة fund balance when a fund-transaction is approved/rejected
    * - reverses the recorded purchase expense when a purchase approval is rejected,
    *   so rejected purchases never stay on the ledger
    */
@@ -62,18 +63,29 @@ export class ApprovalEntitySyncSubscriber implements OnModuleInit {
 
     try {
       await this.prisma.$transaction(async (tx) => {
+        // Fund transactions are reconciled through the same balance-effect rules used by
+        // create/update/delete, so approval side-effects can never drift from the ledger.
+        if (target.model === 'fundTransaction') {
+          await this.syncFundTransaction(tx, entityId, outcome);
+          return;
+        }
+
+        // Capture the pre-transition state BEFORE flipping the status, otherwise a
+        // `wasReceived` check on the already-cancelled row is always false.
+        let wasReceived = false;
+        if (outcome === 'rejected' && target.model === 'purchase') {
+          const purchase = await tx.purchase.findFirst({ where: { id: entityId } });
+          wasReceived = purchase?.status === 'received';
+        }
+
         const status = outcome === 'approved' ? target.approvedStatus : target.rejectedStatus;
         await (tx[target.model] as any).updateMany({
           where: { id: entityId },
           data: { status },
         });
 
-        if (outcome === 'approved' && target.model === 'fundTransaction') {
-          await this.creditFundFromApprovedRequest(tx, entityId);
-        }
-
         if (outcome === 'rejected' && target.model === 'purchase') {
-          await this.reversePurchaseExpense(tx, entityId);
+          await this.reversePurchaseExpense(tx, entityId, wasReceived);
         }
       });
     } catch (error) {
@@ -81,34 +93,64 @@ export class ApprovalEntitySyncSubscriber implements OnModuleInit {
     }
   }
 
-  /** Approving a "request"-type fund transaction increases the project fund (عهدة) balance by its amount. */
-  private async creditFundFromApprovedRequest(tx: Prisma.TransactionClient, transactionId: string): Promise<void> {
+  /**
+   * Reconciles a fund-transaction's balance effect when its approval is approved/rejected.
+   * Idempotent: approving an already-approved transaction does not credit again, and
+   * rejecting a transaction that was never approved does not reverse anything.
+   */
+  private async syncFundTransaction(tx: Prisma.TransactionClient, transactionId: string, outcome: 'approved' | 'rejected'): Promise<void> {
     const txn = await tx.fundTransaction.findFirst({ where: { id: transactionId } });
-    if (!txn || txn.type !== 'request') return;
+    if (!txn) return;
 
-    const fund = await tx.projectFund.findFirst({
-      where: { id: txn.fundId, deletedAt: null },
-    });
-    if (!fund) return;
+    const wasApproved = txn.status === 'approved';
+    const newStatus = outcome === 'approved' ? 'approved' : 'rejected';
 
-    const newBalance = new Prisma.Decimal(fund.currentBalance).plus(txn.amount);
-    await tx.projectFund.update({
-      where: { id: fund.id },
-      data: { currentBalance: newBalance, lastUpdated: new Date(), updatedAt: new Date() },
+    await tx.fundTransaction.update({
+      where: { id: transactionId },
+      data: { status: newStatus },
     });
+
+    const effect = balanceEffectsFor(
+      txn.type,
+      txn.category ?? '',
+      'approved',
+      Number(txn.amount),
+    );
+    if (outcome === 'approved' && !wasApproved) {
+      await applyFundBalanceEffects(tx, txn.fundId, effect);
+    } else if (outcome === 'rejected' && wasApproved) {
+      await applyFundBalanceEffects(tx, txn.fundId, {
+        treasuryEffect: -effect.treasuryEffect,
+        pettyCashEffect: -effect.pettyCashEffect,
+      });
+    }
   }
 
   /**
    * Rejecting a purchase returns it to a non-committed (cancelled) state and reverses the
    * expense that was recorded when it was created, so a rejected purchase never affects
-   * the treasury ledger.
+   * the treasury ledger. Idempotent: a purchase whose expense was already reversed (e.g.
+   * via the cancel status flow) is not reversed a second time.
    */
-  private async reversePurchaseExpense(tx: Prisma.TransactionClient, purchaseId: string): Promise<void> {
+  private async reversePurchaseExpense(tx: Prisma.TransactionClient, purchaseId: string, wasReceived: boolean): Promise<void> {
     const purchase = await tx.purchase.findFirst({ where: { id: purchaseId } });
     if (!purchase) return;
 
+    // Skip when this purchase's expense was already reversed (existing approved 'add'
+    // fund-transaction with the same referenceId) to prevent double reversal.
+    const alreadyReversed = await tx.fundTransaction.findFirst({
+      where: {
+        referenceId: purchaseId,
+        type: 'add',
+        category: 'purchase',
+        status: 'approved',
+        deletedAt: null,
+      },
+    });
+    if (alreadyReversed) return;
+
     // A purchase that had physically received stock must have that stock reversed.
-    if (purchase.status === 'received') {
+    if (wasReceived) {
       await this.stockService.reverseStockIn(
         {
           itemName: purchase.itemName,
@@ -120,6 +162,7 @@ export class ApprovalEntitySyncSubscriber implements OnModuleInit {
           createdBy: 'system',
           date: new Date(),
           purchaseId: purchase.id,
+          warehouseId: purchase.warehouseId ?? '',
         },
         tx,
       );
@@ -130,10 +173,10 @@ export class ApprovalEntitySyncSubscriber implements OnModuleInit {
     });
     if (!fund) return;
 
-    const newBalance = new Prisma.Decimal(fund.currentBalance).plus(purchase.total);
+    const newBalance = new Prisma.Decimal(fund.pettyCashBalance).plus(purchase.total);
     await tx.projectFund.update({
       where: { id: fund.id },
-      data: { currentBalance: newBalance, lastUpdated: new Date(), updatedAt: new Date() },
+      data: { pettyCashBalance: newBalance, lastUpdated: new Date(), updatedAt: new Date() },
     });
 
     await tx.fundTransaction.create({

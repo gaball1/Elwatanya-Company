@@ -21,7 +21,7 @@ import {
 } from '@nestjs/swagger';
 import { RequirePermission } from '../../common/decorators/permissions.decorator';
 import { Permissions } from '../../common/constants/permissions.constant';
-import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
 import { CreateProjectUseCase } from './application/use-cases/create-project.use-case';
 import { UpdateProjectUseCase } from './application/use-cases/update-project.use-case';
 import { GetProjectUseCase } from './application/use-cases/get-project.use-case';
@@ -58,6 +58,7 @@ export class ProjectController {
       description: dto.description,
       client: dto.client,
       startDate: dto.startDate ? new Date(dto.startDate) : undefined,
+      plannedDurationMonths: dto.plannedDurationMonths,
       status: dto.status,
       progress: dto.progress,
     });
@@ -71,8 +72,8 @@ export class ProjectController {
   @Get()
   @ApiOperation({ summary: 'List active projects' })
   @RequirePermission(Permissions.Projects.Read)
-  async list(@CurrentUser('projectId') projectId?: string) {
-    const result = await this.listProjects.execute(projectId);
+  async list(@CurrentUser() user?: JwtPayload) {
+    const result = await this.listProjects.execute(user);
     if (result.isFailure) {
       throw this.mapError(result.error);
     }
@@ -82,8 +83,8 @@ export class ProjectController {
   @Get(':id')
   @ApiOperation({ summary: 'Get project by id' })
   @RequirePermission(Permissions.Projects.Read)
-  async getById(@Param('id', ParseUUIDPipe) id: string, @CurrentUser('projectId') projectId?: string) {
-    const result = await this.getProject.execute(id, projectId);
+  async getById(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user?: JwtPayload) {
+    const result = await this.getProject.execute(id, user);
     if (result.isFailure) {
       throw this.mapError(result.error);
     }
@@ -95,7 +96,7 @@ export class ProjectController {
   async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateProjectDto,
-    @CurrentUser('projectId') projectId?: string,
+    @CurrentUser() user?: JwtPayload,
   ) {
     const result = await this.updateProject.execute({
       projectId: id,
@@ -104,9 +105,10 @@ export class ProjectController {
       description: dto.description,
       client: dto.client,
       startDate: dto.startDate !== undefined ? new Date(dto.startDate) : undefined,
+      plannedDurationMonths: dto.plannedDurationMonths,
       status: dto.status,
       progress: dto.progress,
-    }, projectId);
+    }, user);
     if (result.isFailure) {
       throw this.mapError(result.error);
     }
@@ -117,8 +119,8 @@ export class ProjectController {
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Soft-delete a project' })
   @RequirePermission(Permissions.Projects.Delete)
-  async remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser('projectId') projectId?: string) {
-    const result = await this.softDeleteProject.execute(id, projectId);
+  async remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user?: JwtPayload) {
+    const result = await this.softDeleteProject.execute(id, user);
     if (result.isFailure) {
       throw this.mapError(result.error);
     }

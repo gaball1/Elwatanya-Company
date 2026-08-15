@@ -1,4 +1,5 @@
 import { apiClient } from '@/lib/api/apiClient';
+import { safeFetch } from '@/lib/api/fetchTransport';
 
 export type KpiStatus = 'good' | 'warning' | 'critical' | 'neutral';
 
@@ -192,6 +193,7 @@ export interface ProjectAnalytics {
     code: string;
     status: string;
     startDate: string | null;
+    plannedDurationMonths: number;
     progress: number;
     client: string | null;
   } | null;
@@ -266,7 +268,7 @@ async function exportReport(projectId: string, format: string): Promise<void> {
   const { getAccessToken } = await import('@/lib/api/tokenStorage');
   const token = getAccessToken() || '';
 
-  const response = await fetch(`${baseUrl}/reporting/project_analytics/generate?format=${format}`, {
+  const response = await safeFetch(`${baseUrl}/reporting/project_analytics/generate?format=${format}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
     body: JSON.stringify({ projectId }),

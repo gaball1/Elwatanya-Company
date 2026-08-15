@@ -21,6 +21,8 @@ export class PrismaNotificationRepository implements INotificationRepository {
       entityType: notification.entityType,
       entityId: notification.entityId,
       link: notification.link,
+      targetRoles: notification.targetRoles,
+      targetPermissions: notification.targetPermissions,
       deletedAt: notification.deletedAt,
       updatedAt: new Date(),
     };
@@ -52,28 +54,88 @@ export class PrismaNotificationRepository implements INotificationRepository {
     if (query?.read !== undefined) {
       where.read = query.read;
     }
+    if (!query?.isAdmin) {
+      // Non-admin users see only what is dedicated to them:
+      //  - their own personal notifications,
+      //  - plain broadcasts (no role/permission targeting),
+      //  - role-targeted broadcasts matching one of their roles,
+      //  - permission-targeted broadcasts matching one of their permissions.
+      where.OR = this.scopedWhere(query);
+    }
+    // Admins see every notification in the system.
 
     const records = await this.prisma.notification.findMany({
       where,
       orderBy: { date: 'desc' },
+      take: query?.limit,
     });
     return records.map((r) => this.toDomain(r));
   }
 
-  async markAllAsRead(): Promise<number> {
+  async countUnread(query?: NotificationQuery): Promise<number> {
+    const where: Record<string, unknown> = { deletedAt: null, read: false };
+
+    if (!query?.isAdmin) {
+      where.OR = this.scopedWhere(query);
+    }
+
+    return this.prisma.notification.count({ where });
+  }
+
+  async markAllAsRead(
+    userId?: string,
+    isAdmin?: boolean,
+    scoping?: Pick<NotificationQuery, 'roleNames' | 'permissionNames'>,
+  ): Promise<number> {
+    const where: Record<string, unknown> = { deletedAt: null, read: false };
+    if (!isAdmin) {
+      where.OR = this.scopedWhere({ userId, isAdmin, ...scoping });
+    }
+
     const result = await this.prisma.notification.updateMany({
-      where: { deletedAt: null, read: false },
+      where,
       data: { read: true },
     });
     return result.count;
   }
 
-  async clearAll(): Promise<number> {
+  async clearAll(
+    userId?: string,
+    isAdmin?: boolean,
+    scoping?: Pick<NotificationQuery, 'roleNames' | 'permissionNames'>,
+  ): Promise<number> {
+    const where: Record<string, unknown> = { deletedAt: null };
+    if (!isAdmin) {
+      where.OR = this.scopedWhere({ userId, isAdmin, ...scoping });
+    }
+
     const result = await this.prisma.notification.updateMany({
-      where: { deletedAt: null },
+      where,
       data: { deletedAt: new Date() },
     });
     return result.count;
+  }
+
+  /** Builds the non-admin visibility OR-clause using the requesting user's roles and permissions. */
+  private scopedWhere(query?: NotificationQuery): Record<string, unknown>[] {
+    const userId = query?.userId;
+    const roleNames = query?.roleNames ?? [];
+    const permissionNames = query?.permissionNames ?? [];
+
+    const or: Record<string, unknown>[] = [];
+    if (userId) or.push({ userId });
+    or.push({
+      userId: null,
+      targetRoles: { isEmpty: true },
+      targetPermissions: { isEmpty: true },
+    });
+    if (roleNames.length > 0) {
+      or.push({ userId: null, targetRoles: { hasSome: roleNames } });
+    }
+    if (permissionNames.length > 0) {
+      or.push({ userId: null, targetPermissions: { hasSome: permissionNames } });
+    }
+    return or;
   }
 
   private toDomain(record: {
@@ -89,6 +151,8 @@ export class PrismaNotificationRepository implements INotificationRepository {
     entityType: string | null;
     entityId: string | null;
     link: string | null;
+    targetRoles: string[];
+    targetPermissions: string[];
     deletedAt: Date | null;
     createdAt: Date;
     updatedAt: Date;
@@ -106,6 +170,8 @@ export class PrismaNotificationRepository implements INotificationRepository {
         entityType: record.entityType,
         entityId: record.entityId,
         link: record.link,
+        targetRoles: record.targetRoles ?? [],
+        targetPermissions: record.targetPermissions ?? [],
         deletedAt: record.deletedAt,
       },
       new UniqueEntityId(record.id),

@@ -12,7 +12,7 @@ import {
 import { toEmployerBoqItemResult } from './list-employer-boq-items.use-case';
 import { SyncAnalyticalFromEmployerUseCase } from '@/modules/analytical-boq/application/use-cases/sync-analytical-from-employer.use-case';
 import { AddAnalyticalFromEmployerUseCase } from '@/modules/analytical-boq/application/use-cases/sync-analytical-from-employer.use-case';
-import { OwnershipService } from '@/common/services/ownership.service';
+import { OwnershipActor, OwnershipService } from '@/common/services/ownership.service';
 import { AuditService } from '@/modules/audit/audit.service';
 import { NotificationService } from '@/common/services/notification.service';
 import { EventBusImpl } from '@/modules/domain-events/event-bus.impl';
@@ -30,8 +30,8 @@ export class UpsertEmployerBoqItemUseCase {
     private readonly eventBus: EventBusImpl,
   ) {}
 
-  async execute(input: UpsertEmployerBoqItemInput, userProjectId?: string | null, userId?: string): Promise<Result<EmployerBoqItemResult>> {
-    await this.ownership.verifyBuildingAccess(userProjectId, input.buildingId);
+  async execute(input: UpsertEmployerBoqItemInput, user?: OwnershipActor, userId?: string): Promise<Result<EmployerBoqItemResult>> {
+    await this.ownership.verifyBuildingAccess(user, input.buildingId);
     const buildingId = new UniqueEntityId(input.buildingId);
     const building = await this.buildings.findById(buildingId);
     if (!building) {
@@ -41,7 +41,7 @@ export class UpsertEmployerBoqItemUseCase {
     }
 
     if (input.itemCode) {
-      return this.upsertByItemCode(buildingId, input, userId);
+      return this.upsertByItemCode(buildingId, input, user, userId);
     }
 
     const existing = await this.employerBoq.findByBuildingIdDescriptionAndUnit(
@@ -50,7 +50,7 @@ export class UpsertEmployerBoqItemUseCase {
       input.unit,
     );
     if (existing) {
-      return this.updateExisting(existing, input, userId);
+      return this.updateExisting(existing, input, user, userId);
     }
 
     const itemCode = await this.employerBoq.generateNextItemCode(buildingId);
@@ -76,7 +76,7 @@ export class UpsertEmployerBoqItemUseCase {
     await this.addAnalyticalFromEmployer.execute({
       buildingId: input.buildingId,
       itemCode: item.itemCode,
-    });
+    }, user);
     if (userId) {
       this.audit.log({ userId, entity: 'employer_boq', entityId: item.id.toValue(), action: 'CREATE', before: null, after: { itemCode: item.itemCode, description: item.description, unit: item.unit, quantity: item.quantity, unitPrice: item.unitPrice } });
     }
@@ -114,13 +114,14 @@ export class UpsertEmployerBoqItemUseCase {
   private async upsertByItemCode(
     buildingId: UniqueEntityId,
     input: UpsertEmployerBoqItemInput,
+    user?: OwnershipActor,
     userId?: string,
   ): Promise<Result<EmployerBoqItemResult>> {
     const itemCode = input.itemCode as string;
     const existing = await this.employerBoq.findByBuildingIdAndItemCode(buildingId, itemCode);
 
     if (existing) {
-      return this.updateExisting(existing, input, userId);
+      return this.updateExisting(existing, input, user, userId);
     }
 
     const created = EmployerBoqItem.create({
@@ -145,7 +146,7 @@ export class UpsertEmployerBoqItemUseCase {
     await this.addAnalyticalFromEmployer.execute({
       buildingId: input.buildingId,
       itemCode: item.itemCode,
-    });
+    }, user);
     if (userId) {
       this.audit.log({ userId, entity: 'employer_boq', entityId: item.id.toValue(), action: 'CREATE', before: null, after: { itemCode: item.itemCode, description: item.description, unit: item.unit, quantity: item.quantity, unitPrice: item.unitPrice } });
     }
@@ -168,6 +169,7 @@ export class UpsertEmployerBoqItemUseCase {
   private async updateExisting(
     existing: EmployerBoqItem,
     input: UpsertEmployerBoqItemInput,
+    user?: OwnershipActor,
     userId?: string,
   ): Promise<Result<EmployerBoqItemResult>> {
     const before = { itemCode: existing.itemCode, description: existing.description, unit: existing.unit, quantity: existing.quantity, unitPrice: existing.unitPrice };
@@ -190,7 +192,7 @@ export class UpsertEmployerBoqItemUseCase {
     await this.syncAnalyticalFromEmployer.execute({
       buildingId: input.buildingId,
       itemCode: existing.itemCode,
-    });
+    }, user);
     if (userId) {
       this.audit.log({ userId, entity: 'employer_boq', entityId: existing.id.toValue(), action: 'UPDATE', before, after: { itemCode: existing.itemCode, description: existing.description, unit: existing.unit, quantity: existing.quantity, unitPrice: existing.unitPrice } });
     }

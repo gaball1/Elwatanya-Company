@@ -16,6 +16,8 @@ export interface ExtractItemInput {
   current: number;
   executionPercent: number;
   unitPrice: number;
+  /** Identifies the exact contractor BOQ item/component when itemCode is shared by multiple rows. */
+  contractorBoqItemId?: string;
 }
 
 export interface ExtractItemCalculated extends ExtractItemInput {
@@ -65,7 +67,7 @@ export function buildInsuranceDeduction(
 export function buildPreviousPaidDeduction(amount: number): ExtractDeduction {
   return {
     id: 'previous-paid-auto',
-    name: 'ماسبق صرفة',
+    name: 'ما سبق صرفه',
     amount,
     type: 'previous_paid',
     readOnly: true,
@@ -77,39 +79,56 @@ export function sumDeductions(deductions: ExtractDeduction[]): number {
   return deductions.reduce((s, d) => s + (d.amount || 0), 0);
 }
 
-/** Mirrors calcNetPayable */
-export function calcNetPayable(totalWork: number, deductions: ExtractDeduction[]): number {
-  return totalWork - sumDeductions(deductions);
+/** Mirrors calcNetPayable — work + أخرى − deductions */
+export function calcNetPayable(
+  totalWork: number,
+  otherAmounts: number,
+  deductions: ExtractDeduction[],
+): number {
+  return totalWork + otherAmounts - sumDeductions(deductions);
 }
 
-/** Mirrors mergeDeductions */
+/** Sum of named "أخرى" items; falls back to the plain total when no items are provided. */
+export function sumOtherAmountItems(
+  otherAmountItems?: { id: string; name: string; amount: number }[],
+  otherAmounts: number = 0,
+): number {
+  if (otherAmountItems && otherAmountItems.length > 0) {
+    return otherAmountItems.reduce((s, i) => s + (i.amount || 0), 0);
+  }
+  return otherAmounts;
+}
+
+/** Mirrors mergeDeductions — insurance (percentage), ما سبق صرفه, and fixed manual amounts are deductions. */
 export function mergeDeductions(
   manual: ExtractDeduction[],
   insurance: ExtractDeduction,
-  previousPaid: ExtractDeduction,
+  previousPaid: number = 0,
 ): ExtractDeduction[] {
   const manualOnly = manual.filter((d) => d.type === 'manual' && d.name.trim() !== '');
-  return [previousPaid, insurance, ...manualOnly];
+  const previous = previousPaid > 0 ? [buildPreviousPaidDeduction(previousPaid)] : [];
+  return [insurance, ...previous, ...manualOnly];
 }
 
 export function computeExtractTotals(
   items: ExtractItemCalculated[],
   insurancePercent: number,
-  previousPaid: number,
   manualDeductions: ExtractDeduction[],
+  otherAmounts: number = 0,
+  previousPaid: number = 0,
 ): {
   totalWorkValue: number;
+  otherAmounts: number;
   deductions: ExtractDeduction[];
   totalDeductions: number;
   netPayable: number;
 } {
   const totalWorkValue = sumWorkValue(items);
   const insurance = buildInsuranceDeduction(totalWorkValue, insurancePercent);
-  const prevRow = buildPreviousPaidDeduction(previousPaid);
-  const deductions = mergeDeductions(manualDeductions, insurance, prevRow);
+  const deductions = mergeDeductions(manualDeductions, insurance, previousPaid);
   const totalDeductions = sumDeductions(deductions);
-  const netPayable = calcNetPayable(totalWorkValue, deductions);
-  return { totalWorkValue, deductions, totalDeductions, netPayable };
+  const netPayable = calcNetPayable(totalWorkValue, otherAmounts, deductions);
+  return { totalWorkValue, otherAmounts, deductions, totalDeductions, netPayable };
 }
 
 /**

@@ -1,7 +1,7 @@
 import { Result } from '@/shared/kernel/result';
 import { UniqueEntityId } from '@/shared/kernel/unique-entity-id.vo';
 import { IBuildingRepository } from '../../domain/building.repository';
-import { OwnershipService } from '@/common/services/ownership.service';
+import { OwnershipActor, OwnershipService } from '@/common/services/ownership.service';
 import { UpdateBuildingInput, BuildingResult } from '../dto/building.dto';
 import { toBuildingResult } from './create-building.use-case';
 import {
@@ -15,8 +15,8 @@ export class UpdateBuildingUseCase {
     private readonly ownership: OwnershipService,
   ) {}
 
-  async execute(input: UpdateBuildingInput, userProjectId?: string | null): Promise<Result<BuildingResult>> {
-    await this.ownership.verifyBuildingAccess(userProjectId, input.buildingId);
+  async execute(input: UpdateBuildingInput, user?: OwnershipActor): Promise<Result<BuildingResult>> {
+    await this.ownership.verifyBuildingAccess(user, input.buildingId);
     const building = await this.buildings.findById(new UniqueEntityId(input.buildingId));
     if (!building) {
       return Result.fail(

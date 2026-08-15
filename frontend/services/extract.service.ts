@@ -1,4 +1,5 @@
 import { apiClient } from '@/lib/api/apiClient';
+import type { ExtractDeduction } from "@/types/finance";
 
 export interface BackendExtractItemResponse {
   itemCode: string;
@@ -12,6 +13,7 @@ export interface BackendExtractItemResponse {
   total: number;
   executedQuantity: number;
   workValue: number;
+  contractorBoqItemId?: string;
 }
 
 export interface BackendExtractItemRequest {
@@ -23,6 +25,13 @@ export interface BackendExtractItemRequest {
   current: number;
   executionPercent: number;
   unitPrice: number;
+  contractorBoqItemId?: string;
+}
+
+export interface OtherAmountItem {
+  id: string;
+  name: string;
+  amount: number;
 }
 
 export interface Extract {
@@ -36,8 +45,10 @@ export interface Extract {
   label: string;
   insurancePercent: number;
   previousPaid: number;
+  otherAmounts?: number;
+  otherAmountItems?: OtherAmountItem[];
   items: BackendExtractItemResponse[];
-  deductions: any[];
+  deductions: ExtractDeduction[];
   total: number;
   totalWorkValue: number;
   totalDeductions: number;
@@ -52,6 +63,8 @@ export interface CreateExtractData {
   status: string;
   insurancePercent: number;
   previousPaid: number;
+  otherAmounts?: number;
+  otherAmountItems?: OtherAmountItem[];
   items: BackendExtractItemRequest[];
   manualDeductions: { id: string; name: string; amount: number; type: 'manual' }[];
 }
@@ -79,9 +92,18 @@ export const extractService = {
     return data.extract;
   },
 
-  async getMeta(buildingId: string, contractorId: string): Promise<ExtractMeta> {
+  async getMeta(
+    buildingId: string,
+    contractorId: string,
+    opts?: { runningNumber?: number; status?: 'running' | 'final' }
+  ): Promise<ExtractMeta> {
+    const params = new URLSearchParams({ meta: '1' });
+    if (opts?.status) params.set('status', opts.status);
+    if (opts?.runningNumber != null) {
+      params.set('runningNumber', String(opts.runningNumber));
+    }
     const data = await apiClient<ExtractMeta>(
-      `/buildings/${buildingId}/contractors/${contractorId}/extracts?meta=1`,
+      `/buildings/${buildingId}/contractors/${contractorId}/extracts?${params.toString()}`,
       { method: 'GET' }
     );
     return data;

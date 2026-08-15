@@ -16,7 +16,7 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { RequirePermission } from '../../common/decorators/permissions.decorator';
-import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
 import { Permissions } from '../../common/constants/permissions.constant';
 import {
   BuildingApplicationError,
@@ -61,9 +61,9 @@ export class ContractorBoqController {
   async list(
     @Param('buildingId', ParseUUIDPipe) buildingId: string,
     @Param('contractorId', ParseUUIDPipe) contractorId: string,
-    @CurrentUser('projectId') projectId?: string,
+    @CurrentUser() user?: JwtPayload,
   ) {
-    const result = await this.listItems.execute(buildingId, contractorId, projectId);
+    const result = await this.listItems.execute(buildingId, contractorId, user);
     if (result.isFailure) throw this.mapError(result.error);
     return { items: result.getValue() };
   }
@@ -74,9 +74,9 @@ export class ContractorBoqController {
   async meta(
     @Param('buildingId', ParseUUIDPipe) buildingId: string,
     @Param('contractorId', ParseUUIDPipe) contractorId: string,
-    @CurrentUser('projectId') projectId?: string,
+    @CurrentUser() user?: JwtPayload,
   ) {
-    const result = await this.getMeta.execute(buildingId, contractorId, projectId);
+    const result = await this.getMeta.execute(buildingId, contractorId, user);
     if (result.isFailure) throw this.mapError(result.error);
     return { meta: result.getValue() };
   }
@@ -88,14 +88,14 @@ export class ContractorBoqController {
     @Param('buildingId', ParseUUIDPipe) buildingId: string,
     @Param('contractorId', ParseUUIDPipe) contractorId: string,
     @Body() dto: SetContractorMetaDto,
-    @CurrentUser('projectId') projectId?: string,
+    @CurrentUser() user?: JwtPayload,
     @CurrentUser('sub') userId?: string,
   ) {
     const result = await this.setMeta.execute({
       buildingId,
       contractorId,
       workType: dto.workType,
-    }, projectId, userId);
+    }, user, userId);
     if (result.isFailure) throw this.mapError(result.error);
     return { meta: result.getValue() };
   }
@@ -108,7 +108,7 @@ export class ContractorBoqController {
     @Param('buildingId', ParseUUIDPipe) buildingId: string,
     @Param('contractorId', ParseUUIDPipe) contractorId: string,
     @Body() dto: AllocateContractorItemDto,
-    @CurrentUser('projectId') projectId?: string,
+    @CurrentUser() user?: JwtPayload,
     @CurrentUser('sub') userId?: string,
   ) {
     const result = await this.allocate.execute({
@@ -116,7 +116,7 @@ export class ContractorBoqController {
       contractorId,
       itemCodeOrComponent: dto.itemCodeOrComponent,
       quantity: dto.quantity,
-    }, projectId, userId);
+    }, user, userId);
     if (result.isFailure) throw this.mapError(result.error);
     return { items: result.getValue() };
   }
@@ -129,7 +129,7 @@ export class ContractorBoqController {
     @Param('contractorId', ParseUUIDPipe) contractorId: string,
     @Param('itemCode') itemCode: string,
     @Body() dto: UpdateContractorItemQuantityDto,
-    @CurrentUser('projectId') projectId?: string,
+    @CurrentUser() user?: JwtPayload,
     @CurrentUser('sub') userId?: string,
   ) {
     const result = await this.updateQty.execute({
@@ -138,7 +138,7 @@ export class ContractorBoqController {
       itemCode,
       componentId: dto.componentId,
       quantity: dto.quantity,
-    }, projectId, userId);
+    }, user, userId);
     if (result.isFailure) throw this.mapError(result.error);
     return { items: result.getValue() };
   }
@@ -152,7 +152,7 @@ export class ContractorBoqController {
     @Param('contractorId', ParseUUIDPipe) contractorId: string,
     @Param('itemCode') itemCode: string,
     @Query('componentId') componentId?: string,
-    @CurrentUser('projectId') projectId?: string,
+    @CurrentUser() user?: JwtPayload,
     @CurrentUser('sub') userId?: string,
   ) {
     const result = await this.removeItem.execute(
@@ -160,7 +160,7 @@ export class ContractorBoqController {
       contractorId,
       itemCode,
       componentId,
-      projectId,
+      user,
       userId,
     );
     if (result.isFailure) throw this.mapError(result.error);
@@ -174,14 +174,14 @@ export class ContractorBoqController {
     @Param('contractorId', ParseUUIDPipe) contractorId: string,
     @Query('itemCode') itemCode: string,
     @Query('componentId') componentId?: string,
-    @CurrentUser('projectId') projectId?: string,
+    @CurrentUser() user?: JwtPayload,
   ) {
     const result = await this.availableQty.execute({
       buildingId,
       contractorId,
       itemCode,
       componentId,
-    }, projectId);
+    }, user);
     if (result.isFailure) throw this.mapError(result.error);
     return { available: result.getValue() };
   }

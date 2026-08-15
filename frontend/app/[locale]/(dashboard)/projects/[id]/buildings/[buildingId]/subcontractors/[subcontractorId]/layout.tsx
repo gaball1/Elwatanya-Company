@@ -1,10 +1,9 @@
-/* eslint-disable */
 "use client";
 
 import { useParams, usePathname } from "next/navigation";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { FileText, DollarSign, Wallet } from "lucide-react";
+import { FileText, DollarSign, Wallet, FileSignature } from "lucide-react";
 import { buildingSubcontractorService } from "@/services/building-subcontractor.service";
 import { shortRef } from "@/lib/formatRef";
 
@@ -43,6 +42,11 @@ export default function SubcontractorLayout({
       href: `${base}/estimate`,
       label: isArabic ? "المقايسة" : "BOQ",
       icon: FileText,
+    },
+    {
+      href: `${base}/contract`,
+      label: isArabic ? "العقد" : "Contract",
+      icon: FileSignature,
     },
     {
       href: `${base}/extracts`,

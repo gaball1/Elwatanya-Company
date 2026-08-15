@@ -8,6 +8,7 @@ export interface Company {
   smallLogo: string;
   watermark: string;
   stamp: string;
+  signature: string;
   primaryColor: string;
   secondaryColor: string;
   font: string;
@@ -31,6 +32,7 @@ export interface UpdateCompanyData {
   smallLogo?: string;
   watermark?: string;
   stamp?: string;
+  signature?: string;
   primaryColor?: string;
   secondaryColor?: string;
   font?: string;
@@ -93,6 +95,17 @@ export const companyService = {
     const formData = new FormData();
     formData.append('file', file);
     const data = await apiClient<{ company: Company }>('/company/upload/stamp', {
+      method: 'POST',
+      body: formData,
+      headers: {},
+    });
+    return data.company;
+  },
+
+  async uploadSignature(file: File): Promise<Company> {
+    const formData = new FormData();
+    formData.append('file', file);
+    const data = await apiClient<{ company: Company }>('/company/upload/signature', {
       method: 'POST',
       body: formData,
       headers: {},

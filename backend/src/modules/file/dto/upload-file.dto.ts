@@ -1,9 +1,10 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsOptional, IsString } from 'class-validator';
+import { IsIn, IsOptional, IsString } from 'class-validator';
+import { ALLOWED_FILE_CATEGORIES } from '../domain/file-security.constants';
 
 export class UploadFileDto {
-  @ApiProperty({ description: 'File category', enum: ['branding', 'attachment', 'contract', 'drawing', 'boq', 'invoice', 'extract-pdf', 'image', 'knowledge', 'signature'] })
-  @IsString()
+  @ApiProperty({ description: 'File category', enum: ALLOWED_FILE_CATEGORIES })
+  @IsIn(ALLOWED_FILE_CATEGORIES as unknown as string[])
   category: string;
 
   @ApiProperty({ required: false })

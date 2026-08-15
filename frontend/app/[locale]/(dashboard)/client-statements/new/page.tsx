@@ -2,7 +2,7 @@
 "use client";
 
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useState, useEffect } from "react";
+import { Suspense, useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { Card } from "@/components/ui";
 import { Plus, Trash2, Save } from "lucide-react";
@@ -11,6 +11,8 @@ import { buildingService } from "@/services/building.service";
 import { projectService } from '@/services/project.service';
 import { clientService, type Client } from '@/services/client.service';
 import { clientStatementService } from '@/services/client-statement.service';
+import { employerBoqService } from '@/services/employerBoq.service';
+import { employerBoqToStatementItems } from '@/lib/statementItems';
 
 // State for projects will be moved inside component
 
@@ -107,6 +109,30 @@ function NewClientStatementPageContent() {
     number | null
   >(null);
 
+  const [boqLoading, setBoqLoading] = useState(false);
+
+  // تحميل بنود مقايسة جهة الإسناد عند اختيار المبنى
+  const loadBoqItems = useCallback(async (targetBuildingId: string) => {
+    if (!targetBuildingId) return;
+    setBoqLoading(true);
+    try {
+      const boqItems = await employerBoqService.list(targetBuildingId);
+      if (boqItems.length > 0) {
+        setItems(employerBoqToStatementItems(boqItems));
+      }
+    } catch {
+      // تجاهل: لا توجد مقايسة أو خطأ في التحميل
+    } finally {
+      setBoqLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (buildingId) {
+      loadBoqItems(buildingId);
+    }
+  }, [buildingId, loadBoqItems]);
+
   const [projects, setProjects] = useState<any[]>([]);
   useEffect(() => {
     projectService.getProjects().then(setProjects).catch(console.error);
@@ -114,7 +140,11 @@ function NewClientStatementPageContent() {
   const selectedProject = projects.find(p => p.id === projectId);
   const [buildings, setBuildings] = useState<any[]>([]);
   useEffect(() => {
-    buildingService.getBuildings(projectId).then((data) => setBuildings(data as any[])).catch(console.error);
+    if (projectId) {
+      buildingService.getBuildings(projectId).then((data) => setBuildings(data as any[])).catch(console.error);
+    } else {
+      setBuildings([]);
+    }
   }, [projectId]);
   const selectedBuilding = buildings.find(b => b.id === buildingId);
   const [clients, setClients] = useState<Client[]>([]);
@@ -444,6 +474,21 @@ function NewClientStatementPageContent() {
 
         {/* Items Table - 13 columns */}
         <Card className="overflow-hidden">
+          <div className="p-2 border-b flex items-center justify-between bg-surface-secondary">
+            <h3 className="font-bold text-primary text-sm">
+              {isArabic ? "بنود الأعمال" : "Work Items"}
+            </h3>
+            <button
+              onClick={() => loadBoqItems(buildingId)}
+              disabled={!buildingId || boqLoading}
+              className="flex items-center gap-1 text-xs text-gold hover:underline disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <Plus size={12} />
+              {boqLoading
+                ? isArabic ? "جاري التحميل..." : "Loading..."
+                : isArabic ? "تحميل من مقايسة جهة الإسناد" : "Load from employer BOQ"}
+            </button>
+          </div>
           <div className="overflow-x-auto">
             <table className="w-full text-xs border-collapse">
               <thead>
@@ -572,13 +617,13 @@ function NewClientStatementPageContent() {
                       {item.final.toFixed(1)}%
                     </td>
                     <td className="p-1 border text-center font-bold">
-                      {item.workValue.toLocaleString()}
+                      {item.workValue.toLocaleString(isArabic ? "ar-EG" : "en-US")}
                     </td>
                     <td className="p-1 border text-center text-danger">
-                      {item.deduction.toLocaleString()}
+                      {item.deduction.toLocaleString(isArabic ? "ar-EG" : "en-US")}
                     </td>
                     <td className="p-1 border text-center font-bold text-gold">
-                      {item.net.toLocaleString()}
+                      {item.net.toLocaleString(isArabic ? "ar-EG" : "en-US")}
                     </td>
                     <td className="p-1 border">
                       <input
@@ -608,11 +653,11 @@ function NewClientStatementPageContent() {
                     {isArabic ? "الإجمالي" : "Total"}
                   </td>
                   <td className="p-2 text-center">
-                    {totalWorkValue.toLocaleString()}
+                    {totalWorkValue.toLocaleString(isArabic ? "ar-EG" : "en-US")}
                   </td>
                   <td className="p-2 text-center"></td>
                   <td className="p-2 text-center text-gold">
-                    {(totalWorkValue - totalDeductions).toLocaleString()}
+                    {(totalWorkValue - totalDeductions).toLocaleString(isArabic ? "ar-EG" : "en-US")}
                   </td>
                   <td className="p-2 text-center"></td>
                   <td></td>
@@ -690,7 +735,7 @@ function NewClientStatementPageContent() {
                 {isArabic ? "الإجمالي لقيمة الأعمال" : "Total Work Value"}
               </span>
               <span className="text-xl font-bold text-primary">
-                {totalWorkValue.toLocaleString()}
+                {totalWorkValue.toLocaleString(isArabic ? "ar-EG" : "en-US")}
               </span>
             </div>
           </Card>
@@ -700,7 +745,7 @@ function NewClientStatementPageContent() {
                 {isArabic ? "إجمالي الاستقطاعات" : "Total Deductions"}
               </span>
               <span className="text-xl font-bold text-danger">
-                {totalDeductions.toLocaleString()}
+                {totalDeductions.toLocaleString(isArabic ? "ar-EG" : "en-US")}
               </span>
             </div>
           </Card>
@@ -710,7 +755,7 @@ function NewClientStatementPageContent() {
                 {isArabic ? "المستحق صرفة" : "Net Payable"}
               </span>
               <span className="text-2xl font-bold text-gold">
-                {netPayable.toLocaleString()}
+                {netPayable.toLocaleString(isArabic ? "ar-EG" : "en-US")}
               </span>
             </div>
           </Card>

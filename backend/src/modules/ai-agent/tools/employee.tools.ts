@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { BaseTool } from './base.tool';
 import { AgentHttpClient } from './http-client';
 import { ToolResult } from '../dto/agent-response.dto';
+import { schema } from './tool-schemas';
 
 @Injectable()
 export class ListEmployeesTool extends BaseTool {
@@ -9,6 +10,7 @@ export class ListEmployeesTool extends BaseTool {
   readonly description = 'List all employees';
   readonly requiresPermission = 'employees.read';
   readonly requiredEntity = 'employee';
+  readonly parameters = schema({});
 
   constructor(private readonly api: AgentHttpClient) {
     super();
@@ -23,9 +25,13 @@ export class ListEmployeesTool extends BaseTool {
 @Injectable()
 export class GetEmployeeTool extends BaseTool {
   readonly name = 'get_employee';
-  readonly description = 'Get employee details by ID';
+  readonly description = 'Get employee details by ID or name';
   readonly requiresPermission = 'employees.read';
   readonly requiredEntity = 'employee';
+  readonly parameters = schema({
+    employeeId: { type: 'string', description: 'Employee UUID (rarely needed — a name works).' },
+    employeeName: { type: 'string', description: 'Employee name.' },
+  });
 
   constructor(private readonly api: AgentHttpClient) {
     super();
@@ -93,9 +99,14 @@ export class UpdateEmployeeTool extends BaseTool {
 @Injectable()
 export class ListAttendanceTool extends BaseTool {
   readonly name = 'list_attendance';
-  readonly description = 'List attendance records, optionally filtered by date or employee';
+  readonly description = 'List attendance records, optionally filtered by date or employee. Use for "مين غايب/حاضر/متأخر النهارده؟" (who is absent/present/late today).';
   readonly requiresPermission = 'attendance.read';
   readonly requiredEntity = 'attendance';
+  readonly parameters = schema({
+    employeeId: { type: 'string', description: 'Employee UUID (rarely needed).' },
+    employeeName: { type: 'string', description: 'Employee name.' },
+    date: { type: 'string', description: 'ISO date YYYY-MM-DD (defaults to today).' },
+  });
 
   constructor(private readonly api: AgentHttpClient) {
     super();

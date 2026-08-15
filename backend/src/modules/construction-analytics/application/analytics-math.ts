@@ -40,11 +40,18 @@ export interface ProgressResult {
   boqs: { id: string; buildingId: string; name: string; percent: number; executedValue: number; totalValue: number }[];
 }
 
-/** Planned percent complete derived from schedule time elapsed (24-month default horizon). */
+/**
+ * Planned percent complete derived from schedule time elapsed over the
+ * project's configured planned duration (defaults to a 24-month horizon
+ * when the project has no planned duration).
+ */
 export function plannedPercent(ds: AnalyticsDataset): number {
   if (ds.project?.startDate) {
     const elapsedMonths = Math.max(0, (Date.now() - ds.project.startDate.getTime()) / MONTH_MS);
-    return clamp(pctSafe(elapsedMonths, DEFAULT_PLANNED_MONTHS), 0, 100);
+    const plannedMonths = ds.project.plannedDurationMonths || DEFAULT_PLANNED_MONTHS;
+    if (plannedMonths > 0) {
+      return clamp(pctSafe(elapsedMonths, plannedMonths), 0, 100);
+    }
   }
   return clamp(num(ds.project?.progress ?? 0), 0, 100);
 }

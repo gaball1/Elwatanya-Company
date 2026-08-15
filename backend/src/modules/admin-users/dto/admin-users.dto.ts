@@ -1,4 +1,4 @@
-import { IsArray, IsEmail, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsArray, IsEmail, IsOptional, IsString, IsUUID, MinLength } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateUserDto {
@@ -15,6 +15,12 @@ export class CreateUserDto {
   @IsString()
   @MinLength(6)
   password: string;
+
+  @ApiPropertyOptional({ description: 'Optional employee record to link to this account' })
+  @IsOptional()
+  @IsString()
+  @IsUUID()
+  employeeId?: string;
 }
 
 export class UpdateUserDto {
@@ -32,6 +38,11 @@ export class UpdateUserDto {
   @IsOptional()
   @IsString()
   status?: string;
+
+  @ApiPropertyOptional({ description: 'Employee record to link to this account. Pass null/empty to unlink.' })
+  @IsOptional()
+  @IsString()
+  employeeId?: string | null;
 }
 
 export class AssignRolesDto {

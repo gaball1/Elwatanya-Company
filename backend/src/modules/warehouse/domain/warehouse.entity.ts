@@ -4,6 +4,7 @@ import { Guard } from '@/shared/kernel/guard';
 import { UniqueEntityId } from '@/shared/kernel/unique-entity-id.vo';
 
 export interface WarehouseProps {
+  projectId: string | null;
   code: string;
   name: string;
   location: string;
@@ -17,6 +18,7 @@ export class Warehouse extends AggregateRoot {
     super(id, createdAt, updatedAt);
     this.props = props;
   }
+  get projectId(): string | null { return this.props.projectId; }
   get code(): string { return this.props.code; }
   get name(): string { return this.props.name; }
   get location(): string { return this.props.location; }
@@ -24,7 +26,7 @@ export class Warehouse extends AggregateRoot {
   get deletedAt(): Date | null { return this.props.deletedAt; }
   get isDeleted(): boolean { return this.props.deletedAt !== null; }
 
-  public static create(input: { code: string; name: string; location?: string; status?: string }): Result<Warehouse> {
+  public static create(input: { projectId?: string; code: string; name: string; location?: string; status?: string }): Result<Warehouse> {
     const guard = Guard.againstNullOrUndefined(input.code, 'code');
     if (guard.isFailure) return Result.fail(guard.error as Error);
     const guardName = Guard.againstNullOrUndefined(input.name, 'name');
@@ -33,15 +35,16 @@ export class Warehouse extends AggregateRoot {
     if (trimmedCode.length === 0) return Result.fail(new Error('Warehouse code cannot be empty'));
     const trimmedName = input.name.trim();
     if (trimmedName.length === 0) return Result.fail(new Error('Warehouse name cannot be empty'));
-    return Result.ok(new Warehouse({ code: trimmedCode, name: trimmedName, location: input.location ?? '', status: input.status ?? 'active', deletedAt: null }));
+    return Result.ok(new Warehouse({ projectId: input.projectId ?? null, code: trimmedCode, name: trimmedName, location: input.location ?? '', status: input.status ?? 'active', deletedAt: null }));
   }
 
   public static reconstitute(props: WarehouseProps, id: UniqueEntityId, createdAt: Date, updatedAt: Date): Warehouse {
     return new Warehouse(props, id, createdAt, updatedAt);
   }
 
-  public update(fields: { code?: string; name?: string; location?: string; status?: string }): Result<void> {
+  public update(fields: { projectId?: string; code?: string; name?: string; location?: string; status?: string }): Result<void> {
     if (this.isDeleted) return Result.fail(new Error('Cannot update a deleted warehouse'));
+    if (fields.projectId !== undefined) this.props.projectId = fields.projectId;
     if (fields.code !== undefined) { const trimmed = fields.code.trim(); if (trimmed.length === 0) return Result.fail(new Error('Code cannot be empty')); this.props.code = trimmed; }
     if (fields.name !== undefined) { const trimmed = fields.name.trim(); if (trimmed.length === 0) return Result.fail(new Error('Name cannot be empty')); this.props.name = trimmed; }
     if (fields.location !== undefined) this.props.location = fields.location;

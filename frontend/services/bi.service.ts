@@ -43,8 +43,8 @@ export const biService = {
 
   async evaluateKpi(key: string, projectId?: string): Promise<KpiResult> {
     const path = projectId ? `/bi/kpis/${key}?projectId=${projectId}` : `/bi/kpis/${key}`;
-    const data = await apiClient<{ result?: KpiResult }>(path, { method: 'GET' });
-    return (data as any)?.result || data;
+    const data = await apiClient<KpiResult | { result?: KpiResult }>(path, { method: 'GET' });
+    return "result" in data && data.result ? data.result : (data as KpiResult);
   },
 
   async evaluateAll(projectId?: string): Promise<KpiResult[]> {
@@ -56,7 +56,7 @@ export const biService = {
   },
 
   async getDashboard(projectId: string): Promise<ProjectDashboard> {
-    const data = await apiClient<{ dashboard?: ProjectDashboard }>(`/bi/dashboard/${projectId}`, { method: 'GET' });
-    return (data as any)?.dashboard || data;
+    const data = await apiClient<ProjectDashboard | { dashboard?: ProjectDashboard }>(`/bi/dashboard/${projectId}`, { method: 'GET' });
+    return "dashboard" in data && data.dashboard ? data.dashboard : (data as ProjectDashboard);
   },
 };

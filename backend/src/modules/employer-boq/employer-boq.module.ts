@@ -15,6 +15,7 @@ import { ListEmployerBoqItemsUseCase } from './application/use-cases/list-employ
 import { SetEmployerBoqItemsUseCase } from './application/use-cases/set-employer-boq-items.use-case';
 import { UpsertEmployerBoqItemUseCase } from './application/use-cases/upsert-employer-boq-item.use-case';
 import { DeleteEmployerBoqItemUseCase } from './application/use-cases/delete-employer-boq-item.use-case';
+import { ClearEmployerBoqItemsUseCase } from './application/use-cases/clear-employer-boq-items.use-case';
 import { EmployerBoqController } from './employer-boq.controller';
 import {
   SyncAnalyticalFromEmployerUseCase,
@@ -96,6 +97,33 @@ import { RemoveAnalyticalBoqItemUseCase } from '@/modules/analytical-boq/applica
         notifications: NotificationService,
       ) =>
         new DeleteEmployerBoqItemUseCase(
+          employerBoq,
+          buildings,
+          removeAnalytical,
+          ownership,
+          audit,
+          notifications,
+        ),
+      inject: [
+        EMPLOYER_BOQ_REPOSITORY,
+        BUILDING_REPOSITORY,
+        RemoveAnalyticalBoqItemUseCase,
+        OwnershipService,
+        AuditService,
+        NotificationService,
+      ],
+    },
+    {
+      provide: ClearEmployerBoqItemsUseCase,
+      useFactory: (
+        employerBoq: PrismaEmployerBoqRepository,
+        buildings: IBuildingRepository,
+        removeAnalytical: RemoveAnalyticalBoqItemUseCase,
+        ownership: OwnershipService,
+        audit: AuditService,
+        notifications: NotificationService,
+      ) =>
+        new ClearEmployerBoqItemsUseCase(
           employerBoq,
           buildings,
           removeAnalytical,

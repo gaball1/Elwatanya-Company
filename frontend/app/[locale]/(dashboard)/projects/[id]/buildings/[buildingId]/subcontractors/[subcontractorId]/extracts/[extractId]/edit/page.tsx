@@ -1,16 +1,17 @@
-/* eslint-disable */
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
-import { Save } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Download, Save, Upload } from "lucide-react";
 import BackButton from "@/components/shared/BackButton";
 import ExtractDeductionsTable from "@/components/boq/ExtractDeductionsTable";
 import ExtractSummaryCards from "@/components/boq/ExtractSummaryCards";
 import ExtractWorkItemsTable from "@/components/boq/ExtractWorkItemsTable";
+import OtherAmountsEditor from "@/components/boq/OtherAmountsEditor";
 import DeleteConfirmModal from "@/components/boq/DeleteConfirmModal";
 import { calcExtractItem, toBoqExtractItem, fromBoqExtractItem } from "@/lib/extractCalculations";
-import { extractService } from "@/services/extract.service";
+import { exportExtractToExcel, parseExtractExcelFile } from "@/lib/boqExcel";
+import { extractService, type OtherAmountItem } from "@/services/extract.service";
 import { contractorBoqService, type ContractorBoqItem } from "@/services/contractorBoq.service";
 import type { ContractorExtract, ExtractItem } from "@/types/boq";
 import type { ExtractDeduction } from "@/types/finance";
@@ -35,9 +36,12 @@ export default function EditContractorExtractPage() {
   const [rows, setRows] = useState<ExtractItem[]>([]);
   const [manualDeductions, setManualDeductions] = useState<ExtractDeduction[]>([]);
   const [previousPaid, setPreviousPaid] = useState(0);
+  const [otherAmountItems, setOtherAmountItems] = useState<OtherAmountItem[]>([]);
   const [boqItems, setBoqItems] = useState<ContractorBoqItem[]>([]);
   const [deleteDedIdx, setDeleteDedIdx] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const importExcelRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     Promise.all([
@@ -52,6 +56,7 @@ export default function EditContractorExtractPage() {
         ex.deductions.filter((d) => d.type === "manual") as ExtractDeduction[]
       );
       setPreviousPaid(ex.previousPaid ?? 0);
+      setOtherAmountItems(ex.otherAmountItems ?? []);
       setBoqItems(boq);
     });
   }, [buildingId, contractorId, extractId]);
@@ -62,13 +67,16 @@ export default function EditContractorExtractPage() {
     setRows(next);
   };
 
+  const otherAmounts = otherAmountItems.reduce((s, i) => s + (i.amount || 0), 0);
+
   const { totalWorkValue, deductions, totalDeductions, netPayable } =
     useExtractCalculations(
       rows,
       insurancePercent,
       manualDeductions,
-      previousPaid,
-      isArabic
+      otherAmounts,
+      isArabic,
+      previousPaid
     );
 
   if (!initial) {
@@ -78,6 +86,102 @@ export default function EditContractorExtractPage() {
       </div>
     );
   }
+
+  const handleImportExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImporting(true);
+    try {
+      const imported = await parseExtractExcelFile(file);
+      if (imported.length === 0) {
+        showToast(
+          isArabic ? "لا توجد بيانات صالحة في الملف" : "No valid rows in file",
+          "error"
+        );
+        return;
+      }
+      let updated = 0;
+      setRows((prev) => {
+        const next = [...prev];
+        for (const row of imported) {
+          const existingIdx = row.itemCode
+            ? next.findIndex((r) => r.itemCode === row.itemCode)
+            : -1;
+          if (existingIdx >= 0) {
+            next[existingIdx] = calcExtractItem({
+              ...next[existingIdx],
+              previous: row.previous,
+              current: row.current,
+            });
+            updated += 1;
+          } else {
+            const boq = boqItems.find((b) => b.itemCode === row.itemCode);
+            next.push(
+              calcExtractItem({
+                itemCode: row.itemCode ?? "",
+                description: row.description,
+                unit: row.unit,
+                contractQuantity: boq?.assignedQuantity ?? row.previous + row.current,
+                previous: row.previous,
+                current: row.current,
+                executionPercent: 100,
+                unitPrice: boq?.unitPrice ?? 0,
+                contractorBoqItemId: boq?.id,
+              })
+            );
+          }
+        }
+        return next;
+      });
+      showToast(
+        isArabic
+          ? `تم استيراد ${imported.length} بند من Excel (تحديث ${updated})`
+          : `Imported ${imported.length} items from Excel (${updated} updated)`,
+        "success"
+      );
+    } catch (err) {
+      console.error(err);
+      showToast(isArabic ? "فشل استيراد ملف Excel" : "Excel import failed", "error");
+    } finally {
+      setImporting(false);
+      if (importExcelRef.current) importExcelRef.current.value = "";
+    }
+  };
+
+  const handleExportExcel = async () => {
+    try {
+      await exportExtractToExcel({
+        title: initial.label,
+        subtitle: date,
+        locale: isArabic ? "ar" : "en",
+        items: rows.map((r) => ({
+          itemCode: r.itemCode,
+          description: r.description,
+          unit: r.unit,
+          previous: r.previous,
+          current: r.current,
+          total: r.total,
+          executedQuantity: r.executedQuantity,
+          workValue: r.workValue,
+        })),
+        otherAmountItems,
+        deductions: deductions.map((d) => ({
+          name: d.name,
+          percentLabel:
+            d.type === "manual" || d.percent == null ? "—" : `${d.percent}%`,
+          amount: d.amount,
+        })),
+        totalWorkValue,
+        otherAmounts,
+        totalDeductions,
+        netPayable,
+      });
+      showToast(isArabic ? "تم تصدير Excel" : "Excel exported", "success");
+    } catch (err) {
+      console.error(err);
+      showToast(isArabic ? "فشل تصدير Excel" : "Excel export failed", "error");
+    }
+  };
 
   const handleSave = async () => {
     for (const item of rows) {
@@ -109,6 +213,8 @@ export default function EditContractorExtractPage() {
         status: initial.status,
         insurancePercent,
         previousPaid,
+        otherAmounts,
+        otherAmountItems: otherAmountItems.filter((i) => i.name.trim() !== ""),
         items: rows.map((r) => fromBoqExtractItem(r)),
         manualDeductions: manualDeductionsPayload,
       });
@@ -131,14 +237,42 @@ export default function EditContractorExtractPage() {
             {isArabic ? "تعديل المستخلص" : "Edit Extract"} — {initial.label}
           </h1>
         </div>
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="flex items-center gap-1 px-4 py-2 bg-primary text-white rounded-lg text-sm disabled:opacity-50"
-        >
-          <Save size={14} />
-          {isArabic ? "حفظ" : "Save"}
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <input
+            ref={importExcelRef}
+            type="file"
+            accept=".xlsx,.xls"
+            className="hidden"
+            onChange={handleImportExcel}
+          />
+          <button
+            onClick={() => importExcelRef.current?.click()}
+            disabled={importing}
+            className="flex items-center gap-1 px-4 py-2 border border-border text-text-primary rounded-lg hover:bg-surface-secondary text-sm disabled:opacity-50"
+            title={isArabic ? "استيراد بنود من Excel" : "Import items from Excel"}
+          >
+            <Upload size={14} />
+            {importing
+              ? isArabic ? "جارٍ الاستيراد..." : "Importing..."
+              : isArabic ? "استيراد Excel" : "Import Excel"}
+          </button>
+          <button
+            onClick={handleExportExcel}
+            className="flex items-center gap-1 px-4 py-2 border border-green-600 text-success-dark rounded-lg hover:bg-success-dark hover:text-white text-sm"
+            title={isArabic ? "تصدير بنود إلى Excel" : "Export items to Excel"}
+          >
+            <Download size={14} />
+            Excel
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="flex items-center gap-1 px-4 py-2 bg-primary text-white rounded-lg text-sm disabled:opacity-50"
+          >
+            <Save size={14} />
+            {isArabic ? "حفظ" : "Save"}
+          </button>
+        </div>
       </div>
 
       <div className="p-6 space-y-4">
@@ -165,6 +299,13 @@ export default function EditContractorExtractPage() {
               className="w-full border-b outline-none font-medium"
             />
           </div>
+          <div className="bg-surface p-3 rounded-lg shadow-sm">
+            <OtherAmountsEditor
+              isArabic={isArabic}
+              items={otherAmountItems}
+              onChange={setOtherAmountItems}
+            />
+          </div>
         </div>
 
         <ExtractWorkItemsTable
@@ -186,6 +327,7 @@ export default function EditContractorExtractPage() {
         <ExtractSummaryCards
           isArabic={isArabic}
           totalWorkValue={totalWorkValue}
+          otherAmounts={otherAmounts}
           totalDeductions={totalDeductions}
           netPayable={netPayable}
         />

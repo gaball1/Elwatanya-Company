@@ -9,7 +9,7 @@ import SignaturesSection from "@/components/boq/SignaturesSection";
 import DeleteConfirmModal from "@/components/boq/DeleteConfirmModal";
 import { useToast } from "@/components/ui/Toast";
 import { exportToCsv, printHtml } from "@/lib/documentUtils";
-import { getDocSignatures, setDocSignatures } from "@/lib/boqStore";
+import { getDocSignatures, setDocSignatures } from "@/lib/signatures";
 import { employerBoqService } from "@/services/employerBoq.service";
 import type { EmployerBoqItem } from "@/types/boq";
 import { parseBoqExcelFile, exportBoqToExcel } from "@/lib/boqExcel";
@@ -34,6 +34,7 @@ export default function EmployerBoqPage() {
 
   const [showModal, setShowModal] = useState(false);
   const [deleteCode, setDeleteCode] = useState<string | null>(null);
+  const [showDeleteAll, setShowDeleteAll] = useState(false);
   const [editingItem, setEditingItem] = useState<EmployerBoqItem | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [unitFilter, setUnitFilter] = useState("");
@@ -41,6 +42,7 @@ export default function EmployerBoqPage() {
   const [maxPrice, setMaxPrice] = useState<number | "">("");
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [deletingAll, setDeletingAll] = useState(false);
   const [importing, setImporting] = useState(false);
   const [page, setPage] = useState(1);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -194,6 +196,23 @@ export default function EmployerBoqPage() {
     }
   };
 
+  const confirmDeleteAll = async () => {
+    if (!items.length) return;
+    if (deletingAll) return;
+    setDeletingAll(true);
+    try {
+      await employerBoqService.removeAll(buildingId);
+      setShowDeleteAll(false);
+      await loadItems();
+      showToast(isArabic ? "تم حذف جميع البنود" : "All items deleted", "success");
+    } catch (e: any) {
+      console.error(e);
+      showToast(e?.message || (isArabic ? "فشل حذف البنود" : "Failed to delete items"), "error");
+    } finally {
+      setDeletingAll(false);
+    }
+  };
+
   const parseCsv = (text: string): Array<{ description: string; unit: string; quantity: number; unitPrice: number }> => {
     const rows: Array<{ description: string; unit: string; quantity: number; unitPrice: number }> = [];
     const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
@@ -303,7 +322,7 @@ export default function EmployerBoqPage() {
             totalValue: safeNumber(i.totalValue),
           })),
           "employer-boq.xlsx",
-          ["Code", "Description", "Unit", "Quantity", "Unit Price", "Total Value"]
+          ["الكود", "البند", "الوحدة", "الكمية", "سعر الوحدة", "القيمة"]
         );
         showToast(isArabic ? "تم تصدير Excel" : "Excel exported", "success");
       } catch (e) {
@@ -448,6 +467,20 @@ export default function EmployerBoqPage() {
                   <Plus size={18} /> {isArabic ? "إضافة بند" : "Add Item"}
                 </button>
               </>
+            </Can>
+            <Can permission="employer-boq.delete">
+              {items.length > 0 && (
+                <button
+                  onClick={() => setShowDeleteAll(true)}
+                  disabled={deletingAll}
+                  className="flex items-center gap-2 px-4 py-2 border border-danger text-danger rounded-lg text-sm hover:bg-danger hover:text-white transition disabled:opacity-50"
+                >
+                  <Trash2 size={16} />
+                  {deletingAll
+                    ? isArabic ? "جارٍ الحذف..." : "Deleting..."
+                    : isArabic ? "حذف كل البنود" : "Delete All Items"}
+                </button>
+              )}
             </Can>
           </div>
         </div>
@@ -715,6 +748,19 @@ export default function EmployerBoqPage() {
           message={isArabic ? "هل تريد حذف هذا البند؟" : "Delete this item?"}
           onCancel={() => setDeleteCode(null)}
           onConfirm={confirmDelete}
+        />
+      )}
+
+      {showDeleteAll && (
+        <DeleteConfirmModal
+          isArabic={isArabic}
+          message={
+            isArabic
+              ? `حذف جميع البنود (${items.length})؟ سيتم حذفها أيضاً من المقايسة التحليلية والنهائية.`
+              : `Delete all items (${items.length})? This also removes them from analytical and final BOQs.`
+          }
+          onCancel={() => setShowDeleteAll(false)}
+          onConfirm={confirmDeleteAll}
         />
       )}
     </div>

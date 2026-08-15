@@ -14,6 +14,7 @@ export function fromBoqExtractItem(
     current: boqItem.current,
     executionPercent: boqItem.executionPercent,
     unitPrice: boqItem.unitPrice,
+    contractorBoqItemId: boqItem.contractorBoqItemId,
   };
 }
 
@@ -29,6 +30,7 @@ export function toBoqExtractItem(
     current: backendItem.current,
     executionPercent: backendItem.executionPercent,
     unitPrice: backendItem.unitPrice,
+    contractorBoqItemId: backendItem.contractorBoqItemId,
   });
 }
 
@@ -66,7 +68,7 @@ export function buildPreviousPaidDeduction(
 ): ExtractDeduction {
   return {
     id: "previous-paid-auto",
-    name: isArabic ? "ماسبق صرفة" : "Previously paid",
+    name: isArabic ? "ما سبق صرفه" : "Previously paid",
     amount,
     type: "previous_paid",
     readOnly: true,
@@ -79,18 +81,22 @@ export function sumDeductions(deductions: ExtractDeduction[]): number {
 
 export function calcNetPayable(
   totalWork: number,
+  otherAmounts: number,
   deductions: ExtractDeduction[]
 ): number {
-  return totalWork - sumDeductions(deductions);
+  return totalWork + otherAmounts - sumDeductions(deductions);
 }
 
 export function mergeDeductions(
   manual: ExtractDeduction[],
   insurance: ExtractDeduction,
-  previousPaid: ExtractDeduction
+  previousPaid = 0,
+  isArabic = true
 ): ExtractDeduction[] {
   const manualOnly = manual.filter(
     (d) => d.type === "manual" && d.name.trim() !== ""
   );
-  return [previousPaid, insurance, ...manualOnly];
+  const previous =
+    previousPaid > 0 ? [buildPreviousPaidDeduction(previousPaid, isArabic)] : [];
+  return [insurance, ...previous, ...manualOnly];
 }

@@ -9,10 +9,11 @@ import SignaturesSection from "@/components/boq/SignaturesSection";
 import DeleteConfirmModal from "@/components/boq/DeleteConfirmModal";
 import { useToast } from "@/components/ui/Toast";
 import { exportToCsv, printHtml } from "@/lib/documentUtils";
-import { getDocSignatures, setDocSignatures } from "@/lib/boqStore";
+import { getDocSignatures, setDocSignatures } from "@/lib/signatures";
 import type { EmployerBoqItem } from "@/types/boq";
 import { employerBoqService } from "@/services/employerBoq.service";
 import { analyticalBoqService } from "@/services/analyticalBoq.service";
+import { finalBoqService } from "@/services/finalBoq.service";
 import type { AnalyticalBoqItem } from "@/types/boq";
 import { Can } from "@/components/Can";
 
@@ -78,8 +79,11 @@ export default function AnalyticalBoqPage() {
     e.preventDefault();
     if (!editItem) return;
 
+    const original = items.find((i) => i.itemCode === editItem.itemCode);
+    const increased = original ? editItem.quantity > original.quantity : false;
+
     try {
-      await analyticalBoqService.update(buildingId, editItem.itemCode, {
+      const updated = await analyticalBoqService.update(buildingId, editItem.itemCode, {
         quantity: editItem.quantity,
         unitPrice: editItem.unitPrice,
         description: editItem.description,
@@ -87,8 +91,29 @@ export default function AnalyticalBoqPage() {
       setEditItem(null);
       await loadItems();
       showToast(isArabic ? "تم التحديث" : "Updated", "success");
-    } catch {
-      showToast(isArabic ? "فشل التحديث" : "Update failed", "error");
+      if (increased) {
+        try {
+          const finalItems = await finalBoqService.list(buildingId);
+          const finalItem = finalItems.find((f) => f.itemCode === editItem.itemCode);
+          const remaining = finalItem?.remainingQuantity ?? 0;
+          if (remaining > 0) {
+            showToast(
+              isArabic
+                ? `مازال هناك كمية (${remaining}) في بند ${updated.itemCode} لم توزع`
+                : `There is still quantity (${remaining}) in item ${updated.itemCode} not yet distributed`,
+              "warning"
+            );
+          }
+        } catch {
+          // Reminder is best-effort; keep the success toast.
+        }
+      }
+    } catch (e: any) {
+      showToast(
+        e?.message ||
+          (isArabic ? "فشل التحديث" : "Update failed"),
+        "error"
+      );
     }
   };
 

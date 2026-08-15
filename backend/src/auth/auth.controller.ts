@@ -67,7 +67,9 @@ export class AuthController {
         permissions: user.permissions,
         roleNames: user.roleNames,
         projectIds: user.projectIds,
+        employeeId: fullUser?.employeeId ?? user.employeeId ?? null,
         status: fullUser?.status,
+        avatarUrl: fullUser?.avatarUrl ?? null,
         createdAt: fullUser?.createdAt,
       },
     };

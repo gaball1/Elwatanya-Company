@@ -5,6 +5,7 @@ export interface ProjectFund {
   projectId: string;
   initialBalance: number;
   currentBalance: number;
+  pettyCashBalance: number;
   lastUpdated: string;
   createdAt: string;
   updatedAt: string;
@@ -25,6 +26,10 @@ export const projectFundService = {
   async list(): Promise<ProjectFund[]> {
     const data = await apiClient<{ items: ProjectFund[] }>('/project-funds', { method: 'GET' });
     return data.items;
+  },
+  async getByProject(projectId: string): Promise<ProjectFund | null> {
+    const data = await apiClient<{ fund: ProjectFund | null }>(`/project-funds/by-project/${projectId}`, { method: 'GET' });
+    return data.fund;
   },
   async get(id: string): Promise<ProjectFund> {
     const data = await apiClient<{ fund: ProjectFund }>(`/project-funds/${id}`, { method: 'GET' });

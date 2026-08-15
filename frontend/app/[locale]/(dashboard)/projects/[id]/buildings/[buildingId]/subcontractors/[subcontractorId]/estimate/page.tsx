@@ -11,7 +11,7 @@ import SignaturesSection from "@/components/boq/SignaturesSection";
 import DeleteConfirmModal from "@/components/boq/DeleteConfirmModal";
 import { useToast } from "@/components/ui/Toast";
 import { exportToCsv, printHtml } from "@/lib/documentUtils";
-import { getDocSignatures, setDocSignatures } from "@/lib/boqStore";
+import { getDocSignatures, setDocSignatures } from "@/lib/signatures";
 import type { FinalBoqItem } from "@/types/boq";
 import { finalBoqService } from "@/services/finalBoq.service";
 import { contractorBoqService } from "@/services/contractorBoq.service";
@@ -346,7 +346,7 @@ ${isArabic ? "التاريخ" : "Date"}
 </td>
 
 <td style="padding:5px 10px;">
-${new Date().toLocaleDateString()}
+${new Date().toLocaleDateString(isArabic ? "ar-EG" : "en-US")}
 </td>
 </tr>
 

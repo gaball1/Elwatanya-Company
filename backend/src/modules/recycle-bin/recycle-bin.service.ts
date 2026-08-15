@@ -8,7 +8,6 @@ const MODEL_MAP: Record<string, { model: string; deletedField: string }> = {
   supplier: { model: 'supplier', deletedField: 'deletedAt' },
   employee: { model: 'employee', deletedField: 'deletedAt' },
   department: { model: 'department', deletedField: 'deletedAt' },
-  role: { model: 'role', deletedField: 'deletedAt' },
   'employee-role': { model: 'employeeRole', deletedField: 'deletedAt' },
   attendance: { model: 'attendance', deletedField: 'deletedAt' },
   leave: { model: 'leave', deletedField: 'deletedAt' },
@@ -24,8 +23,6 @@ const MODEL_MAP: Record<string, { model: string; deletedField: string }> = {
   'project-board': { model: 'projectBoard', deletedField: 'deletedAt' },
   'client-statement': { model: 'clientStatement', deletedField: 'deletedAt' },
   'subcontractor-statement': { model: 'subcontractorStatement', deletedField: 'deletedAt' },
-  employerboq: { model: 'employerBoq', deletedField: 'deletedAt' },
-  analyticalboq: { model: 'analyticalBoq', deletedField: 'deletedAt' },
   finalboq: { model: 'finalBoq', deletedField: 'deletedAt' },
   contractorboq: { model: 'contractorBoq', deletedField: 'deletedAt' },
 };
@@ -51,7 +48,9 @@ export class RecycleBinService {
         for (const r of records) {
           results.push({ id: r.id, name: r.name ?? r.id, entity: key, deletedAt: r.deletedAt });
         }
-      } catch { }
+      } catch {
+        // Entity model may not expose this column; skip it.
+      }
     }
 
     results.sort((a, b) => new Date(b.deletedAt).getTime() - new Date(a.deletedAt).getTime());

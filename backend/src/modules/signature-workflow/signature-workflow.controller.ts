@@ -1,8 +1,12 @@
 import { Controller, Get, Post, Put, Delete, Param, Body, Req } from '@nestjs/common';
-import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { SignatureWorkflowService } from './application/signature-workflow.service';
+import { RequirePermission } from '../../common/decorators/permissions.decorator';
+import { Permissions } from '../../common/constants/permissions.constant';
 
 @ApiTags('Signature Workflow')
+@ApiBearerAuth()
+@RequirePermission(Permissions.Profile.Read)
 @Controller('signature-workflow')
 export class SignatureWorkflowController {
   constructor(private readonly service: SignatureWorkflowService) {}
@@ -11,6 +15,7 @@ export class SignatureWorkflowController {
 
   @Post('workflows')
   @ApiOperation({ summary: 'Create a new signature workflow definition' })
+  @RequirePermission(Permissions.Reports.Generate)
   createWorkflow(@Body() body: any) {
     return this.service.createWorkflow(body);
   }
@@ -29,12 +34,14 @@ export class SignatureWorkflowController {
 
   @Put('workflows/:id')
   @ApiOperation({ summary: 'Update workflow name, description, or active status' })
+  @RequirePermission(Permissions.Reports.Generate)
   updateWorkflow(@Param('id') id: string, @Body() body: any) {
     return this.service.updateWorkflow(id, body);
   }
 
   @Delete('workflows/:id')
   @ApiOperation({ summary: 'Delete a workflow definition' })
+  @RequirePermission(Permissions.Reports.Generate)
   deleteWorkflow(@Param('id') id: string) {
     return this.service.deleteWorkflow(id);
   }

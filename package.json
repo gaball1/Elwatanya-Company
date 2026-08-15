@@ -12,8 +12,14 @@
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",
     "db:migrate": "npm run prisma:migrate --workspace=backend",
-    "db:studio": "npm run prisma:studio --workspace=backend"
+    "db:studio": "npm run prisma:studio --workspace=backend",
+    "backup": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/backup/backup.ps1",
+    "backup:verify": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/backup/restore-verify.ps1"
   },
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
   "devDependencies": {
     "typescript": "^6.0.3"
   },

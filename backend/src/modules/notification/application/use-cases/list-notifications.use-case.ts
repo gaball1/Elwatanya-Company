@@ -17,6 +17,8 @@ export function toResult(n: Notification): NotificationResult {
     entityType: n.entityType,
     entityId: n.entityId,
     link: n.link,
+    targetRoles: n.targetRoles,
+    targetPermissions: n.targetPermissions,
     createdAt: n.createdAt,
     updatedAt: n.updatedAt,
   };
@@ -25,12 +27,22 @@ export function toResult(n: Notification): NotificationResult {
 export class ListNotificationsUseCase {
   constructor(private readonly notifications: INotificationRepository) {}
 
-  async execute(query?: ListNotificationsQuery): Promise<Result<NotificationResult[]>> {
-    const q: NotificationQuery = {};
+  async execute(
+    userId: string,
+    isAdmin: boolean,
+    query?: ListNotificationsQuery,
+  ): Promise<Result<NotificationResult[]>> {
+    const q: NotificationQuery = {
+      userId,
+      isAdmin,
+      roleNames: query?.roleNames,
+      permissionNames: query?.permissionNames,
+    };
     if (query?.type) q.type = query.type;
     if (query?.read !== undefined) q.read = query.read;
+    if (query?.limit) q.limit = query.limit;
 
-    const list = await this.notifications.findAll(query ? q : undefined);
+    const list = await this.notifications.findAll(q);
     return Result.ok(list.map(toResult));
   }
 }

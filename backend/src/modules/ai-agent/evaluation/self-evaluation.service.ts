@@ -85,7 +85,7 @@ export class SelfEvaluationService {
     }
 
     // Determine if we should suggest next actions
-    const suggestedNextAction = this.suggestNextAction(intent, result);
+    const suggestedNextAction = this.suggestNextAction(intent, result, message);
 
     return {
       score: Math.max(0, score),
@@ -133,28 +133,43 @@ export class SelfEvaluationService {
     return false;
   }
 
-  private suggestNextAction(intent: IntentResult, result: ToolResult): string | undefined {
+  private suggestNextAction(intent: IntentResult, result: ToolResult, message?: string): string | undefined {
     if (!result.success) return undefined;
 
     const intentLower = intent.intent.toLowerCase();
+    const ar = /[\u0600-\u06FF]/.test(message || '');
+    const entityAr: Record<string, string> = {
+      project: 'مشروع', building: 'مبنى', employee: 'موظف', supplier: 'مورد',
+      client: 'عميل', subcontractor: 'مقاول', warehouse: 'مخزن',
+      purchase: 'مشتريات', extract: 'مستخلص', payment: 'دفعة', attendance: 'حضور',
+      approval: 'موافقة', inventory: 'مخزون', fund: 'صندوق', report: 'تقرير',
+    };
 
     if (intentLower.startsWith('list_') || intentLower.includes('show')) {
       const entity = intent.entities?.entity;
       if (entity) {
-        return `You can ask me to create a new ${entity}, or get details about a specific one.`;
+        return ar
+          ? `يمكنك أن تطلب مني إنشاء ${entityAr[entity] || entity} جديد، أو الحصول على تفاصيل عن عنصر محدد.`
+          : `You can ask me to create a new ${entity}, or get details about a specific one.`;
       }
     }
 
     if (intentLower.startsWith('create_')) {
-      return 'The record has been created. You can ask me to view it, update it, or create another.';
+      return ar
+        ? 'تم إنشاء السجل. يمكنك أن تطلب مني عرضه أو تحديثه أو إنشاء سجل آخر.'
+        : 'The record has been created. You can ask me to view it, update it, or create another.';
     }
 
     if (intentLower.includes('summary') || intentLower.includes('stats')) {
-      return 'Would you like me to drill down into any specific area?';
+      return ar
+        ? 'هل تريد أن نتعمق في أي مجال محدد؟'
+        : 'Would you like me to drill down into any specific area?';
     }
 
     if (intentLower.includes('approve') || intentLower.includes('reject')) {
-      return 'The approval has been processed. Check if there are more pending items.';
+      return ar
+        ? 'تمت معالجة الطلب. تحقق إذا كانت هناك طلبات أخرى معلقة.'
+        : 'The approval has been processed. Check if there are more pending items.';
     }
 
     return undefined;

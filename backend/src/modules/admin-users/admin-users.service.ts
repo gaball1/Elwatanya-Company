@@ -85,10 +85,29 @@ export class AdminUsersService {
     };
   }
 
+  private async assertEmployeeAvailable(employeeId: string, currentUserId?: string) {
+    const employee = await this.prisma.employee.findUnique({ where: { id: employeeId } });
+    if (!employee || employee.deletedAt) {
+      throw new NotFoundException('Employee not found');
+    }
+
+    const linked = await this.prisma.user.findFirst({
+      where: { employeeId, id: currentUserId ? { not: currentUserId } : undefined, deletedAt: null },
+      select: { id: true },
+    });
+    if (linked) {
+      throw new ConflictException('Employee is already linked to another account');
+    }
+  }
+
   async create(dto: CreateUserDto) {
     const existing = await this.prisma.user.findUnique({ where: { email: dto.email } });
     if (existing) {
       throw new ConflictException('Email already registered');
+    }
+
+    if (dto.employeeId) {
+      await this.assertEmployeeAvailable(dto.employeeId);
     }
 
     const passwordHash = await bcrypt.hash(dto.password, 10);
@@ -98,6 +117,7 @@ export class AdminUsersService {
         name: dto.name,
         passwordHash,
         status: 'ACTIVE',
+        ...(dto.employeeId ? { employeeId: dto.employeeId } : {}),
       },
     });
 
@@ -106,6 +126,7 @@ export class AdminUsersService {
       email: user.email,
       name: user.name,
       status: user.status,
+      employeeId: user.employeeId,
       createdAt: user.createdAt,
     };
   }
@@ -116,12 +137,19 @@ export class AdminUsersService {
       throw new NotFoundException('User not found');
     }
 
+    if (dto.employeeId !== undefined && dto.employeeId !== null && dto.employeeId.trim() !== '') {
+      await this.assertEmployeeAvailable(dto.employeeId, id);
+    }
+
     const updated = await this.prisma.user.update({
       where: { id },
       data: {
         ...(dto.email !== undefined && { email: dto.email }),
         ...(dto.name !== undefined && { name: dto.name }),
         ...(dto.status !== undefined && { status: dto.status }),
+        ...(dto.employeeId !== undefined && {
+          employeeId: dto.employeeId === null || dto.employeeId.trim() === '' ? null : dto.employeeId,
+        }),
       },
     });
 

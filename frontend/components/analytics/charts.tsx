@@ -15,7 +15,7 @@ const COLORS = [
   "#6574cd",
 ];
 
-function formatValue(value: number, currency: string): string {
+function formatValue(value: number): string {
   const abs = Math.abs(value);
   if (abs >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
   if (abs >= 1_000) return `${(value / 1_000).toFixed(1)}K`;
@@ -108,7 +108,7 @@ export function BarChart({
       <div className="flex items-end gap-1" style={{ height }}>
         {data.map((d, i) => (
           <div key={i} className="flex-1 flex flex-col items-center justify-end h-full min-w-0">
-            <span className="text-[9px] text-text-secondary mb-0.5 truncate max-w-full">{formatValue(d.value, "")}</span>
+            <span className="text-[9px] text-text-secondary mb-0.5 truncate max-w-full">{formatValue(d.value)}</span>
             <div
               className="w-full rounded-t transition-all"
               style={{ height: `${Math.max((d.value / max) * 100, 1.5)}%`, backgroundColor: color, opacity: 0.85 }}
@@ -206,28 +206,33 @@ export function DonutSeries({
   const total = Math.max(data.reduce((acc, d) => acc + d.value, 0), 1);
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
-  let acc = 0;
+
+  const segments = useMemo(() => {
+    return data.map((d, i) => {
+      const prevValue = data.slice(0, i).reduce((sum, x) => sum + x.value, 0);
+      const length = (d.value / total) * circumference;
+      const offset = circumference - (prevValue / total) * circumference;
+      return { key: i, label: d.label, value: d.value, length, offset, color: COLORS[i % COLORS.length] };
+    });
+  }, [data, total, circumference]);
 
   return (
     <div className="flex items-center gap-4">
       <div className="relative inline-flex items-center justify-center" style={{ width: size, height: size }}>
         <svg width={size} height={size} className="-rotate-90">
           <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="var(--color-surface-tertiary)" strokeWidth={strokeWidth} />
-          {data.map((d, i) => {
-            const length = (d.value / total) * circumference;
-            const offset = circumference - acc;
-            acc += length;
+          {segments.map((seg) => {
             return (
               <circle
-                key={i}
+                key={seg.key}
                 cx={size / 2}
                 cy={size / 2}
                 r={radius}
                 fill="none"
-                stroke={COLORS[i % COLORS.length]}
+                stroke={seg.color}
                 strokeWidth={strokeWidth}
-                strokeDasharray={`${length} ${circumference - length}`}
-                strokeDashoffset={offset}
+                strokeDasharray={`${seg.length} ${circumference - seg.length}`}
+                strokeDashoffset={seg.offset}
               />
             );
           })}

@@ -4,5 +4,7 @@ export const WAREHOUSE_REPOSITORY = Symbol('WAREHOUSE_REPOSITORY');
 export interface IWarehouseRepository {
   save(warehouse: Warehouse): Promise<void>;
   findById(id: UniqueEntityId): Promise<Warehouse | null>;
-  findAll(): Promise<Warehouse[]>;
+  findByCodeIncludingDeleted(code: string): Promise<Warehouse | null>;
+  findByNameIncludingDeleted(name: string): Promise<Warehouse | null>;
+  findAll(projectId?: string): Promise<Warehouse[]>;
 }

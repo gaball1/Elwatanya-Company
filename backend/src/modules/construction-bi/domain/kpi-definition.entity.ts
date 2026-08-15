@@ -11,14 +11,24 @@ export interface KpiDefinitionProps {
   calculate(params: any): Promise<KpiResult>;
 }
 
+export type KpiStatus = 'good' | 'warning' | 'danger';
+
 export interface KpiResult {
   key: string;
   value: number;
   display: string;
   trend?: 'up' | 'down' | 'stable';
   threshold?: { warning: number; critical: number };
-  status?: 'good' | 'warning' | 'critical';
+  status?: KpiStatus | 'critical';
   details?: Record<string, any>;
+  /** Enriched contract fields (matching the frontend KpiResult). */
+  name?: string;
+  nameArabic?: string;
+  description?: string;
+  category?: string;
+  unit?: string;
+  target?: number;
+  percentage?: number;
 }
 
 export class KpiDefinition {

@@ -5,18 +5,21 @@ import {
   BuildingApplicationError,
   BuildingErrorCode,
 } from '@/modules/building/application/errors/building-application.error';
-import { OwnershipService } from '@/common/services/ownership.service';
+import { OwnershipActor, OwnershipService } from '@/common/services/ownership.service';
 import { EventBusImpl } from '@/modules/domain-events/event-bus.impl';
 import { ExtractCreatedEvent, ExtractApprovedEvent } from '@/modules/domain-events/events';
 import { IContractorBoqRepository } from '@/modules/contractor-boq/domain/contractor-boq.repository';
 import { ContractorBoq } from '@/modules/contractor-boq/domain/contractor-boq.entity';
+import { ContractorBoqItem } from '@/modules/contractor-boq/domain/contractor-boq-item.entity';
+import { IPaymentRepository } from '@/modules/payment/domain/payment.repository';
 import { Extract } from '../../domain/extract.entity';
-import { IExtractRepository } from '../../domain/extract.repository';
+import { IExtractRepository, ExtractListItem } from '../../domain/extract.repository';
 import { PrismaService } from '@/prisma/prisma.service';
 import {
   calcExtractItem,
   getPreviousQuantitiesFromExtracts,
   nextRunningNumber,
+  sumOtherAmountItems,
   validateExtractItems,
   ExtractDeduction,
   ExtractStatus,
@@ -32,10 +35,12 @@ export interface ExtractResult {
   runningNumber?: number | null;
   label: string | null;
   insurancePercent: number;
-  items: ReturnType<typeof calcExtractItem>[];
+  items: (ReturnType<typeof calcExtractItem> & { contractorBoqItemId: string })[];
   deductions: ExtractDeduction[];
   totalWorkValue: number;
   previousPaid: number;
+  otherAmounts: number;
+  otherAmountItems: { id: string; name: string; amount: number }[];
   totalDeductions: number;
   netPayable: number;
 }
@@ -50,6 +55,8 @@ export interface SaveExtractInput {
   insurancePercent: number;
   date: string;
   previousPaid: number;
+  otherAmounts?: number;
+  otherAmountItems?: { id: string; name: string; amount: number }[];
   items: {
     itemCode: string;
     description: string;
@@ -59,6 +66,7 @@ export interface SaveExtractInput {
     current: number;
     executionPercent: number;
     unitPrice: number;
+    contractorBoqItemId?: string;
   }[];
   manualDeductions?: ExtractDeduction[];
 }
@@ -78,10 +86,12 @@ function toResult(
     runningNumber: extract.runningNumber,
     label: extract.label,
     insurancePercent: extract.insurancePercent,
-    items: extract.items.map(({ contractorBoqItemId: _, ...item }) => item),
+    items: extract.items,
     deductions: extract.allDeductions(),
     totalWorkValue: extract.totalWorkValue,
     previousPaid: extract.previousPaid,
+    otherAmounts: extract.otherAmounts,
+    otherAmountItems: extract.otherAmountItems,
     totalDeductions: extract.totalDeductions,
     netPayable: extract.netPayable,
   };
@@ -95,6 +105,30 @@ async function resolveContractorBoq(
   return repo.findByBuildingAndSubcontractor(buildingId, contractorId);
 }
 
+export class ListAllExtractsUseCase {
+  constructor(
+    private readonly extracts: IExtractRepository,
+  ) {}
+
+  async execute(actor?: OwnershipActor): Promise<Result<ExtractListItem[]>> {
+    // SUPER_ADMIN sees all extracts; other users only extracts from projects
+    // they are assigned to; unassigned users see an empty list.
+    let projectIds: string[] = [];
+    if (actor && typeof actor === 'object') {
+      if (Array.isArray(actor.roleNames) && actor.roleNames.includes('SUPER_ADMIN')) {
+        projectIds = [];
+      } else {
+        projectIds = actor.projectIds?.length ? actor.projectIds : actor.projectId ? [actor.projectId] : [];
+      }
+    } else if (actor) {
+      projectIds = [actor];
+    }
+
+    const items = await this.extracts.listAll(projectIds.length > 0 ? projectIds : null);
+    return Result.ok(items);
+  }
+}
+
 export class ListExtractsUseCase {
   constructor(
     private readonly extracts: IExtractRepository,
@@ -103,8 +137,8 @@ export class ListExtractsUseCase {
     private readonly ownership: OwnershipService,
   ) {}
 
-  async execute(buildingId: string, contractorId: string, userProjectId?: string | null): Promise<Result<ExtractResult[]>> {
-    await this.ownership.verifyBuildingAccess(userProjectId, buildingId);
+  async execute(buildingId: string, contractorId: string, user?: OwnershipActor): Promise<Result<ExtractResult[]>> {
+    await this.ownership.verifyBuildingAccess(user, buildingId);
     const building = await this.buildings.findById(new UniqueEntityId(buildingId));
     if (!building) {
       return Result.fail(
@@ -129,6 +163,7 @@ export class GetExtractMetaUseCase {
     private readonly extracts: IExtractRepository,
     private readonly contractorBoq: IContractorBoqRepository,
     private readonly ownership: OwnershipService,
+    private readonly payments: IPaymentRepository,
   ) {}
 
   async execute(input: {
@@ -136,10 +171,10 @@ export class GetExtractMetaUseCase {
     contractorId: string;
     status: ExtractStatus;
     runningNumber?: number;
-  }, userProjectId?: string | null): Promise<
+  }, user?: OwnershipActor): Promise<
     Result<{ previousPaid: number; previousQuantities: Record<string, number>; nextRunning: number }>
   > {
-    await this.ownership.verifyBuildingAccess(userProjectId, input.buildingId);
+    await this.ownership.verifyBuildingAccess(user, input.buildingId);
 
     const boq = await resolveContractorBoq(
       new UniqueEntityId(input.buildingId),
@@ -155,7 +190,6 @@ export class GetExtractMetaUseCase {
       status: e.status,
       runningNumber: e.runningNumber ?? undefined,
       items: e.items.map((i) => ({ itemCode: i.itemCode, total: i.total })),
-      netPayable: e.netPayable,
     }));
 
     const previousQuantities = getPreviousQuantitiesFromExtracts(
@@ -164,14 +198,14 @@ export class GetExtractMetaUseCase {
       input.runningNumber,
     );
 
-    // Previous paid = sum of netPayable of prior running extracts (frontend finance meta pattern)
-    const previousPaid = list
-      .filter(
-        (e) =>
-          e.status === 'running' &&
-          (e.runningNumber ?? 0) < (input.runningNumber ?? nextRunningNumber(snapshots)),
-      )
-      .reduce((s, e) => s + e.netPayable, 0);
+    // ما سبق صرفه = sum of the accountant's approved payments for this building+contractor
+    const payments = await this.payments.findByBuildingAndContractor(
+      new UniqueEntityId(input.buildingId),
+      new UniqueEntityId(input.contractorId),
+    );
+    const previousPaid = payments
+      .filter((p) => p.status === 'approved')
+      .reduce((s, p) => s + p.amount, 0);
 
     return Result.ok({
       previousPaid,
@@ -189,13 +223,14 @@ export class SaveExtractUseCase {
     private readonly prisma: PrismaService,
     private readonly ownership: OwnershipService,
     private readonly eventBus: EventBusImpl,
+    private readonly payments: IPaymentRepository,
   ) {}
 
-  async execute(input: SaveExtractInput, userProjectId?: string | null): Promise<Result<ExtractResult>> {
+  async execute(input: SaveExtractInput, user?: OwnershipActor): Promise<Result<ExtractResult>> {
     const buildingId = new UniqueEntityId(input.buildingId);
     const contractorId = new UniqueEntityId(input.contractorId);
 
-    await this.ownership.verifyBuildingAccess(userProjectId, input.buildingId);
+    await this.ownership.verifyBuildingAccess(user, input.buildingId);
 
     const building = await this.buildings.findById(buildingId);
     if (!building) {
@@ -222,6 +257,12 @@ export class SaveExtractUseCase {
             throw new Error(`Deduction "${ded.name}" has a negative amount`);
           }
         }
+        for (const item of (input.otherAmountItems ?? [])) {
+          if (item.amount < 0 || !item.name.trim()) {
+            throw new Error(`Other amount "${item.name || 'بدون اسم'}" must have a valid name and non-negative amount`);
+          }
+        }
+        const otherAmounts = sumOtherAmountItems(input.otherAmountItems, input.otherAmounts ?? 0);
 
         const existingAll = await this.extracts.findByContractorBoqId(boq.id);
         const maxRunning = existingAll.reduce(
@@ -243,16 +284,19 @@ export class SaveExtractUseCase {
           }
         }
 
-        // Server-authoritative previousPaid: sum of netPayable of prior running extracts.
-        const runNumber = input.runningNumber ?? maxRunning;
-        const previousPaid = existingAll
+        // ما سبق صرفه = sum of the accountant's approved payments for this building+contractor,
+        // excluding payments already recorded against this same extract being edited.
+        const payments = await this.payments.findByBuildingAndContractor(
+          buildingId,
+          contractorId,
+        );
+        const previousPaid = payments
           .filter(
-            (e) =>
-              e.status === 'running' &&
-              e.id.toValue() !== input.id &&
-              (e.runningNumber ?? 0) < runNumber,
+            (p) =>
+              p.status === 'approved' &&
+              p.statementId?.toValue() !== input.id,
           )
-          .reduce((s, e) => s + e.netPayable, 0);
+          .reduce((s, p) => s + p.amount, 0);
 
         const calculated = input.items.map((i) => calcExtractItem(i));
         const validation = validateExtractItems(
@@ -265,9 +309,18 @@ export class SaveExtractUseCase {
 
         const itemsWithIds: (typeof input.items[number] & { contractorBoqItemId: string })[] = [];
         for (const item of input.items) {
-          const boqItem =
-            boq.items.find((i) => i.itemCode === item.itemCode && !i.componentId) ??
-            boq.items.find((i) => i.itemCode === item.itemCode);
+          let boqItem: ContractorBoqItem | undefined;
+          if (item.contractorBoqItemId) {
+            boqItem = boq.items.find(
+              (i) => i.id.toValue() === item.contractorBoqItemId,
+            );
+            if (boqItem && boqItem.itemCode !== item.itemCode) boqItem = undefined;
+          }
+          if (!boqItem) {
+            boqItem =
+              boq.items.find((i) => i.itemCode === item.itemCode && !i.componentId) ??
+              boq.items.find((i) => i.itemCode === item.itemCode);
+          }
           if (!boqItem) {
             throw new Error(`Contractor BOQ item not found for ${item.itemCode}`);
           }
@@ -288,6 +341,8 @@ export class SaveExtractUseCase {
             insurancePercent: input.insurancePercent,
             extractDate: new Date(input.date),
             previousPaid,
+            otherAmounts,
+            otherAmountItems: input.otherAmountItems ?? [],
             items: itemsWithIds,
             manualDeductions: input.manualDeductions ?? [],
           });
@@ -333,6 +388,8 @@ export class SaveExtractUseCase {
           insurancePercent: input.insurancePercent,
           extractDate: new Date(input.date),
           previousPaid,
+          otherAmounts,
+          otherAmountItems: input.otherAmountItems ?? [],
           items: itemsWithIds,
           manualDeductions: input.manualDeductions ?? [],
         });
@@ -386,9 +443,9 @@ export class GetExtractByIdUseCase {
     buildingId: string,
     contractorId: string,
     extractId: string,
-    userProjectId?: string | null,
+    user?: OwnershipActor,
   ): Promise<Result<ExtractResult | null>> {
-    await this.ownership.verifyBuildingAccess(userProjectId, buildingId);
+    await this.ownership.verifyBuildingAccess(user, buildingId);
     const extract = await this.extracts.findById(new UniqueEntityId(extractId));
     if (!extract) return Result.ok(null);
     return Result.ok(toResult(extract, buildingId, contractorId));
@@ -401,8 +458,8 @@ export class DeleteExtractUseCase {
     private readonly ownership: OwnershipService,
   ) {}
 
-  async execute(extractId: string, buildingId: string, userProjectId?: string | null): Promise<Result<void>> {
-    await this.ownership.verifyBuildingAccess(userProjectId, buildingId);
+  async execute(extractId: string, buildingId: string, user?: OwnershipActor): Promise<Result<void>> {
+    await this.ownership.verifyBuildingAccess(user, buildingId);
     const extract = await this.extracts.findById(new UniqueEntityId(extractId));
     if (!extract) return Result.fail(new Error('Extract not found'));
     if (extract.status === 'final') {

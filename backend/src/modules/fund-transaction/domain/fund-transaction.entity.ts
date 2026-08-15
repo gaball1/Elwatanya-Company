@@ -3,8 +3,8 @@ import { Result } from '@/shared/kernel/result';
 import { Guard } from '@/shared/kernel/guard';
 import { UniqueEntityId } from '@/shared/kernel/unique-entity-id.vo';
 
-export const FUND_TRANSACTION_TYPES = ['add', 'deduct', 'request'] as const;
-export const FUND_TRANSACTION_CATEGORIES = ['general', 'purchase', 'miscellaneous'] as const;
+export const FUND_TRANSACTION_TYPES = ['add', 'deduct', 'request', 'transfer'] as const;
+export const FUND_TRANSACTION_CATEGORIES = ['general', 'purchase', 'miscellaneous', 'petty_cash', 'extract'] as const;
 export const FUND_TRANSACTION_STATUSES = ['pending', 'approved', 'rejected'] as const;
 
 export type FundTransactionType = typeof FUND_TRANSACTION_TYPES[number];

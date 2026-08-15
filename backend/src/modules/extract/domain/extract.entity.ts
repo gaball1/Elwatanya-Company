@@ -22,6 +22,8 @@ export interface ExtractProps {
   insurancePercent: number;
   extractDate: Date;
   previousPaid: number;
+  otherAmounts: number;
+  otherAmountItems: { id: string; name: string; amount: number }[];
   totalWorkValue: number;
   totalDeductions: number;
   netPayable: number;
@@ -75,6 +77,14 @@ export class Extract extends AggregateRoot {
     return this.props.previousPaid;
   }
 
+  get otherAmounts(): number {
+    return this.props.otherAmounts;
+  }
+
+  get otherAmountItems(): { id: string; name: string; amount: number }[] {
+    return [...this.props.otherAmountItems];
+  }
+
   get totalWorkValue(): number {
     return this.props.totalWorkValue;
   }
@@ -107,6 +117,8 @@ export class Extract extends AggregateRoot {
     insurancePercent: number;
     extractDate: Date;
     previousPaid: number;
+    otherAmounts?: number;
+    otherAmountItems?: { id: string; name: string; amount: number }[];
     items: (ExtractItemInput & { contractorBoqItemId: string })[];
     manualDeductions?: ExtractDeduction[];
   }): Extract {
@@ -114,11 +126,14 @@ export class Extract extends AggregateRoot {
       contractorBoqItemId: i.contractorBoqItemId,
       ...calcExtractItem(i),
     }));
+    const otherAmountItems = input.otherAmountItems ?? [];
+    const otherAmounts = input.otherAmounts ?? 0;
     const totals = computeExtractTotals(
       calculated,
       input.insurancePercent,
-      input.previousPaid,
       input.manualDeductions ?? [],
+      otherAmounts,
+      input.previousPaid,
     );
 
     const extract = new Extract({
@@ -130,6 +145,8 @@ export class Extract extends AggregateRoot {
       insurancePercent: input.insurancePercent,
       extractDate: input.extractDate,
       previousPaid: input.previousPaid,
+      otherAmounts,
+      otherAmountItems,
       totalWorkValue: totals.totalWorkValue,
       totalDeductions: totals.totalDeductions,
       netPayable: totals.netPayable,
@@ -160,6 +177,8 @@ export class Extract extends AggregateRoot {
     insurancePercent?: number;
     extractDate?: Date;
     previousPaid?: number;
+    otherAmounts?: number;
+    otherAmountItems?: { id: string; name: string; amount: number }[];
     items?: (ExtractItemInput & { contractorBoqItemId: string })[];
     manualDeductions?: ExtractDeduction[];
   }): void {
@@ -170,6 +189,10 @@ export class Extract extends AggregateRoot {
     }
     if (input.extractDate !== undefined) this.props.extractDate = input.extractDate;
     if (input.previousPaid !== undefined) this.props.previousPaid = input.previousPaid;
+    if (input.otherAmounts !== undefined) this.props.otherAmounts = input.otherAmounts;
+    if (input.otherAmountItems !== undefined) {
+      this.props.otherAmountItems = input.otherAmountItems;
+    }
     if (input.manualDeductions !== undefined) {
       this._manualDeductions = input.manualDeductions;
     }
@@ -183,8 +206,9 @@ export class Extract extends AggregateRoot {
     const totals = computeExtractTotals(
       this._items,
       this.props.insurancePercent,
-      this.props.previousPaid,
       this._manualDeductions,
+      this.props.otherAmounts,
+      this.props.previousPaid,
     );
     this.props.totalWorkValue = totals.totalWorkValue;
     this.props.totalDeductions = totals.totalDeductions;
@@ -199,8 +223,9 @@ export class Extract extends AggregateRoot {
     return computeExtractTotals(
       this._items,
       this.props.insurancePercent,
-      this.props.previousPaid,
       this._manualDeductions,
+      this.props.otherAmounts,
+      this.props.previousPaid,
     ).deductions;
   }
 }

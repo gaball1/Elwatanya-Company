@@ -43,11 +43,12 @@ export class PurchaseController {
   ) {}
 
   @Get()
-  @ApiOperation({ summary: 'List purchases (optional filter by projectId)' })
+  @ApiOperation({ summary: 'List purchases (optional filter by projectId and status)' })
   @ApiQuery({ name: 'projectId', required: false })
+  @ApiQuery({ name: 'status', required: false, enum: ['pending', 'approved', 'received', 'cancelled'] })
   @RequirePermission(Permissions.Purchases.Read)
-  async list(@Query('projectId') projectId?: string) {
-    const result = await this.listPurchases.execute(projectId);
+  async list(@Query('projectId') projectId?: string, @Query('status') status?: string) {
+    const result = await this.listPurchases.execute(projectId, status);
     return { items: result.getValue() };
   }
 

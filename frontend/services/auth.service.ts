@@ -15,7 +15,9 @@ export interface AuthUser {
   permissions?: string[];
   roleNames?: string[];
   projectIds?: string[];
+  employeeId?: string | null;
   status?: string;
+  avatarUrl?: string | null;
 }
 
 export interface AuthResponse {

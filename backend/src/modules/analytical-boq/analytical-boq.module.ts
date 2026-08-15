@@ -9,6 +9,8 @@ import { EMPLOYER_BOQ_REPOSITORY } from '@/modules/employer-boq/domain/employer-
 import { IEmployerBoqRepository } from '@/modules/employer-boq/domain/employer-boq.repository';
 import { FinalBoqModule } from '@/modules/final-boq/final-boq.module';
 import { SyncFinalFromAnalyticalUseCase } from '@/modules/final-boq/application/use-cases/sync-final-from-analytical.use-case';
+import { FINAL_BOQ_REPOSITORY } from '@/modules/final-boq/domain/final-boq.repository';
+import { IFinalBoqRepository } from '@/modules/final-boq/domain/final-boq.repository';
 import { OwnershipService } from '@/common/services/ownership.service';
 import { AuditService } from '@/modules/audit/audit.service';
 import { ANALYTICAL_BOQ_REPOSITORY } from './domain/analytical-boq.repository';
@@ -54,10 +56,11 @@ import { AnalyticalBoqController } from './analytical-boq.controller';
         analyticalBoq: PrismaAnalyticalBoqRepository,
         buildings: IBuildingRepository,
         syncFinal: SyncFinalFromAnalyticalUseCase,
+        finalBoq: IFinalBoqRepository,
         ownership: OwnershipService,
         audit: AuditService,
-      ) => new SetAnalyticalBoqItemsUseCase(analyticalBoq, buildings, syncFinal, ownership, audit),
-      inject: [ANALYTICAL_BOQ_REPOSITORY, BUILDING_REPOSITORY, SyncFinalFromAnalyticalUseCase, OwnershipService, AuditService],
+      ) => new SetAnalyticalBoqItemsUseCase(analyticalBoq, buildings, syncFinal, finalBoq, ownership, audit),
+      inject: [ANALYTICAL_BOQ_REPOSITORY, BUILDING_REPOSITORY, SyncFinalFromAnalyticalUseCase, FINAL_BOQ_REPOSITORY, OwnershipService, AuditService],
     },
     {
       provide: UpdateAnalyticalBoqItemUseCase,
@@ -65,10 +68,11 @@ import { AnalyticalBoqController } from './analytical-boq.controller';
         analyticalBoq: PrismaAnalyticalBoqRepository,
         buildings: IBuildingRepository,
         syncFinal: SyncFinalFromAnalyticalUseCase,
+        finalBoq: IFinalBoqRepository,
         ownership: OwnershipService,
         audit: AuditService,
-      ) => new UpdateAnalyticalBoqItemUseCase(analyticalBoq, buildings, syncFinal, ownership, audit),
-      inject: [ANALYTICAL_BOQ_REPOSITORY, BUILDING_REPOSITORY, SyncFinalFromAnalyticalUseCase, OwnershipService, AuditService],
+      ) => new UpdateAnalyticalBoqItemUseCase(analyticalBoq, buildings, syncFinal, finalBoq, ownership, audit),
+      inject: [ANALYTICAL_BOQ_REPOSITORY, BUILDING_REPOSITORY, SyncFinalFromAnalyticalUseCase, FINAL_BOQ_REPOSITORY, OwnershipService, AuditService],
     },
     {
       provide: RemoveAnalyticalBoqItemUseCase,
@@ -76,10 +80,11 @@ import { AnalyticalBoqController } from './analytical-boq.controller';
         analyticalBoq: PrismaAnalyticalBoqRepository,
         buildings: IBuildingRepository,
         syncFinal: SyncFinalFromAnalyticalUseCase,
+        finalBoq: IFinalBoqRepository,
         ownership: OwnershipService,
         audit: AuditService,
-      ) => new RemoveAnalyticalBoqItemUseCase(analyticalBoq, buildings, syncFinal, ownership, audit),
-      inject: [ANALYTICAL_BOQ_REPOSITORY, BUILDING_REPOSITORY, SyncFinalFromAnalyticalUseCase, OwnershipService, AuditService],
+      ) => new RemoveAnalyticalBoqItemUseCase(analyticalBoq, buildings, syncFinal, finalBoq, ownership, audit),
+      inject: [ANALYTICAL_BOQ_REPOSITORY, BUILDING_REPOSITORY, SyncFinalFromAnalyticalUseCase, FINAL_BOQ_REPOSITORY, OwnershipService, AuditService],
     },
     {
       provide: ImportAnalyticalFromEmployerUseCase,
@@ -107,8 +112,9 @@ import { AnalyticalBoqController } from './analytical-boq.controller';
         analyticalBoq: PrismaAnalyticalBoqRepository,
         employerBoq: IEmployerBoqRepository,
         syncFinal: SyncFinalFromAnalyticalUseCase,
-      ) => new SyncAnalyticalFromEmployerUseCase(analyticalBoq, employerBoq, syncFinal),
-      inject: [ANALYTICAL_BOQ_REPOSITORY, EMPLOYER_BOQ_REPOSITORY, SyncFinalFromAnalyticalUseCase],
+        finalBoq: IFinalBoqRepository,
+      ) => new SyncAnalyticalFromEmployerUseCase(analyticalBoq, employerBoq, syncFinal, finalBoq),
+      inject: [ANALYTICAL_BOQ_REPOSITORY, EMPLOYER_BOQ_REPOSITORY, SyncFinalFromAnalyticalUseCase, FINAL_BOQ_REPOSITORY],
     },
     {
       provide: AddAnalyticalFromEmployerUseCase,

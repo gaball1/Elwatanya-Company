@@ -69,9 +69,6 @@ export class PlannerService {
     { category: IntentCategory.EXECUTE_OPERATION, action: 'submit_for_signature', description: 'Submit a document for signature workflow', toolName: 'submit_for_signature', entities: ['signature'] },
     { category: IntentCategory.EXECUTE_OPERATION, action: 'sign_document', description: 'Sign or reject a pending signature request', toolName: 'sign_document', entities: ['signature'] },
     { category: IntentCategory.DATA_RETRIEVAL, action: 'get_signature_status', description: 'Get signature status for a document', toolName: 'get_signature_status', entities: ['signature'] },
-    { category: IntentCategory.EXECUTE_OPERATION, action: 'generate_document_number', description: 'Generate a document number', toolName: 'generate_document_number', entities: ['number'] },
-    { category: IntentCategory.DATA_RETRIEVAL, action: 'get_document_number_config', description: 'Get document number config', toolName: 'get_document_number_config', entities: ['number'] },
-    { category: IntentCategory.EXECUTE_OPERATION, action: 'update_document_number_config', description: 'Update document number format', toolName: 'update_document_number_config', entities: ['number'] },
     { category: IntentCategory.BUSINESS_ANALYSIS, action: 'get_project_dashboard', description: 'Get project KPI dashboard', toolName: 'get_project_dashboard', entities: ['dashboard', 'project'], requiredPermissions: ['projects.read'] },
     { category: IntentCategory.BUSINESS_ANALYSIS, action: 'evaluate_all_kpis', description: 'Evaluate all construction KPIs', toolName: 'evaluate_all_kpis', entities: ['kpi', 'project'], requiredPermissions: ['projects.read'] },
 
@@ -292,6 +289,23 @@ export class PlannerService {
       }
     }
 
+    // === Definition questions ===
+    // "ما هي المستخلصات؟" / "ما هو البند النهائي" → explain the knowledge topic.
+    // If the user is asking for a filtered list (e.g. "ما هي الموافقات المعلقة؟")
+    // fall through so the list/approval branches handle it.
+    const definitionMatch = lower.match(/^(?:ما هي|ما هو|ما هيا|ما هوا|ما هم|ماهي|ماهو|ماهى|ماهي)\s+(.+)/);
+    if (definitionMatch && !/(المعلقة|المعلقه|المعتمدة|المعتمده|المرفوضة|المرفوضه|المكتملة|المكتمله|الملغية|الملغيه|المتاحة|المتاحه|قائمة|قائمه|جميع|كل\s+|عدد)/.test(lower)) {
+      const entity = this.extractEntity(lower);
+      let target = entity;
+      if (entity === 'item' && /(بند|بنود|كمية|كميات|كميه)/.test(lower)) target = 'boq';
+      const intent = this.intents.find(
+        (i) => i.category === IntentCategory.KNOWLEDGE_QUERY && i.entities?.includes(target),
+      );
+      if (intent) {
+        return { intent: intent.action, confidence: 0.85, entities: { entity: target } };
+      }
+    }
+
     // Check for "why" questions first (business reasoning)
     const whyQuery = this.detectWhyQuery(message);
     // "اشرح ليه X" / "explain why X" mixes an explain keyword with a why word:
@@ -346,14 +360,214 @@ export class PlannerService {
       };
     }
 
+    // Buildings of a project: "وريني المباني في مشروع A105" / "اعرض عمارات مشروع X"
+    if (/(مباني|مبانى|مبنى|مبني|عماره|عمارة|عمارات|برج|ابنية|أبنية)/.test(lower) &&
+        /(مشروع|مشاريع)/.test(lower)) {
+      return {
+        intent: 'list_project_buildings',
+        confidence: 0.9,
+        entities: { entity: 'building' },
+        toolName: 'list_project_buildings',
+        requiredPermissions: ['buildings.read'],
+      };
+    }
+
+    // Arabic "who" questions: "مين المقاولين الموجودين؟" → list subcontractors/suppliers/clients/employees
+    const whoMatch = lower.match(/(?:مين هم|مين هم|من هم|من هم|ايه هم|مين)\s+(.+)/);
+    if (whoMatch) {
+      const who = whoMatch[1];
+      if (/(مقاول|مقاولين)/.test(who)) {
+        return {
+          intent: 'list_subcontractors',
+          confidence: 0.85,
+          entities: { entity: 'subcontractor' },
+          toolName: 'list_subcontractors',
+          requiredPermissions: ['subcontractors.read'],
+        };
+      }
+      if (/(مورد|موردين|مورّد)/.test(who)) {
+        return {
+          intent: 'list_suppliers',
+          confidence: 0.85,
+          entities: { entity: 'supplier' },
+          toolName: 'list_suppliers',
+          requiredPermissions: ['suppliers.read'],
+        };
+      }
+      if (/(عميل|عملاء)/.test(who)) {
+        return {
+          intent: 'list_clients',
+          confidence: 0.85,
+          entities: { entity: 'client' },
+          toolName: 'list_clients',
+          requiredPermissions: ['clients.read'],
+        };
+      }
+      if (/(موظف|موظفين)/.test(who)) {
+        return {
+          intent: 'list_employees',
+          confidence: 0.85,
+          entities: { entity: 'employee' },
+          toolName: 'list_employees',
+          requiredPermissions: ['employees.read'],
+        };
+      }
+    }
+
+    // Arabic list/count phrases: "اعرض لي قائمة المقاولين من الباطن" / "كم عدد المقاولين؟"
+    // → list the matching entity instead of misrouting to find_*.
+    const arListPhrase = lower.match(/(?:قائمة|قائمه|كم عدد|كام عدد|عدد)\s+(.+)/);
+    if (arListPhrase) {
+      const listTarget = arListPhrase[1];
+      if (/(مقاول|مقاولين)/.test(listTarget)) {
+        return {
+          intent: 'list_subcontractors',
+          confidence: 0.85,
+          entities: { entity: 'subcontractor' },
+          toolName: 'list_subcontractors',
+          requiredPermissions: ['subcontractors.read'],
+        };
+      }
+      if (/(مورد|موردين|مورّد)/.test(listTarget)) {
+        return {
+          intent: 'list_suppliers',
+          confidence: 0.85,
+          entities: { entity: 'supplier' },
+          toolName: 'list_suppliers',
+          requiredPermissions: ['suppliers.read'],
+        };
+      }
+      if (/(عميل|عملاء)/.test(listTarget)) {
+        return {
+          intent: 'list_clients',
+          confidence: 0.85,
+          entities: { entity: 'client' },
+          toolName: 'list_clients',
+          requiredPermissions: ['clients.read'],
+        };
+      }
+      if (/(موظف|موظفين)/.test(listTarget)) {
+        return {
+          intent: 'list_employees',
+          confidence: 0.85,
+          entities: { entity: 'employee' },
+          toolName: 'list_employees',
+          requiredPermissions: ['employees.read'],
+        };
+      }
+      if (/(مبني|مبنى|عماره|عمارة|مباني|مبانى)/.test(listTarget)) {
+        return {
+          intent: 'list_buildings',
+          confidence: 0.85,
+          entities: { entity: 'building' },
+          toolName: 'list_buildings',
+          requiredPermissions: ['buildings.read'],
+        };
+      }
+      if (/(مشتريات|شراء)/.test(listTarget)) {
+        return {
+          intent: 'list_purchases',
+          confidence: 0.85,
+          entities: { entity: 'purchase' },
+          toolName: 'list_purchases',
+          requiredPermissions: ['purchases.read'],
+        };
+      }
+      if (/(مستخلص|مستخلصات)/.test(listTarget)) {
+        return {
+          intent: 'list_extracts',
+          confidence: 0.85,
+          entities: { entity: 'extract' },
+          toolName: 'list_extracts',
+          requiredPermissions: ['extracts.read'],
+        };
+      }
+      if (/(دفعات|مدفوعات|دفعه|دفعة)/.test(listTarget)) {
+        return {
+          intent: 'list_payments',
+          confidence: 0.85,
+          entities: { entity: 'payment' },
+          toolName: 'list_payments',
+          requiredPermissions: ['payments.read'],
+        };
+      }
+      // Items listed/counted inside a warehouse: "كم عدد الأصناف في المخزن؟"
+      // must resolve to inventory items (with the warehouse as context), NOT
+      // to the list of warehouses.
+      if (/(اصناف|أصناف|صنف|بنود|بند|خامات|بضاعة|بضاعه|مواد)/.test(listTarget)) {
+        return {
+          intent: 'list_inventory_items',
+          confidence: 0.85,
+          entities: { entity: 'item' },
+          toolName: 'list_inventory_items',
+          requiredPermissions: ['inventory.read'],
+        };
+      }
+      if (/(مخزن|مخازن)/.test(listTarget)) {
+        return {
+          intent: 'list_warehouses',
+          confidence: 0.85,
+          entities: { entity: 'warehouse' },
+          toolName: 'list_warehouses',
+          requiredPermissions: ['warehouses.read'],
+        };
+      }
+    }
+
+    // Arabic show/list verbs: "اعرض المقاولين" / "وريني المشتريات" / "اعرض البنود"
+    // must route to the list_* tool — never to find_* (which demands a name).
+    const arShowPhrase = lower.match(/(?:اعرض(?:لي|لى)?|وريني|ورينى|عرض|شوف(?:لي|لى)?|اديني|ادينى|جيب|اكشف|كشف|اظهر|أظهر|اطلع|ابحث عن)\s+(.+)/);
+    if (arShowPhrase) {
+      const showTarget = arShowPhrase[1];
+      const arShowTargets: Array<{ re: RegExp; intent: string; tool: string; entity: string; perm: string }> = [
+        { re: /(مقاول|مقاولين)/, intent: 'list_subcontractors', tool: 'list_subcontractors', entity: 'subcontractor', perm: 'subcontractors.read' },
+        { re: /(مورد|موردين|مورّد)/, intent: 'list_suppliers', tool: 'list_suppliers', entity: 'supplier', perm: 'suppliers.read' },
+        { re: /(عميل|عملاء)/, intent: 'list_clients', tool: 'list_clients', entity: 'client', perm: 'clients.read' },
+        { re: /(موظف|موظفين)/, intent: 'list_employees', tool: 'list_employees', entity: 'employee', perm: 'employees.read' },
+        { re: /(مشتريات|شراء)/, intent: 'list_purchases', tool: 'list_purchases', entity: 'purchase', perm: 'purchases.read' },
+        { re: /(مستخلص|مستخلصات)/, intent: 'list_extracts', tool: 'list_extracts', entity: 'extract', perm: 'extracts.read' },
+        { re: /(بنود|بند|اصناف|أصناف|صنف|خامات|مواد|مخزون)/, intent: 'list_inventory_items', tool: 'list_inventory_items', entity: 'item', perm: 'inventory.read' },
+        { re: /(مخزن|مخازن)/, intent: 'list_warehouses', tool: 'list_warehouses', entity: 'warehouse', perm: 'warehouses.read' },
+        { re: /(صناديق|صندوق)/, intent: 'list_project_funds', tool: 'list_project_funds', entity: 'fund', perm: 'project-funds.read' },
+      ];
+      for (const t of arShowTargets) {
+        if (t.re.test(showTarget)) {
+          return {
+            intent: t.intent,
+            confidence: 0.85,
+            entities: { entity: t.entity },
+            toolName: t.tool,
+            requiredPermissions: [t.perm],
+          };
+        }
+      }
+    }
+
+    // Attendance questions: "مين متأخر النهاردة؟" / "مين حضر النهاردة؟" / "مين غايب اليوم؟"
+    if (/(مين|من هم)\s+(.+)/.test(lower) &&
+        /(متأخر|متاخر|متأخره|متاخره|حاضر|حضر|غايب|غائب|غياب|انصراف|غياب)/.test(lower)) {
+      return {
+        intent: 'list_attendance',
+        confidence: 0.8,
+        entities: { entity: 'attendance' },
+        toolName: 'list_attendance',
+        requiredPermissions: ['attendance.read'],
+      };
+    }
+
     const hasArabicEntity =
-      /(مشروع|مشاريع|مبني|مبنى|عماره|عمارة|مباني|مبانى|مقاول|بند|بنود|مخزون|مخزن|مورد|مشتريات|مستخلص|صناديق|صندوق)/.test(lower);
+      /(مشروع|مشاريع|مبني|مبنى|عماره|عمارة|مباني|مبانى|مقاول|بند|بنود|مخزون|مخزن|مورد|مشتريات|مستخلص|صناديق|صندوق|مصاريف|مصروفات)/.test(lower);
     const arabicAnalysis: Array<{ pattern: RegExp; intentName: string; entity: string }> = [
-      { pattern: /(ارباح|أرباح|ربحيه|ربحية|بيخسر|خسران|الربح|الخساره|الخسارة)/, intentName: 'get_project_profitability', entity: 'profitability' },
+      { pattern: /(ارباح|أرباح|ربحيه|ربحية|بيخسر|بتخسر|تخسر|خسران|الخساره|الخسارة|خساره|خسارة|ربح|كسبان|كسبانه|كسبانة|مربح|مربحة|مكسب|مكاسر|مكاسب)/, intentName: 'get_project_profitability', entity: 'profitability' },
       { pattern: /(مخاطر|مخاطره|الخطر|خطوره|خطورة)/, intentName: 'get_project_risks', entity: 'risk' },
       { pattern: /(تقييم|اداء المقاول|أداء المقاول|الأداء|الاداء)/, intentName: 'get_contractor_analysis', entity: 'contractor' },
       { pattern: /(الميزانيه|الميزانية|الموازنه|الموازنة|تجاوز.*ميزانيه)/, intentName: 'get_project_dashboard', entity: 'purchase' },
+      { pattern: /(موقف|الموقف|وضع المشروع|شغال ولا|حاله المشروع|حالة المشروع)/, intentName: 'get_project_dashboard', entity: 'project' },
+      { pattern: /(مصاريف|مصروفات|المصاريف|المصروفات|التدفق النقدي|السيولة|سيولة)/, intentName: 'get_cashflow', entity: 'cashflow' },
+      { pattern: /(مشتريات|المشتريات).*(مستلم|استلم|لسه|لسة|وصلت|موصله|موصلة|مرفوضه|مرفوضة|مرفوض)/, intentName: 'list_purchases', entity: 'purchase' },
       { pattern: /(الحضور.*(نسبه|نسبة|إحصائيه|إحصائية|تحليل|ساعات)|نسبه الحضور|نسبة الحضور|حضور.*غياب|تأخير.*حضور)/, intentName: 'get_attendance_analysis', entity: 'attendance' },
+      { pattern: /(متأخر|متاخر|متأخره|متاخره).*(مشروع|مشاريع)|(مشروع|مشاريع).*(متأخر|متاخر|متأخره|متاخره)/, intentName: 'get_project_risks', entity: 'risk' },
+      { pattern: /(تحليل|تحليلات|حلل|دراسه|دراسة).*(boq|بند|بنود|كميات|كمية)|(boq|بند|بنود|كميات|كمية).*(تحليل|تحليلات|حلل|دراسه|دراسة)/, intentName: 'get_boq_analysis', entity: 'project' },
     ];
     if (hasArabicEntity || context?.projectId) {
       for (const ap of arabicAnalysis) {
@@ -369,10 +583,11 @@ export class PlannerService {
       }
     }
 
-    // Arabic "where is X" → inventory location (e.g. "فين الحديد؟")
-    const arWhereMatch = lower.match(/(?:فين|اين|وين)\s+(.+)/);
+    // Arabic "where is X" / "مخزن فيه X" → inventory location (e.g. "فين الحديد؟", "المخزن فيه حديد كام؟")
+    const arWhereMatch = lower.match(/(?:فين|اين|وين)\s+(.+)|(?:المخزن|المخزون|مخزن|مخزون|المخازن|مخازن)[^\n]*?(?:فيه|فية|فيا|موجود فيه|موجود فية)\s+(.+)/);
     if (arWhereMatch) {
-      const target = arWhereMatch[1].replace(/[؟?]+$/, '').trim();
+      const rawTarget = (arWhereMatch[1] || arWhereMatch[2] || '').replace(/[؟?]+$/, '').trim();
+      const target = rawTarget.replace(/\s+(كام|كم|بكام|عندك|عندنا|عندكو|فيه|فية|متوفر|الموجود|موجود)\s*$/i, '');
       if (target) {
         return {
           intent: 'list_inventory_items',
@@ -382,6 +597,18 @@ export class PlannerService {
           requiredPermissions: ['inventory.read'],
         };
       }
+    }
+
+    // Arabic inventory listing: "اعرض مخزون المشروع" / "وريني مخزون المشروع"
+    // must go to the inventory list, NOT list_projects (which "المشروع" would match).
+    if (/(مخزون|المخزون)/.test(lower) && /(اعرض(?:لي|لى)?|وريني|ورينى|عرض|شوف(?:لي|لى)?|اديني|ادينى|جيب|قول(?:لي|لى)?|كشف|قائمة|قائمه|اظهر|أظهر|ابحث|دور|كم|كام|عندك)/.test(lower)) {
+      return {
+        intent: 'list_inventory_items',
+        confidence: 0.85,
+        entities: { entity: 'item' },
+        toolName: 'list_inventory_items',
+        requiredPermissions: ['inventory.read'],
+      };
     }
 
     // Check for knowledge queries first
@@ -469,10 +696,24 @@ export class PlannerService {
       }
     }
 
-    // Check for list/retrieval queries (English + Arabic/Egyptian verbs)
-    const listMatch = lower.match(/(?:show|list|get|find|display|view|اعرض|وريني|ارني|اريني|عرض|اطلع|اكشف|دور|ابحث عن|ابحث|عرفني|اظهر|أظهر|عايز اشوف|اكشفلي)\s+(.+)/);
+    // Check for list/retrieval queries (English + Arabic/Egyptian verbs, including
+    // attached-pronoun forms like "اعرضلي" and question words "مين"/"كام"/"ايه")
+    const listMatch = lower.match(
+      /(?:show|list|get|find|display|view|اعرض(?:لي|لى)?|عرض|وريني|ورينى|ارني|اريني|أرني|أريني|اطلع(?:لي|لى)?|اكشف(?:لي|لى)?|دور(?:لي|لى)?|ادور|ابحث عن|ابحث|عرفني|عرفنى|اظهر|أظهر|شوف(?:لي|لى)?|قول(?:لي|لى)?|اديني|ادينى|جيب(?:لي|لى)?|عايز اشوف|عايز أشوف|مين هم|من هم|ايه|اية|كام|كم|عندك|عندي)\s+(.+)/,
+    );
     if (listMatch) {
       const entity = this.extractEntity(listMatch[1]);
+      // BOQ listing (e.g. "اعرض البنود", "عرض بنود الـ BOQ") → BOQ intelligence
+      // which classifies items as profitable/loss-making per project.
+      if (entity === 'boq') {
+        return {
+          intent: 'get_boq_analysis',
+          confidence: 0.8,
+          entities: { entity: 'project' },
+          toolName: 'get_boq_analysis',
+          requiredPermissions: ['projects.read'],
+        };
+      }
       // Prefer get_* if "details" is in the message
       const wantsDetails = lower.includes('details') || lower.includes('detail') || lower.includes('تفاصيل');
       const intent = this.intents.find(
@@ -530,6 +771,22 @@ export class PlannerService {
       if (intent) {
         const missing = this.getMissingFieldsForCreate(entity, context);
         if (missing.length > 0) {
+          // Prefer a full workflow when one exists (e.g. create_project) so the
+          // follow-up can be resumed across turns; otherwise fall back to the
+          // single-tool follow-up question.
+          const workflowIntent = this.intents.find(
+            (i) => i.category === IntentCategory.WORKFLOW && i.entities?.includes(entity),
+          );
+          if (workflowIntent) {
+            return {
+              intent: workflowIntent.action,
+              confidence: 0.8,
+              entities: { entity },
+              requiresWorkflow: workflowIntent.requiresWorkflow,
+              requiresFollowUp: true,
+              followUpQuestion: `I'll help you ${workflowIntent.description}. I need: ${missing.join(', ')}.`,
+            };
+          }
           return {
             intent: intent.action,
             confidence: 0.8,

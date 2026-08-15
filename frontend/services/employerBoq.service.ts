@@ -36,6 +36,13 @@ export const employerBoqService = {
     );
   },
 
+  async removeAll(buildingId: string): Promise<void> {
+    await apiClient<void>(
+      `/buildings/${buildingId}/boq/employer/items`,
+      { method: 'DELETE' }
+    );
+  },
+
   async replaceAll(buildingId: string, items: EmployerBoqItem[]): Promise<EmployerBoqItem[]> {
     const data = await apiClient<{ items: EmployerBoqItem[] }>(
       `/buildings/${buildingId}/boq/employer`,

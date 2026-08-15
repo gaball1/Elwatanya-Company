@@ -117,6 +117,12 @@ export class PrismaEmployerBoqRepository implements IEmployerBoqRepository {
     });
   }
 
+  async deleteAllForBuilding(buildingId: UniqueEntityId): Promise<void> {
+    await this.prisma.employerBoqItem.deleteMany({
+      where: { buildingId: buildingId.toValue() },
+    });
+  }
+
   async generateNextItemCode(buildingId: UniqueEntityId): Promise<string> {
     return await this.prisma.$transaction(async (tx) => {
       // Insert-or-increment atomically to avoid races when no counter row exists yet.

@@ -29,6 +29,8 @@ import { employeeService, type Employee } from "@/services/employee.service";
 import { projectService, type Project } from "@/services/project.service";
 import { buildingService, type Building } from "@/services/building.service";
 import { printAsPDF } from "@/lib/printUtils";
+import { useHasPermission } from "@/hooks/usePermissions";
+import { useAuth } from "@/hooks/useAuth";
 
 const STATUS_OPTIONS = [
   { value: "", labelKey: "all" },
@@ -289,6 +291,8 @@ export default function AttendanceHistoryPage() {
   const locale = (params.locale as string) ?? "ar";
   const isArabic = locale === "ar";
   const { showToast, ToastComponent } = useToast();
+  const canManage = useHasPermission("attendance.update");
+  const { loading: authLoading } = useAuth();
 
   const [records, setRecords] = useState<Attendance[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -307,13 +311,21 @@ export default function AttendanceHistoryPage() {
   const [detailOpen, setDetailOpen] = useState(false);
 
   const loadData = useCallback(async () => {
+    if (!canManage) return;
     try {
       setLoading(true);
+      const loadList = async <T,>(fn: () => Promise<T>, fallback: T): Promise<T> => {
+        try {
+          return await fn();
+        } catch {
+          return fallback;
+        }
+      };
       const [recs, emps, projs, bldgs] = await Promise.all([
         attendanceService.list(),
-        employeeService.list(),
-        projectService.getProjects(),
-        buildingService.list(),
+        loadList(() => employeeService.list(), [] as Employee[]),
+        loadList(() => projectService.getProjects(), [] as Project[]),
+        loadList(() => buildingService.list(), [] as Building[]),
       ]);
       setRecords(recs);
       setEmployees(emps);
@@ -324,9 +336,10 @@ export default function AttendanceHistoryPage() {
     } finally {
       setLoading(false);
     }
-  }, [isArabic]);
+  }, [canManage, isArabic]);
 
   useEffect(() => { loadData(); }, [loadData]);
+
 
   const employeeMap = useMemo(() => {
     const map = new Map<string, Employee>();
@@ -474,6 +487,32 @@ export default function AttendanceHistoryPage() {
   }, [filteredRecords, getEmployeeName, isArabic]);
 
   const hasActiveFilters = filterEmployee || filterProject || filterBuilding || filterDateFrom || filterDateTo || filterStatus;
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto" />
+      </div>
+    );
+  }
+
+  if (!canManage) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center p-6">
+        <div className="text-center space-y-2">
+          <AlertTriangle className="mx-auto text-amber-500" size={40} />
+          <h1 className="text-lg font-bold text-gray-900 dark:text-white">
+            {isArabic ? "ليس لديك صلاحية الوصول" : "No access"}
+          </h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            {isArabic
+              ? "هذه الصفحة متاحة للإدارة فقط"
+              : "This page is restricted to management"}
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (

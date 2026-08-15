@@ -57,6 +57,10 @@ export const employeeService = {
     const data = await apiClient<{ items: Employee[] }>('/employees', { method: 'GET' });
     return data.items;
   },
+  async getMe(): Promise<Employee> {
+    const data = await apiClient<{ employee: Employee }>('/employees/me', { method: 'GET' });
+    return data.employee;
+  },
   async get(id: string): Promise<Employee> {
     const data = await apiClient<{ employee: Employee }>(`/employees/${id}`, { method: 'GET' });
     return data.employee;

@@ -58,7 +58,7 @@ export class NotificationEngineService implements OnModuleInit {
           data: {
             entityType: event.aggregateType,
             entityId: event.aggregateId,
-            link: this.buildLink(event.aggregateType, event.aggregateId),
+            link: this.buildLink(event.aggregateType, event.aggregateId, payload),
             ...event.payload,
           },
           priority: 'normal',
@@ -69,14 +69,38 @@ export class NotificationEngineService implements OnModuleInit {
     }
   }
 
-  private buildLink(aggregateType: string, aggregateId: string): string {
+  private buildLink(aggregateType: string, aggregateId: string, payload: any): string {
+    const projectId = payload?.projectId;
+    const buildingId = payload?.buildingId;
+    
     switch (aggregateType) {
       case 'attendance_override':
         return `/attendance/overrides`;
       case 'attendance':
         return `/attendance`;
       case 'fund_transaction':
+        if (projectId) return `/projects/${projectId}/treasury`;
         return `/treasury`;
+      case 'purchase':
+        if (projectId) return `/projects/${projectId}/purchases?purchaseId=${aggregateId}`;
+        return `/purchases`;
+      case 'extract':
+        if (projectId && buildingId) return `/projects/${projectId}/buildings/${buildingId}/extracts/${aggregateId}`;
+        if (projectId) return `/projects/${projectId}/extracts`;
+        return `/extracts/${aggregateId}`;
+      case 'payment':
+        if (projectId) return `/projects/${projectId}/payments`;
+        return `/payments`;
+      case 'approval':
+        return `/approvals`;
+      case 'project':
+        return `/projects/${aggregateId}`;
+      case 'building':
+        if (projectId) return `/projects/${projectId}/buildings/${aggregateId}`;
+        return `/buildings/${aggregateId}`;
+      case 'stock_movement':
+        if (projectId) return `/projects/${projectId}/inventory`;
+        return `/inventory`;
       default:
         return `/${aggregateType}s/${aggregateId}`;
     }

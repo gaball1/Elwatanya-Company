@@ -19,6 +19,7 @@ export class PrismaMiscellaneousRepository implements IMiscellaneousRepository {
       category: miscellaneous.category,
       date: miscellaneous.date,
       notes: miscellaneous.notes,
+      invoiceFile: miscellaneous.invoiceFile,
       createdBy: miscellaneous.createdBy,
       deletedAt: miscellaneous.deletedAt,
       updatedAt: new Date(),
@@ -60,6 +61,7 @@ export class PrismaMiscellaneousRepository implements IMiscellaneousRepository {
     category: string;
     date: Date;
     notes: string;
+    invoiceFile: string | null;
     createdBy: string;
     deletedAt: Date | null;
     createdAt: Date;
@@ -73,6 +75,7 @@ export class PrismaMiscellaneousRepository implements IMiscellaneousRepository {
         category: record.category as MiscellaneousCategory,
         date: record.date,
         notes: record.notes,
+        invoiceFile: record.invoiceFile,
         createdBy: record.createdBy,
         deletedAt: record.deletedAt,
       },

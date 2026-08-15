@@ -11,6 +11,7 @@ export interface StockMovementProps {
   quantity: number;
   date: Date;
   reference: string;
+  reason: string;
   notes: string;
   createdBy: string;
   issuedTo: string;
@@ -38,6 +39,7 @@ export class StockMovement extends AggregateRoot {
   get quantity(): number { return this.props.quantity; }
   get date(): Date { return this.props.date; }
   get reference(): string { return this.props.reference; }
+  get reason(): string { return this.props.reason; }
   get notes(): string { return this.props.notes; }
   get createdBy(): string { return this.props.createdBy; }
   get issuedTo(): string { return this.props.issuedTo; }
@@ -53,6 +55,7 @@ export class StockMovement extends AggregateRoot {
     quantity: number;
     date?: Date;
     reference?: string;
+    reason?: string;
     notes?: string;
     createdBy?: string;
     issuedTo?: string;
@@ -78,6 +81,7 @@ export class StockMovement extends AggregateRoot {
         quantity: input.quantity,
         date: input.date ?? new Date(),
         reference: input.reference ?? '',
+        reason: input.reason ?? '',
         notes: input.notes ?? '',
         createdBy: input.createdBy ?? '',
         issuedTo: input.issuedTo ?? '',
@@ -104,6 +108,7 @@ export class StockMovement extends AggregateRoot {
     quantity?: number;
     date?: Date;
     reference?: string;
+    reason?: string;
     notes?: string;
     createdBy?: string;
     issuedTo?: string;
@@ -121,6 +126,7 @@ export class StockMovement extends AggregateRoot {
     }
     if (fields.date !== undefined) this.props.date = fields.date;
     if (fields.reference !== undefined) this.props.reference = fields.reference;
+    if (fields.reason !== undefined) this.props.reason = fields.reason;
     if (fields.notes !== undefined) this.props.notes = fields.notes;
     if (fields.createdBy !== undefined) this.props.createdBy = fields.createdBy;
     if (fields.issuedTo !== undefined) this.props.issuedTo = fields.issuedTo;

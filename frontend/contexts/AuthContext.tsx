@@ -10,7 +10,8 @@ import {
 } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import type { User } from "@/types/user";
-import { apiClient } from "@/lib/api/apiClient";
+import { apiClient, ApiError } from "@/lib/api/apiClient";
+import { isNetworkError } from "@/lib/api/fetchTransport";
 import {
   getAccessToken,
   getRefreshToken,
@@ -21,11 +22,12 @@ import {
   type AuthUser,
 } from "@/services/auth.service";
 import { setUser as setCachedUser } from "@/hooks/useUser";
+import { resetUnreadCount } from "@/hooks/useNotifications";
 
 interface AuthContextValue {
   user: User | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<boolean>;
+  login: (email: string, password: string) => Promise<User | null>;
   register: (name: string, email: string, password: string) => Promise<boolean>;
   logout: () => void;
 }
@@ -45,6 +47,8 @@ function mapApiUserToUser(apiUser: AuthUser & { createdAt?: string }): User {
     permissions: apiUser.permissions,
     roleNames: apiUser.roleNames,
     projectIds: apiUser.projectIds,
+    employeeId: apiUser.employeeId,
+    avatarUrl: apiUser.avatarUrl ?? null,
     createdAt: apiUser.createdAt ?? new Date().toISOString(),
   };
 }
@@ -58,6 +62,11 @@ function isProtectedRoute(pathname: string): boolean {
   const match = pathname.match(/^\/(ar|en)(\/.*)?$/);
   if (!match) return false;
   return !PUBLIC_ROUTES.has(match[2] ?? "");
+}
+
+function isTransientFailure(error: unknown): boolean {
+  if (error instanceof ApiError) return error.status === 408;
+  return isNetworkError(error);
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -88,25 +97,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const { user: currentUser } = await authService.getCurrentUser();
         const mapped = mapApiUserToUser(currentUser);
         if (!cancelled) {
+          resetUnreadCount();
           setUser(mapped);
           setCachedUser(mapped);
         }
-      } catch {
+      } catch (error) {
+        if (isTransientFailure(error)) {
+          if (!cancelled) setLoading(false);
+          return;
+        }
         try {
           await authService.refresh();
           const { user: currentUser } = await authService.getCurrentUser();
           const mapped = mapApiUserToUser(currentUser);
           if (!cancelled) {
+            resetUnreadCount();
             setUser(mapped);
             setCachedUser(mapped);
           }
-        } catch {
+        } catch (error2) {
+          if (isTransientFailure(error2)) {
+            if (!cancelled) setLoading(false);
+            return;
+          }
           try {
             await authService.logout();
           } catch {
             // ignore
           }
           if (!cancelled) {
+            resetUnreadCount();
             setUser(null);
             setCachedUser(null);
           }
@@ -135,18 +155,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = useCallback(async (email: string, password: string) => {
     if (!email || !password) {
-      return false;
+      return null;
     }
 
-    try {
-      const data = await authService.login(email, password);
-      const mapped = mapApiUserToUser(data.user);
-      setUser(mapped);
-      setCachedUser(mapped);
-      return true;
-    } catch {
-      return false;
-    }
+    const data = await authService.login(email, password);
+    const mapped = mapApiUserToUser(data.user);
+    resetUnreadCount();
+    setUser(mapped);
+    setCachedUser(mapped);
+    return mapped;
   }, []);
 
   const register = useCallback(
@@ -166,6 +183,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         saveAccessToken(data.accessToken);
         saveRefreshToken(data.refreshToken);
         const mapped = mapApiUserToUser(data.user);
+        resetUnreadCount();
         setUser(mapped);
         setCachedUser(mapped);
         return true;
@@ -178,6 +196,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = useCallback(() => {
     void authService.logout().finally(() => {
+      resetUnreadCount();
       setUser(null);
       setCachedUser(null);
     });

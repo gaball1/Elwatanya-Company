@@ -100,7 +100,11 @@ export class NotificationService {
     return users.map((u) => u.id);
   }
 
-  private async persist(userIds: string[], input: CreateNotificationInput): Promise<void> {
+  private async persist(
+    userIds: string[],
+    input: CreateNotificationInput,
+    targets?: { targetRoles?: string[]; targetPermissions?: string[] },
+  ): Promise<void> {
     const ids = Array.from(new Set(userIds.filter(Boolean)));
     if (ids.length === 0) return;
 
@@ -117,6 +121,8 @@ export class NotificationService {
         link: input.link,
         createdBy: input.createdBy,
         date: input.date ?? new Date(),
+        targetRoles: targets?.targetRoles ?? [],
+        targetPermissions: targets?.targetPermissions ?? [],
       })),
     });
   }
@@ -162,7 +168,7 @@ export class NotificationService {
   async createForRoles(roles: string[], input: CreateNotificationInput): Promise<void> {
     try {
       const ids = await this.resolveRoleIds(roles);
-      await this.persist(ids, input);
+      await this.persist(ids, input, { targetRoles: roles });
     } catch (err) {
       this.logger.error(`Failed to create notifications for roles ${roles.join(',')}: ${(err as Error).message}`);
     }
@@ -172,7 +178,7 @@ export class NotificationService {
   async createForPermissionHolders(permission: string, input: CreateNotificationInput): Promise<void> {
     try {
       const ids = await this.resolvePermissionHolderIds(permission);
-      await this.persist(ids, input);
+      await this.persist(ids, input, { targetPermissions: [permission] });
     } catch (err) {
       this.logger.error(`Failed to create notifications for permission holders: ${(err as Error).message}`);
     }

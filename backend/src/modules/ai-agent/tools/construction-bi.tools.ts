@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { BaseTool } from './base.tool';
 import { AgentHttpClient } from './http-client';
+import { projectSchema } from './tool-schemas';
 
 const API = '/api/v1/analytics';
 
@@ -10,6 +11,7 @@ export class EvaluateAllKpisTool extends BaseTool {
   readonly description = 'Evaluate all construction KPIs for a project including earned value (EV, PV, AC, CPI, SPI, EAC, VAC), progress, BOQ profit/margin, cash flow, purchases, inventory, attendance, payroll, risk score and pending approvals';
   readonly requiresPermission = 'projects.read';
   readonly requiredEntity = 'project';
+  readonly parameters = projectSchema();
 
   constructor(private readonly http: AgentHttpClient) { super(); }
 

@@ -10,6 +10,7 @@ export interface JwtPayload {
   permissions?: string[];
   roleNames?: string[];
   projectIds?: string[];
+  employeeId?: string | null;
 }
 
 export interface AuthenticatedRequest extends Request {

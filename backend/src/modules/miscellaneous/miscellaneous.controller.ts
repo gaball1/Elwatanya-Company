@@ -63,6 +63,7 @@ export class MiscellaneousController {
       category: dto.category,
       date: new Date(dto.date),
       notes: dto.notes,
+      invoiceFile: dto.invoiceFile,
       createdBy: dto.createdBy,
     });
     if (result.isFailure) handleError(result.error?.message, 'Failed to create miscellaneous record');
@@ -80,6 +81,8 @@ export class MiscellaneousController {
       category: dto.category,
       date: dto.date !== undefined ? new Date(dto.date) : undefined,
       notes: dto.notes,
+      invoiceFile: dto.invoiceFile,
+      createdBy: dto.createdBy,
     });
     if (result.isFailure) handleError(result.error?.message, 'Failed to update miscellaneous record');
     return { miscellaneous: result.getValue() };

@@ -16,7 +16,7 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { RequirePermission } from '../../common/decorators/permissions.decorator';
-import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
 import { Permissions } from '../../common/constants/permissions.constant';
 import { BuildingApplicationError, BuildingErrorCode } from '@/modules/building/application/errors/building-application.error';
 import { ListAnalyticalBoqItemsUseCase } from './application/use-cases/list-analytical-boq-items.use-case';
@@ -49,8 +49,8 @@ export class AnalyticalBoqController {
   @Get('buildings/:buildingId/boq/analytical')
   @ApiOperation({ summary: 'List analytical BOQ items for a building' })
   @RequirePermission(Permissions.AnalyticalBoq.Read)
-  async list(@Param('buildingId', ParseUUIDPipe) buildingId: string, @CurrentUser('projectId') projectId?: string) {
-    const result = await this.listAnalyticalBoqItems.execute(buildingId, projectId);
+  async list(@Param('buildingId', ParseUUIDPipe) buildingId: string, @CurrentUser() user?: JwtPayload) {
+    const result = await this.listAnalyticalBoqItems.execute(buildingId, user);
     if (result.isFailure) {
       throw this.mapError(result.error);
     }
@@ -63,13 +63,13 @@ export class AnalyticalBoqController {
   async replaceAll(
     @Param('buildingId', ParseUUIDPipe) buildingId: string,
     @Body() dto: SetAnalyticalBoqItemsDto,
-    @CurrentUser('projectId') projectId?: string,
+    @CurrentUser() user?: JwtPayload,
     @CurrentUser('sub') userId?: string,
   ) {
     const result = await this.setAnalyticalBoqItems.execute({
       buildingId,
       items: dto.items,
-    }, projectId, userId);
+    }, user, userId);
     if (result.isFailure) {
       throw this.mapError(result.error);
     }
@@ -83,7 +83,7 @@ export class AnalyticalBoqController {
     @Param('buildingId', ParseUUIDPipe) buildingId: string,
     @Param('itemCode') itemCode: string,
     @Body() dto: UpdateAnalyticalBoqItemDto,
-    @CurrentUser('projectId') projectId?: string,
+    @CurrentUser() user?: JwtPayload,
     @CurrentUser('sub') userId?: string,
   ) {
     const result = await this.updateAnalyticalBoqItem.execute({
@@ -92,7 +92,7 @@ export class AnalyticalBoqController {
       description: dto.description,
       quantity: dto.quantity,
       unitPrice: dto.unitPrice,
-    }, projectId, userId);
+    }, user, userId);
     if (result.isFailure) {
       throw this.mapError(result.error);
     }
@@ -106,10 +106,10 @@ export class AnalyticalBoqController {
   async remove(
     @Param('buildingId', ParseUUIDPipe) buildingId: string,
     @Param('itemCode') itemCode: string,
-    @CurrentUser('projectId') projectId?: string,
+    @CurrentUser() user?: JwtPayload,
     @CurrentUser('sub') userId?: string,
   ) {
-    const result = await this.removeAnalyticalBoqItem.execute(buildingId, itemCode, projectId, userId);
+    const result = await this.removeAnalyticalBoqItem.execute(buildingId, itemCode, user, userId);
     if (result.isFailure) {
       throw this.mapError(result.error);
     }
@@ -121,13 +121,13 @@ export class AnalyticalBoqController {
   async importFromEmployer(
     @Param('buildingId', ParseUUIDPipe) buildingId: string,
     @Body() dto: ImportAnalyticalFromEmployerDto,
-    @CurrentUser('projectId') projectId?: string,
+    @CurrentUser() user?: JwtPayload,
     @CurrentUser('sub') userId?: string,
   ) {
     const result = await this.importAnalyticalFromEmployer.execute({
       buildingId,
       itemCode: dto.itemCode,
-    }, projectId, userId);
+    }, user, userId);
     if (result.isFailure) {
       throw this.mapError(result.error);
     }

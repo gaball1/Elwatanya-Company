@@ -18,11 +18,12 @@ import {
 } from "lucide-react";
 import { projectService } from "@/services/project.service";
 import { employeeService } from "@/services/employee.service";
-import { attendanceService } from "@/services/attendance.service";
+import { attendanceService, type AttendanceDashboardStats } from "@/services/attendance.service";
 import { subcontractorService } from "@/services/subcontractor.service";
 import { inventoryItemService } from "@/services/inventory-item.service";
 import { projectFundService } from "@/services/project-fund.service";
 import { notificationService } from "@/services/notification.service";
+import { useAuth } from "@/hooks/useAuth";
 
 interface KpiCardProps {
   label: string;
@@ -71,36 +72,47 @@ export default function AdminDashboard() {
   const isArabic = locale === "ar";
   const [projects, setProjects] = useState<any[]>([]);
   const [employees, setEmployees] = useState<any[]>([]);
-  const [attendanceRecords, setAttendanceRecords] = useState<any[]>([]);
+  const [attendanceStats, setAttendanceStats] = useState<AttendanceDashboardStats | null>(null);
   const [subcontractors, setSubcontractors] = useState<any[]>([]);
   const [inventoryItems, setInventoryItems] = useState<any[]>([]);
   const [projectFunds, setProjectFunds] = useState<any[]>([]);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const { user } = useAuth();
+  const can = (perm: string) =>
+    !!user?.roleNames?.includes("SUPER_ADMIN") || !!user?.permissions?.includes(perm);
 
   useEffect(() => {
     setLoading(true);
+    // Only fetch widgets the user may read; never log expected permission denials.
+    const safe = async <T,>(fn: () => Promise<T>, fallback: T): Promise<T> => {
+      try {
+        return await fn();
+      } catch {
+        return fallback;
+      }
+    };
     Promise.all([
-      projectService.getProjects(),
-      employeeService.list(),
-      attendanceService.list(),
-      subcontractorService.list(),
-      inventoryItemService.list(),
-      projectFundService.list(),
-      notificationService.list(),
+      safe(() => projectService.getProjects(), []),
+      can("employees.read") ? safe(() => employeeService.list(), []) : Promise.resolve([] as any[]),
+      can("attendance.read") ? safe(() => attendanceService.getDashboardStats(), null) : Promise.resolve(null),
+      can("subcontractors.read") ? safe(() => subcontractorService.list(), []) : Promise.resolve([] as any[]),
+      can("inventory.read") ? safe(() => inventoryItemService.list(), []) : Promise.resolve([] as any[]),
+      can("project-funds.read") ? safe(() => projectFundService.list(), []) : Promise.resolve([] as any[]),
+      safe(() => notificationService.list({ read: false, limit: 10 }), []),
     ])
       .then(([p, emp, att, sub, inv, funds, notif]) => {
         setProjects(p);
         setEmployees(emp);
-        setAttendanceRecords(att);
+        setAttendanceStats(att);
         setSubcontractors(sub);
         setInventoryItems(inv);
         setProjectFunds(funds);
         setNotifications(notif);
       })
-      .catch((err) => console.error("[AdminDashboard] Failed to load data:", err))
+      .catch(() => {})
       .finally(() => setLoading(false));
-  }, []);
+  }, [user]);
 
   const totalProjects = projects.length;
   const activeProjects = projects.filter((p) => p.status === "active").length;
@@ -108,17 +120,23 @@ export default function AdminDashboard() {
   const totalFunds = projectFunds.reduce((s, f) => s + f.currentBalance, 0);
   const totalQty = inventoryItems.reduce((s, i) => s + i.quantity, 0);
   const progressAvg = projects.length ? Math.round(projects.reduce((s, p) => s + (p.progress || 0), 0) / projects.length) : 0;
-  const totalEmployees = employees.length;
-  const todayDate = new Date().toISOString().split("T")[0];
-  const todayAttendance = attendanceRecords.filter((a) => a.date === todayDate).length;
+  const hasEmployeesData = can("employees.read");
+  const totalEmployees = attendanceStats?.totalEmployees ?? employees.length;
+  const todayAttendance = attendanceStats?.presentToday ?? 0;
+  const absentToday = attendanceStats?.absentToday ?? Math.max(totalEmployees - todayAttendance, 0);
+  const attendanceRate = attendanceStats?.attendanceRate ??
+    (totalEmployees ? Math.round((todayAttendance / totalEmployees) * 100) : 0);
   const lowStockItems = inventoryItems.filter((i) => i.quantity <= i.minQuantity).length;
+  const hasFunds = can("project-funds.read");
+  const hasInventory = can("inventory.read");
+  const hasSubcontractors = can("subcontractors.read");
 
   const kpiCards = [
     { label: isArabic ? "إجمالي المشاريع" : "Total Projects", value: totalProjects, icon: <Building2 size={20} />, color: "bg-primary", link: `/${locale}/projects`, trend: undefined, index: 0 },
     { label: isArabic ? "مشاريع نشطة" : "Active Projects", value: activeProjects, icon: <Activity size={20} />, color: "bg-success", link: `/${locale}/projects`, trend: undefined, index: 1 },
-    { label: isArabic ? "المقاولين" : "Subcontractors", value: totalSubcontractors, icon: <Users size={20} />, color: "bg-gold", link: `/${locale}/subcontractors`, trend: undefined, index: 2 },
-    { label: isArabic ? "إجمالي العهد" : "Total Funds", value: `${(totalFunds / 1000000).toFixed(1)}M ${isArabic ? "ج.م" : "EGP"}`, icon: <Wallet size={20} />, color: "bg-info", link: `/${locale}/projects`, trend: undefined, index: 3 },
-    { label: isArabic ? "أصناف المخازن" : "Inventory Items", value: totalQty, icon: <Package size={20} />, color: "bg-warning", link: `/${locale}/inventory`, trend: undefined, index: 4 },
+    { label: isArabic ? "المقاولين" : "Subcontractors", value: hasSubcontractors ? totalSubcontractors : "—", icon: <Users size={20} />, color: "bg-gold", link: `/${locale}/subcontractors`, trend: undefined, index: 2 },
+    { label: isArabic ? "إجمالي العهد" : "Total Funds", value: hasFunds ? `${(totalFunds / 1000000).toFixed(1)}M ${isArabic ? "ج.م" : "EGP"}` : "—", icon: <Wallet size={20} />, color: "bg-info", link: `/${locale}/projects`, trend: undefined, index: 3 },
+    { label: isArabic ? "أصناف المخازن" : "Inventory Items", value: hasInventory ? totalQty : "—", icon: <Package size={20} />, color: "bg-warning", link: `/${locale}/inventory`, trend: undefined, index: 4 },
     { label: isArabic ? "متوسط الإنجاز" : "Avg Progress", value: `${progressAvg}%`, icon: <TrendingUp size={20} />, color: "bg-danger", link: `/${locale}/projects`, trend: undefined, index: 5 },
   ];
 
@@ -287,7 +305,15 @@ export default function AdminDashboard() {
                 </h2>
               </div>
               <div className="space-y-3">
-                {projectFunds.slice(0, 3).map((fund) => {
+                {!hasFunds ? (
+                  <p className="text-xs text-text-muted text-center py-4">
+                    {isArabic ? "لا توجد صلاحية للعرض" : "No access to view"}
+                  </p>
+                ) : projectFunds.length === 0 ? (
+                  <p className="text-xs text-text-muted text-center py-4">
+                    {isArabic ? "لا توجد عهد" : "No funds"}
+                  </p>
+                ) : projectFunds.slice(0, 3).map((fund) => {
                   const proj = projects.find((p) => p.id === fund.projectId);
                   return (
                     <div key={fund.id} className="flex items-center justify-between text-sm">
@@ -308,7 +334,15 @@ export default function AdminDashboard() {
                 </h2>
               </div>
               <div className="space-y-3">
-                {inventoryItems.slice(0, 3).map((item) => (
+                {!hasInventory ? (
+                  <p className="text-xs text-text-muted text-center py-4">
+                    {isArabic ? "لا توجد صلاحية للعرض" : "No access to view"}
+                  </p>
+                ) : inventoryItems.length === 0 ? (
+                  <p className="text-xs text-text-muted text-center py-4">
+                    {isArabic ? "لا توجد أصناف" : "No items"}
+                  </p>
+                ) : inventoryItems.slice(0, 3).map((item) => (
                   <div key={item.id} className="flex items-center justify-between text-sm">
                     <span className="text-text-secondary truncate">{item.name}</span>
                     <span className="font-medium text-text-primary">{item.quantity} {item.unit}</span>
@@ -328,9 +362,9 @@ export default function AdminDashboard() {
             </h2>
             <div className="space-y-4">
               {[
-                { label: isArabic ? "الموظفين" : "Employees", value: totalEmployees, icon: <UserCheck size={16} />, color: "text-primary", bg: "bg-primary/5" },
-                { label: isArabic ? "الحضور اليوم" : "Today Attendance", value: todayAttendance, icon: <Calendar size={16} />, color: "text-success", bg: "bg-success/5" },
-                { label: isArabic ? "المواد منخفضة" : "Low Stock Items", value: lowStockItems, icon: <AlertTriangle size={16} />, color: "text-danger", bg: "bg-danger/5" },
+                { label: isArabic ? "الموظفين" : "Employees", value: (hasEmployeesData || attendanceStats) ? totalEmployees : "—", icon: <UserCheck size={16} />, color: "text-primary", bg: "bg-primary/5" },
+                { label: isArabic ? "الحضور اليوم" : "Today Attendance", value: attendanceStats ? todayAttendance : "—", icon: <Calendar size={16} />, color: "text-success", bg: "bg-success/5" },
+                { label: isArabic ? "المواد منخفضة" : "Low Stock Items", value: hasInventory ? lowStockItems : "—", icon: <AlertTriangle size={16} />, color: "text-danger", bg: "bg-danger/5" },
               ].map((stat, i) => (
                 <div key={i} className="flex items-center gap-3">
                   <div className={cn("p-2 rounded-lg", stat.bg)}>
@@ -385,25 +419,31 @@ export default function AdminDashboard() {
               {isArabic ? "الحضور اليوم" : "Today's Attendance"}
             </h2>
             <div className="flex items-center justify-center py-4">
-              <div className="relative w-28 h-28">
-                <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36">
-                  <circle cx="18" cy="18" r="15.5" fill="none" stroke="var(--color-surface-tertiary)" strokeWidth="3" />
-                  <circle cx="18" cy="18" r="15.5" fill="none" stroke="var(--color-gold)" strokeWidth="3"
-                    strokeDasharray="97.4" strokeDashoffset={97.4 - (97.4 * (totalEmployees ? Math.round((todayAttendance / totalEmployees) * 100) : 0)) / 100} strokeLinecap="round" />
-                </svg>
-                <div className="absolute inset-0 flex items-center justify-center flex-col">
-                  <span className="text-xl font-bold text-text-primary">{totalEmployees ? Math.round((todayAttendance / totalEmployees) * 100) : 0}%</span>
-                  <span className="text-[10px] text-text-muted">{todayAttendance}/{totalEmployees}</span>
+              {attendanceStats ? (
+                <div className="relative w-28 h-28">
+                  <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36">
+                    <circle cx="18" cy="18" r="15.5" fill="none" stroke="var(--color-surface-tertiary)" strokeWidth="3" />
+                    <circle cx="18" cy="18" r="15.5" fill="none" stroke="var(--color-gold)" strokeWidth="3"
+                      strokeDasharray="97.4" strokeDashoffset={97.4 - (97.4 * attendanceRate) / 100} strokeLinecap="round" />
+                  </svg>
+                  <div className="absolute inset-0 flex items-center justify-center flex-col">
+                    <span className="text-xl font-bold text-text-primary">{attendanceRate}%</span>
+                    <span className="text-[10px] text-text-muted">{todayAttendance}/{totalEmployees}</span>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <p className="text-xs text-text-muted text-center py-6">
+                  {isArabic ? "لا توجد صلاحية لعرض الحضور" : "No access to view attendance"}
+                </p>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-2 text-center text-xs">
               <div className="p-2 rounded-lg bg-success/5">
-                <p className="font-semibold text-success">{todayAttendance}</p>
+                <p className="font-semibold text-success">{attendanceStats ? todayAttendance : "—"}</p>
                 <p className="text-text-muted">{isArabic ? "موجود" : "Present"}</p>
               </div>
               <div className="p-2 rounded-lg bg-danger/5">
-                <p className="font-semibold text-danger">{totalEmployees - todayAttendance}</p>
+                <p className="font-semibold text-danger">{attendanceStats ? absentToday : "—"}</p>
                 <p className="text-text-muted">{isArabic ? "غائب" : "Absent"}</p>
               </div>
             </div>

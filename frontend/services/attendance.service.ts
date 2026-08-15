@@ -87,12 +87,20 @@ export interface AttendanceOverride {
   employeeId: string | null;
   date: string | null;
   createdAt: string;
+  employee?: {
+    id: string;
+    fullName: string;
+    code: string;
+  } | null;
+  attendance?: Attendance | null;
   payload?: {
+    checkInTime?: string | null;
     checkInLatitude?: number | null;
     checkInLongitude?: number | null;
     checkInAddress?: string | null;
     checkInAccuracy?: number | null;
     checkInSelfie?: string | null;
+    checkOutTime?: string | null;
     checkOutLatitude?: number | null;
     checkOutLongitude?: number | null;
     checkOutAddress?: string | null;
@@ -110,16 +118,37 @@ export interface AttendanceActionResult {
   override?: AttendanceOverride;
 }
 
+export interface AttendanceDashboardStats {
+  presentToday: number;
+  absentToday: number;
+  lateToday: number;
+  checkedOut: number;
+  workingNow: number;
+  outsideSite: number;
+  avgWorkedMinutes: number;
+  attendanceRate: number;
+  totalEmployees: number;
+  todayDate: string;
+}
+
 export const attendanceService = {
   async list(): Promise<Attendance[]> {
     const data = await apiClient<{ items: Attendance[] }>('/attendance', { method: 'GET' });
     return data.items;
   },
+  async listMine(): Promise<Attendance[]> {
+    const data = await apiClient<{ items: Attendance[] }>('/attendance/me', { method: 'GET' });
+    return data.items;
+  },
+  async getDashboardStats(): Promise<AttendanceDashboardStats> {
+    const data = await apiClient<{ stats: AttendanceDashboardStats }>('/attendance/stats/dashboard', { method: 'GET' });
+    return data.stats;
+  },
   async get(id: string): Promise<Attendance> {
     const data = await apiClient<{ record: Attendance }>(`/attendance/${id}`, { method: 'GET' });
     return data.record;
   },
-  async checkIn(body: CheckInData, opts?: { skipUnwrap?: boolean }): Promise<AttendanceActionResult> {
+  async checkIn(body: CheckInData): Promise<AttendanceActionResult> {
     const data = await apiClient<AttendanceActionResult>('/attendance/check-in', { method: 'POST', body });
     return data;
   },
@@ -134,9 +163,17 @@ export const attendanceService = {
     const data = await apiClient<{ override: AttendanceOverride }>('/attendance-override', { method: 'POST', body });
     return data.override;
   },
+  async updateOverrideReason(id: string, reason: string): Promise<AttendanceOverride> {
+    const data = await apiClient<{ override: AttendanceOverride }>(`/attendance-override/${id}/reason`, { method: 'PATCH', body: { reason } });
+    return data.override;
+  },
   async listOverrides(status?: string): Promise<AttendanceOverride[]> {
     const query = status ? `?status=${status}` : '';
     const data = await apiClient<{ overrides: AttendanceOverride[] }>(`/attendance-override${query}`, { method: 'GET' });
+    return data.overrides;
+  },
+  async listMyOverrides(): Promise<AttendanceOverride[]> {
+    const data = await apiClient<{ overrides: AttendanceOverride[] }>('/attendance-override/mine', { method: 'GET' });
     return data.overrides;
   },
   async approveOverride(id: string, comment: string): Promise<AttendanceOverride> {

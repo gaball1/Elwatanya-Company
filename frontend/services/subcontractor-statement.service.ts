@@ -1,5 +1,35 @@
 import { apiClient } from '@/lib/api/apiClient';
 
+export interface SubcontractorStatementItem {
+  id?: string;
+  model?: string;
+  itemName?: string;
+  unit?: string;
+  previous?: number;
+  current?: number;
+  executionPercent?: number;
+  count?: number;
+  quantity?: number;
+  price?: number;
+  totalAmount?: number;
+  insuranceAmount?: number;
+  netAmount?: number;
+}
+
+export interface SubcontractorStatementDeduction {
+  id?: string;
+  name?: string;
+  amount?: number;
+  percent?: number;
+}
+
+export interface SubcontractorStatementSignature {
+  id: string;
+  name: string;
+  title: string;
+  date: string;
+}
+
 export interface SubcontractorStatement {
   id: string;
   statementNumber: string;
@@ -21,9 +51,9 @@ export interface SubcontractorStatement {
   previousPaid: number;
   netPayable: number;
   runningNumber: number;
-  items: any[];
-  deductions: any[];
-  signatures: any[];
+  items: SubcontractorStatementItem[];
+  deductions: SubcontractorStatementDeduction[];
+  signatures: SubcontractorStatementSignature[];
   createdAt: string;
   updatedAt: string;
 }
@@ -37,11 +67,11 @@ export const subcontractorStatementService = {
     const data = await apiClient<{ statement: SubcontractorStatement }>(`/subcontractor-statements/${id}`, { method: 'GET' });
     return data.statement;
   },
-  async create(body: any): Promise<SubcontractorStatement> {
+  async create(body: unknown): Promise<SubcontractorStatement> {
     const data = await apiClient<{ statement: SubcontractorStatement }>('/subcontractor-statements', { method: 'POST', body });
     return data.statement;
   },
-  async update(id: string, body: any): Promise<SubcontractorStatement> {
+  async update(id: string, body: unknown): Promise<SubcontractorStatement> {
     const data = await apiClient<{ statement: SubcontractorStatement }>(`/subcontractor-statements/${id}`, { method: 'PATCH', body });
     return data.statement;
   },

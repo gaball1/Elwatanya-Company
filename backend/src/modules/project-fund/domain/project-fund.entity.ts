@@ -7,6 +7,7 @@ export interface ProjectFundProps {
   projectId: string;
   initialBalance: number;
   currentBalance: number;
+  pettyCashBalance: number;
   lastUpdated: Date;
   deletedAt: Date | null;
 }
@@ -27,6 +28,7 @@ export class ProjectFund extends AggregateRoot {
   get projectId(): string { return this.props.projectId; }
   get initialBalance(): number { return this.props.initialBalance; }
   get currentBalance(): number { return this.props.currentBalance; }
+  get pettyCashBalance(): number { return this.props.pettyCashBalance; }
   get lastUpdated(): Date { return this.props.lastUpdated; }
   get deletedAt(): Date | null { return this.props.deletedAt; }
   get isDeleted(): boolean { return this.props.deletedAt !== null; }
@@ -35,21 +37,25 @@ export class ProjectFund extends AggregateRoot {
     projectId: string;
     initialBalance?: number;
     currentBalance?: number;
+    pettyCashBalance?: number;
   }): Result<ProjectFund> {
     const guard = Guard.againstNullOrUndefined(input.projectId, 'projectId');
     if (guard.isFailure) return Result.fail(guard.error as Error);
 
     const initialBalance = input.initialBalance ?? 0;
     const currentBalance = input.currentBalance ?? initialBalance;
+    const pettyCashBalance = input.pettyCashBalance ?? 0;
 
     if (initialBalance < 0) return Result.fail(new Error('Initial balance cannot be negative'));
     if (currentBalance < 0) return Result.fail(new Error('Current balance cannot be negative'));
+    if (pettyCashBalance < 0) return Result.fail(new Error('Petty cash balance cannot be negative'));
 
     return Result.ok(
       new ProjectFund({
         projectId: input.projectId,
         initialBalance,
         currentBalance,
+        pettyCashBalance,
         lastUpdated: new Date(),
         deletedAt: null,
       }),
@@ -68,6 +74,7 @@ export class ProjectFund extends AggregateRoot {
   public update(fields: {
     initialBalance?: number;
     currentBalance?: number;
+    pettyCashBalance?: number;
   }): Result<void> {
     if (this.isDeleted) return Result.fail(new Error('Cannot update a deleted project fund'));
 
@@ -78,6 +85,10 @@ export class ProjectFund extends AggregateRoot {
     if (fields.currentBalance !== undefined) {
       if (fields.currentBalance < 0) return Result.fail(new Error('Current balance cannot be negative'));
       this.props.currentBalance = fields.currentBalance;
+    }
+    if (fields.pettyCashBalance !== undefined) {
+      if (fields.pettyCashBalance < 0) return Result.fail(new Error('Petty cash balance cannot be negative'));
+      this.props.pettyCashBalance = fields.pettyCashBalance;
     }
 
     this.props.lastUpdated = new Date();

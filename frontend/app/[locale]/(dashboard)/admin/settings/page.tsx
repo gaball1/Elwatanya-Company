@@ -45,11 +45,13 @@ export default function SettingsPage() {
   const [smallLogoPreview, setSmallLogoPreview] = useState<string>("");
   const [watermarkPreview, setWatermarkPreview] = useState<string>("");
   const [stampPreview, setStampPreview] = useState<string>("");
+  const [signaturePreview, setSignaturePreview] = useState<string>("");
 
   const logoRef = useRef<HTMLInputElement>(null);
   const smallLogoRef = useRef<HTMLInputElement>(null);
   const watermarkRef = useRef<HTMLInputElement>(null);
   const stampRef = useRef<HTMLInputElement>(null);
+  const signatureRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -76,6 +78,7 @@ export default function SettingsPage() {
         setSmallLogoPreview(c.smallLogo || "");
         setWatermarkPreview(c.watermark || "");
         setStampPreview(c.stamp || "");
+        setSignaturePreview(c.signature || "");
       })
       .catch((err) => setError(err?.message || "Failed to load"))
       .finally(() => setLoading(false));
@@ -107,6 +110,7 @@ export default function SettingsPage() {
       else if (field === "smallLogo") setSmallLogoPreview(e.target?.result as string);
       else if (field === "watermark") setWatermarkPreview(e.target?.result as string);
       else if (field === "stamp") setStampPreview(e.target?.result as string);
+      else if (field === "signature") setSignaturePreview(e.target?.result as string);
     };
     reader.readAsDataURL(file);
 
@@ -115,7 +119,8 @@ export default function SettingsPage() {
       if (field === "logo") updated = await companyService.uploadLogo(file);
       else if (field === "smallLogo") updated = await companyService.uploadSmallLogo(file);
       else if (field === "watermark") updated = await companyService.uploadWatermark(file);
-      else updated = await companyService.uploadStamp(file);
+      else if (field === "stamp") updated = await companyService.uploadStamp(file);
+      else updated = await companyService.uploadSignature(file);
 
       setCompany(updated);
       showToast(isArabic ? "تم رفع الصورة بنجاح" : "Image uploaded", "success");
@@ -506,6 +511,39 @@ export default function SettingsPage() {
                       className="mt-2 w-full"
                       icon={<Upload className="w-4 h-4" />}
                       onClick={() => stampRef.current?.click()}
+                    >
+                      {isArabic ? "رفع" : "Upload"}
+                    </Button>
+                  </Can>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-text-secondary mb-2">
+                  {isArabic ? "التوقيع" : "Signature"}
+                </label>
+                <div className="relative">
+                  <div className="w-full aspect-video rounded-lg border-2 border-dashed border-border bg-surface/50 flex items-center justify-center overflow-hidden">
+                    {signaturePreview ? (
+                      <img src={signaturePreview} alt="Signature" className="w-full h-full object-contain p-2" />
+                    ) : (
+                      <Camera className="w-8 h-8 text-text-secondary" />
+                    )}
+                  </div>
+                  <Can permission="company.write">
+                    <input
+                      ref={signatureRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => handleImageUpload("signature", e.target.files?.[0])}
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="mt-2 w-full"
+                      icon={<Upload className="w-4 h-4" />}
+                      onClick={() => signatureRef.current?.click()}
                     >
                       {isArabic ? "رفع" : "Upload"}
                     </Button>

@@ -41,6 +41,7 @@ export default function DashboardLayout({
         collapsed={sidebarCollapsed}
         onToggle={toggleSidebar}
         userPermissions={userPermissions}
+        userEmployeeId={user?.employeeId ?? null}
       />
       {mobileSidebarOpen && (
         <div className="fixed inset-0 bg-black/30 z-20 lg:hidden" onClick={() => setMobileSidebarOpen(false)} />

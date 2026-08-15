@@ -339,10 +339,10 @@ function NewStatementPageContent() {
                       <td className="p-2 border"><input type="number" value={item.count ?? ""} onChange={(e) => updateItem(idx, "count", Number(e.target.value))} className="w-20 p-1 border rounded text-sm" /></td>
                       <td className="p-2 border"><input type="number" value={item.quantity ?? ""} onChange={(e) => updateItem(idx, "quantity", Number(e.target.value))} className="w-24 p-1 border rounded text-sm" step="any" /></td>
                       <td className="p-2 border"><input type="number" value={item.price ?? ""} onChange={(e) => updateItem(idx, "price", Number(e.target.value))} className="w-24 p-1 border rounded text-sm" step="any" /></td>
-                      <td className="p-2 border text-center font-bold">{totalAmount.toLocaleString()}</td>
+                      <td className="p-2 border text-center font-bold">{totalAmount.toLocaleString(isArabic ? "ar-EG" : "en-US")}</td>
                       <td className="p-2 border text-center">{insurancePercent}%</td>
-                      <td className="p-2 border text-center text-danger">{insuranceAmount.toLocaleString()}</td>
-                      <td className="p-2 border text-center font-bold text-gold">{netAmount.toLocaleString()}</td>
+                      <td className="p-2 border text-center text-danger">{insuranceAmount.toLocaleString(isArabic ? "ar-EG" : "en-US")}</td>
+                      <td className="p-2 border text-center font-bold text-gold">{netAmount.toLocaleString(isArabic ? "ar-EG" : "en-US")}</td>
                       <td className="p-2 border text-center"><button onClick={() => confirmDeleteItem(idx)} className="text-danger"><Trash2 size={16} /></button></td>
                     </tr>
                   );
@@ -351,10 +351,10 @@ function NewStatementPageContent() {
               <tfoot className="bg-surface-tertiary font-bold">
                 <tr className="border-t">
                   <td colSpan={9} className="p-2 text-left">{isArabic ? "الإجمالي" : "Total"}</td>
-                  <td className="p-2 text-center">{totalWorkValue.toLocaleString()}</td>
+                  <td className="p-2 text-center">{totalWorkValue.toLocaleString(isArabic ? "ar-EG" : "en-US")}</td>
                   <td className="p-2 text-center"></td>
-                  <td className="p-2 text-center">{totalInsurance.toLocaleString()}</td>
-                  <td className="p-2 text-center text-gold">{(totalWorkValue - totalInsurance).toLocaleString()}</td>
+                  <td className="p-2 text-center">{totalInsurance.toLocaleString(isArabic ? "ar-EG" : "en-US")}</td>
+                  <td className="p-2 text-center text-gold">{(totalWorkValue - totalInsurance).toLocaleString(isArabic ? "ar-EG" : "en-US")}</td>
                   <td></td>
                 </tr>
               </tfoot>
@@ -387,19 +387,19 @@ function NewStatementPageContent() {
           <Card className="p-5 bg-success-light">
             <div className="flex justify-between items-center">
               <span className="font-bold text-text-primary">{isArabic ? "الإجمالي لقيمة الأعمال" : "Total Work Value"}</span>
-              <span className="text-2xl font-bold text-primary">{totalWorkValue.toLocaleString()}</span>
+              <span className="text-2xl font-bold text-primary">{totalWorkValue.toLocaleString(isArabic ? "ar-EG" : "en-US")}</span>
             </div>
           </Card>
           <Card className="p-5 bg-danger-light">
             <div className="flex justify-between items-center">
               <span className="font-bold text-text-primary">{isArabic ? "خصم الاستقطاعات" : "Deductions"}</span>
-              <span className="text-2xl font-bold text-danger">{totalDeductions.toLocaleString()}</span>
+              <span className="text-2xl font-bold text-danger">{totalDeductions.toLocaleString(isArabic ? "ar-EG" : "en-US")}</span>
             </div>
           </Card>
           <Card className="p-5 bg-gold/10 border-gold">
             <div className="flex justify-between items-center">
               <span className="font-bold text-text-primary">{isArabic ? "المستحق صرفة" : "Net Payable"}</span>
-              <span className="text-3xl font-bold text-gold">{netPayable.toLocaleString()}</span>
+              <span className="text-3xl font-bold text-gold">{netPayable.toLocaleString(isArabic ? "ar-EG" : "en-US")}</span>
             </div>
           </Card>
         </div>

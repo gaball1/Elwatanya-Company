@@ -1,7 +1,7 @@
 /* eslint-disable */
 "use client";
 
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useState, useMemo, useCallback, useEffect } from "react";
 import { Card } from "@/components/ui";
 import { Can } from '@/components/Can';
@@ -18,9 +18,11 @@ import {
 import { notificationService, type Notification } from "@/services/notification.service";
 import { useToast } from "@/components/ui/Toast";
 import { refreshUnreadCount } from "@/hooks/useNotifications";
+import { resolveNotificationHref } from "@/lib/notificationLink";
 
 export default function NotificationsPage() {
   const params = useParams();
+  const router = useRouter();
   const locale = (params.locale as string) ?? "ar";
   const isArabic = locale === "ar";
   const { showToast, ToastComponent } = useToast();
@@ -29,7 +31,14 @@ export default function NotificationsPage() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"all" | "unread">("all");
   const [showModal, setShowModal] = useState(false);
-  const [form, setForm] = useState({ title: "", titleEn: "", message: "", messageEn: "", type: "info" });
+  const [form, setForm] = useState({ title: "", titleEn: "", message: "", messageEn: "", type: "info", targetRoles: "", targetPermissions: "" });
+
+  const parseTargets = (raw: string) =>
+    raw
+      .split(/[,،\n]/)
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .filter((s, i, arr) => arr.indexOf(s) === i);
 
   const fetchNotifications = useCallback(async () => {
     try {
@@ -68,15 +77,23 @@ export default function NotificationsPage() {
   const handleCreate = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await notificationService.create(form);
+      await notificationService.create({
+        title: form.title,
+        titleEn: form.titleEn,
+        message: form.message,
+        messageEn: form.messageEn,
+        type: form.type,
+        targetRoles: parseTargets(form.targetRoles),
+        targetPermissions: parseTargets(form.targetPermissions),
+      });
       showToast(isArabic ? "تم إنشاء الإشعار" : "Notification created", "success");
       await fetchNotifications();
       setShowModal(false);
-      setForm({ title: "", titleEn: "", message: "", messageEn: "", type: "info" });
+      setForm({ title: "", titleEn: "", message: "", messageEn: "", type: "info", targetRoles: "", targetPermissions: "" });
     } catch (error: any) {
       showToast(error?.message || (isArabic ? "حدث خطأ" : "Error"), "error");
     }
-  }, [form, isArabic, fetchNotifications]);
+  }, [form, isArabic, fetchNotifications, parseTargets]);
 
   const handleDelete = useCallback(async (id: string) => {
     try {
@@ -141,26 +158,48 @@ export default function NotificationsPage() {
           </Card>
         ) : (
           <div className="space-y-3">
-            {filteredNotifications.map((notif) => (
-              <div key={notif.id} className="bg-surface rounded-xl p-4 shadow-sm hover:shadow-md transition relative">
-                {!notif.read && <button onClick={() => markAsRead(notif.id)} className="absolute top-2 left-2 text-xs text-gold transition">{isArabic ? "تحديد كمقروء" : "Mark read"}</button>}
-                <Can permission="notifications.delete">
-                  <button onClick={() => handleDelete(notif.id)} className="absolute top-2 right-2 text-text-muted hover:text-danger transition"><Trash2 size={16} /></button>
-                </Can>
-                <div className="flex gap-4">
-                  <div className="flex-shrink-0">{getIcon(notif.type)}</div>
-                  <div className="flex-1">
-                    <div className="flex justify-between items-start">
-                      <h3 className={`font-bold ${!notif.read ? "text-primary" : "text-text-secondary"}`}>
-                        {notif.title}
-                      </h3>
-                      <span className="text-xs text-text-muted">{new Date(notif.date).toLocaleDateString(isArabic ? "ar" : "en")}</span>
+            {filteredNotifications.map((notif) => {
+              const href = resolveNotificationHref(notif, locale);
+              return (
+                <div
+                  key={notif.id}
+                  onClick={href ? () => router.push(href) : undefined}
+                  className={`bg-surface rounded-xl p-4 shadow-sm hover:shadow-md transition ${href ? "cursor-pointer" : ""}`}
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="flex-shrink-0">{getIcon(notif.type)}</div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex justify-between items-start gap-2">
+                        <h3 className={`font-bold ${!notif.read ? "text-primary" : "text-text-secondary"}`}>
+                          {notif.title}
+                        </h3>
+                        <span className="text-xs text-text-muted whitespace-nowrap">{new Date(notif.date).toLocaleDateString(isArabic ? "ar" : "en")}</span>
+                      </div>
+                      <p className="text-sm text-text-secondary mt-1">{notif.message}</p>
                     </div>
-                    <p className="text-sm text-text-secondary mt-1">{notif.message}</p>
+                  </div>
+                  <div className="flex items-center gap-2 mt-3">
+                    {!notif.read && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); markAsRead(notif.id); }}
+                        className="text-xs text-gold hover:underline transition"
+                      >
+                        {isArabic ? "تحديد كمقروء" : "Mark read"}
+                      </button>
+                    )}
+                    <Can permission="notifications.delete">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleDelete(notif.id); }}
+                        className="text-text-muted hover:text-danger transition p-1"
+                        title={isArabic ? "حذف" : "Delete"}
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </Can>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
@@ -183,6 +222,8 @@ export default function NotificationsPage() {
                 <option value="warning">{isArabic ? "تحذير" : "Warning"}</option>
                 <option value="error">{isArabic ? "خطأ" : "Error"}</option>
               </select>
+              <input name="targetRoles" placeholder={isArabic ? "الأدوار المستهدفة (افصل بينها بفواصل) — اتركها فارغة للجميع" : "Target roles (comma separated) — leave empty for everyone"} value={form.targetRoles} onChange={(e) => setForm({ ...form, targetRoles: e.target.value })} className="w-full p-3 border rounded-xl" />
+              <input name="targetPermissions" placeholder={isArabic ? "الصلاحيات المستهدفة (افصل بينها بفواصل)" : "Target permissions (comma separated)"} value={form.targetPermissions} onChange={(e) => setForm({ ...form, targetPermissions: e.target.value })} className="w-full p-3 border rounded-xl" />
               <div className="flex gap-3">
                 <button type="button" onClick={() => setShowModal(false)} className="flex-1 px-4 py-2 border rounded-xl">{isArabic ? "إلغاء" : "Cancel"}</button>
                 <button type="submit" className="flex-1 px-4 py-2 bg-primary text-white rounded-xl">{isArabic ? "حفظ" : "Save"}</button>

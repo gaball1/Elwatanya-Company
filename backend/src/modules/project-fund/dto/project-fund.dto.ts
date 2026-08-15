@@ -33,4 +33,10 @@ export class UpdateProjectFundDto {
   @IsNumber()
   @Min(0)
   currentBalance?: number;
+
+  @ApiPropertyOptional({ example: 50000 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  pettyCashBalance?: number;
 }

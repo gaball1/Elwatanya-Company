@@ -12,6 +12,7 @@ export interface MiscellaneousProps {
   category: MiscellaneousCategory;
   date: Date;
   notes: string;
+  invoiceFile: string | null;
   createdBy: string;
   deletedAt: Date | null;
 }
@@ -35,6 +36,7 @@ export class Miscellaneous extends AggregateRoot {
   get category(): MiscellaneousCategory { return this.props.category; }
   get date(): Date { return this.props.date; }
   get notes(): string { return this.props.notes; }
+  get invoiceFile(): string | null { return this.props.invoiceFile; }
   get createdBy(): string { return this.props.createdBy; }
   get deletedAt(): Date | null { return this.props.deletedAt; }
   get isDeleted(): boolean { return this.props.deletedAt !== null; }
@@ -46,6 +48,7 @@ export class Miscellaneous extends AggregateRoot {
     category: MiscellaneousCategory;
     date: Date;
     notes?: string;
+    invoiceFile?: string | null;
     createdBy: string;
   }): Result<Miscellaneous> {
     const guard1 = Guard.againstNullOrUndefined(input.projectId, 'projectId');
@@ -65,6 +68,9 @@ export class Miscellaneous extends AggregateRoot {
 
     if (input.amount < 0) return Result.fail(new Error('Amount cannot be negative'));
 
+    const invoiceFile = input.invoiceFile?.trim() ?? '';
+    if (invoiceFile.length === 0) return Result.fail(new Error('Invoice file is required'));
+
     return Result.ok(
       new Miscellaneous({
         projectId: input.projectId,
@@ -73,6 +79,7 @@ export class Miscellaneous extends AggregateRoot {
         category: input.category,
         date: input.date,
         notes: input.notes ?? '',
+        invoiceFile,
         createdBy: input.createdBy,
         deletedAt: null,
       }),
@@ -94,6 +101,7 @@ export class Miscellaneous extends AggregateRoot {
     category?: MiscellaneousCategory;
     date?: Date;
     notes?: string;
+    invoiceFile?: string | null;
   }): Result<void> {
     if (this.isDeleted) return Result.fail(new Error('Cannot update a deleted miscellaneous record'));
 
@@ -113,6 +121,7 @@ export class Miscellaneous extends AggregateRoot {
     }
     if (fields.date !== undefined) this.props.date = fields.date;
     if (fields.notes !== undefined) this.props.notes = fields.notes;
+    if (fields.invoiceFile !== undefined) this.props.invoiceFile = fields.invoiceFile;
 
     return Result.ok();
   }

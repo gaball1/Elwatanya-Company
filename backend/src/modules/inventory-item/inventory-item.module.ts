@@ -8,6 +8,7 @@ import { ListInventoryItemsUseCase } from './application/use-cases/list-inventor
 import { CreateInventoryItemUseCase } from './application/use-cases/create-inventory-item.use-case';
 import { UpdateInventoryItemUseCase } from './application/use-cases/update-inventory-item.use-case';
 import { DeleteInventoryItemUseCase } from './application/use-cases/delete-inventory-item.use-case';
+import { IncreaseInventoryItemUseCase } from './application/use-cases/increase-inventory-item.use-case';
 import { InventoryItemController } from './inventory-item.controller';
 
 @Module({
@@ -15,10 +16,11 @@ import { InventoryItemController } from './inventory-item.controller';
   controllers: [InventoryItemController],
   providers: [
     { provide: INVENTORY_ITEM_REPOSITORY, useClass: PrismaInventoryItemRepository },
-    { provide: ListInventoryItemsUseCase, useFactory: (repo: IInventoryItemRepository) => new ListInventoryItemsUseCase(repo), inject: [INVENTORY_ITEM_REPOSITORY] },
+    { provide: ListInventoryItemsUseCase, useFactory: (repo: IInventoryItemRepository, prisma: PrismaService) => new ListInventoryItemsUseCase(repo, prisma), inject: [INVENTORY_ITEM_REPOSITORY, PrismaService] },
     { provide: CreateInventoryItemUseCase, useFactory: (repo: IInventoryItemRepository, prisma: PrismaService) => new CreateInventoryItemUseCase(repo, prisma), inject: [INVENTORY_ITEM_REPOSITORY, PrismaService] },
     { provide: UpdateInventoryItemUseCase, useFactory: (repo: IInventoryItemRepository, prisma: PrismaService) => new UpdateInventoryItemUseCase(repo, prisma), inject: [INVENTORY_ITEM_REPOSITORY, PrismaService] },
     { provide: DeleteInventoryItemUseCase, useFactory: (repo: IInventoryItemRepository) => new DeleteInventoryItemUseCase(repo), inject: [INVENTORY_ITEM_REPOSITORY] },
+    { provide: IncreaseInventoryItemUseCase, useFactory: (repo: IInventoryItemRepository, prisma: PrismaService) => new IncreaseInventoryItemUseCase(repo, prisma), inject: [INVENTORY_ITEM_REPOSITORY, PrismaService] },
   ],
   exports: [INVENTORY_ITEM_REPOSITORY],
 })

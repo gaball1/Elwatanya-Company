@@ -12,6 +12,7 @@ import {
   Users,
   DollarSign,
   Image as ImageIcon,
+  FolderOpen,
 } from "lucide-react";
 import { buildingService } from "@/services/building.service";
 
@@ -61,6 +62,12 @@ export default function BuildingLayout({
         href: `/${locale}/projects/${projectId}/buildings/${buildingId}/boards`,
         label: isArabic ? "لوحات المشروع" : "Project Boards",
         icon: <ImageIcon size={18} />,
+      },
+      {
+        id: "documents",
+        href: `/${locale}/projects/${projectId}/buildings/${buildingId}/documents`,
+        label: isArabic ? "المستندات والرسومات" : "Documents & Drawings",
+        icon: <FolderOpen size={18} />,
       },
     ],
     [isArabic, locale, projectId, buildingId]

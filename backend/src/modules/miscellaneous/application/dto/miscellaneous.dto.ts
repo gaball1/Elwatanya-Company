@@ -8,6 +8,7 @@ export interface MiscellaneousResult {
   category: MiscellaneousCategory;
   date: Date;
   notes: string;
+  invoiceFile: string | null;
   createdBy: string;
   createdAt: Date;
   updatedAt: Date;
@@ -20,6 +21,7 @@ export interface CreateMiscellaneousInput {
   category: MiscellaneousCategory;
   date: Date;
   notes?: string;
+  invoiceFile?: string | null;
   createdBy: string;
 }
 
@@ -30,4 +32,6 @@ export interface UpdateMiscellaneousInput {
   category?: MiscellaneousCategory;
   date?: Date;
   notes?: string;
+  invoiceFile?: string | null;
+  createdBy?: string;
 }

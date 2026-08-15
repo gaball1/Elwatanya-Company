@@ -3,6 +3,7 @@ import { handleError } from '../../common/utils/handle-error';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { RequirePermission } from '../../common/decorators/permissions.decorator';
 import { Permissions } from '../../common/constants/permissions.constant';
+import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
 import { ListClientStatementsUseCase } from './application/use-cases/list-client-statements.use-case';
 import { CreateClientStatementUseCase } from './application/use-cases/create-client-statement.use-case';
 import { UpdateClientStatementUseCase } from './application/use-cases/update-client-statement.use-case';
@@ -21,11 +22,11 @@ export class ClientStatementController {
   ) {}
 
   @Get() @ApiOperation({ summary: 'List client statements' }) @RequirePermission(Permissions.ClientStatements.Read)
-  async listAll() { const r = await this.list.execute(); return { items: r.getValue() }; }
+  async listAll(@CurrentUser() user?: JwtPayload) { const r = await this.list.execute(user); return { items: r.getValue() }; }
 
   @Get(':id') @ApiOperation({ summary: 'Get client statement by id' }) @RequirePermission(Permissions.ClientStatements.Read)
-  async getById(@Param('id', ParseUUIDPipe) id: string) {
-    const r = await this.list.execute(); const item = r.getValue()?.find((s) => s.id === id);
+  async getById(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user?: JwtPayload) {
+    const r = await this.list.execute(user); const item = r.getValue()?.find((s) => s.id === id);
     if (!item) throw new NotFoundException('Client statement not found');
     return { statement: item };
   }

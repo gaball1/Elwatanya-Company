@@ -8,6 +8,8 @@ export interface User {
   permissions?: string[];
   roleNames?: string[];
   projectIds?: string[];
+  employeeId?: string | null;
+  avatarUrl?: string | null;
   createdAt?: string;
   updatedAt?: string;
 }

@@ -15,7 +15,7 @@ import {
 } from '../errors/analytical-boq-application.error';
 import { toAnalyticalBoqItemResult } from './list-analytical-boq-items.use-case';
 import { SyncFinalFromAnalyticalUseCase } from '@/modules/final-boq/application/use-cases/sync-final-from-analytical.use-case';
-import { OwnershipService } from '@/common/services/ownership.service';
+import { OwnershipActor, OwnershipService } from '@/common/services/ownership.service';
 import { AuditService } from '@/modules/audit/audit.service';
 
 export class ImportAnalyticalFromEmployerUseCase {
@@ -30,10 +30,10 @@ export class ImportAnalyticalFromEmployerUseCase {
 
   async execute(
     input: ImportAnalyticalFromEmployerInput,
-    userProjectId?: string | null,
+    user?: OwnershipActor,
     userId?: string,
   ): Promise<Result<AnalyticalBoqItemResult | null>> {
-    await this.ownership.verifyBuildingAccess(userProjectId, input.buildingId);
+    await this.ownership.verifyBuildingAccess(user, input.buildingId);
     const buildingId = new UniqueEntityId(input.buildingId);
     const building = await this.buildings.findById(buildingId);
     if (!building) {
@@ -86,7 +86,7 @@ export class ImportAnalyticalFromEmployerUseCase {
     const item = created.getValue();
     await this.analyticalBoq.save(item);
     // Mirrors importAnalyticalFromEmployer → setAnalyticalItems → syncFinalFromAnalytical
-    await this.syncFinalFromAnalytical.execute({ buildingId: input.buildingId });
+    await this.syncFinalFromAnalytical.execute({ buildingId: input.buildingId }, user);
     if (userId) {
       this.audit.log({ userId, entity: 'analytical_boq', entityId: item.id.toValue(), action: 'IMPORT', before: null, after: { itemCode: item.itemCode, description: item.description, unit: item.unit, quantity: item.quantity, unitPrice: item.unitPrice } });
     }

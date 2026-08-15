@@ -9,8 +9,9 @@ import {
   LayoutDashboard, FolderKanban, Building2, Users, Briefcase,
   Truck, Package, Warehouse, Bell, Calendar, SunSnow, Layers,
   ChevronLeft, ChevronDown, PanelLeftClose, PanelLeft,
-  ClipboardList, FileText, Banknote, BarChart3, Settings,
-  LogOut, Shield, CheckCircle, Bot, Pen, Hash, Activity, ClipboardCheck
+  FileText, Banknote, BarChart3, Settings,
+  LogOut, Shield, CheckCircle, Bot, Pen, Activity, ClipboardCheck,
+  ArrowRightLeft
 } from "lucide-react";
 import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
 
@@ -20,6 +21,7 @@ interface MenuItem {
   href?: string;
   permissions?: string[];
   children?: { label: string; href: string; permissions?: string[] }[];
+  employeeSelfService?: boolean;
 }
 
 interface SidebarProps {
@@ -27,9 +29,10 @@ interface SidebarProps {
   collapsed: boolean;
   onToggle: () => void;
   userPermissions: string[];
+  userEmployeeId?: string | null;
 }
 
-export default function Sidebar({ isArabic, collapsed, onToggle, userPermissions }: SidebarProps) {
+export default function Sidebar({ isArabic, collapsed, onToggle, userPermissions, userEmployeeId }: SidebarProps) {
   const params = useParams();
   const pathname = usePathname();
   const locale = (params.locale as string) ?? "ar";
@@ -56,6 +59,14 @@ export default function Sidebar({ isArabic, collapsed, onToggle, userPermissions
     return perms.some((p) => userPermissions.includes(p));
   };
 
+  const canShowItem = (item: MenuItem) => {
+    if (!mounted) return true;
+    if (item.employeeSelfService) {
+      return hasPermission(item.permissions) || !!userEmployeeId;
+    }
+    return hasPermission(item.permissions);
+  };
+
   const isActive = (href: string) => pathname === href || pathname?.startsWith(href + "/");
 
   const menuGroups: { key: string; label: string; items: MenuItem[] }[] = [
@@ -74,9 +85,7 @@ export default function Sidebar({ isArabic, collapsed, onToggle, userPermissions
         { label: isArabic ? "صلاحيات" : "Roles", icon: <Shield size={20} />, href: `/${locale}/roles`, permissions: ["roles.read"] },
         { label: isArabic ? "انتظار التوقيع" : "Pending Signatures", icon: <Pen size={20} />, href: `/${locale}/pending-signatures`, permissions: ["profile.update"] },
         { label: isArabic ? "المساعد الذكي" : "AI Agent", icon: <Bot size={20} />, href: `/${locale}/admin/ai-agent`, permissions: ["admin"] },
-        { label: isArabic ? "القوالب" : "Templates", icon: <FileText size={20} />, href: `/${locale}/admin/templates`, permissions: ["settings.read"] },
         { label: isArabic ? "التوقيعات" : "Signatures", icon: <Pen size={20} />, href: `/${locale}/admin/signatures`, permissions: ["profile.update"] },
-        { label: isArabic ? "ترقيم المستندات" : "Document Numbers", icon: <Hash size={20} />, href: `/${locale}/admin/document-numbers`, permissions: ["settings.read"] },
         { label: isArabic ? "إعدادات الشركة" : "Company Settings", icon: <Settings size={20} />, href: `/${locale}/admin/settings`, permissions: ["company.read"] },
       ],
     },
@@ -85,7 +94,6 @@ export default function Sidebar({ isArabic, collapsed, onToggle, userPermissions
       label: isArabic ? "المشاريع" : "Projects",
       items: [
         { label: isArabic ? "المشاريع" : "Projects", icon: <FolderKanban size={20} />, href: `/${locale}/projects`, permissions: ["projects.read"] },
-        { label: isArabic ? "لوحات المشاريع" : "Project Boards", icon: <ClipboardList size={20} />, href: `/${locale}/project-boards`, permissions: ["project-boards.read"] },
         { label: isArabic ? "لوحة المؤشرات" : "KPI Dashboard", icon: <Activity size={20} />, href: `/${locale}/bi-dashboard`, permissions: ["projects.read"] },
         { label: isArabic ? "لوحة الإدارة" : "Executive Dashboard", icon: <LayoutDashboard size={20} />, href: `/${locale}/executive-dashboard`, permissions: ["projects.read"] },
         { label: isArabic ? "التحليلات" : "Analytics", icon: <BarChart3 size={20} />, href: `/${locale}/analytics`, permissions: ["projects.read"] },
@@ -98,8 +106,8 @@ export default function Sidebar({ isArabic, collapsed, onToggle, userPermissions
       items: [
         { label: isArabic ? "الموظفين" : "Employees", icon: <Briefcase size={20} />, href: `/${locale}/employees`, permissions: ["employees.read"] },
         { label: isArabic ? "الأقسام" : "Departments", icon: <Building2 size={20} />, href: `/${locale}/departments`, permissions: ["departments.read"] },
-        { label: isArabic ? "الحضور والانصراف" : "Attendance", icon: <Calendar size={20} />, href: `/${locale}/attendance`, permissions: ["attendance.read"] },
-        { label: isArabic ? "طلبات تصحيح الحضور" : "Attendance Overrides", icon: <ClipboardCheck size={20} />, href: `/${locale}/attendance/overrides`, permissions: ["attendance.read"] },
+        { label: isArabic ? "الحضور والانصراف" : "Attendance", icon: <Calendar size={20} />, href: `/${locale}/attendance`, permissions: ["attendance.read"], employeeSelfService: true },
+        { label: isArabic ? "طلبات الحضور" : "Attendance Requests", icon: <ClipboardCheck size={20} />, href: `/${locale}/attendance/overrides`, permissions: ["attendance.update"] },
         { label: isArabic ? "الإجازات" : "Holidays", icon: <SunSnow size={20} />, href: `/${locale}/holidays`, permissions: ["holidays.read"] },
         { label: isArabic ? "المقاولين" : "Subcontractors", icon: <Users size={20} />, href: `/${locale}/subcontractors`, permissions: ["subcontractors.read"] },
         { label: isArabic ? "العملاء" : "Clients", icon: <Building2 size={20} />, href: `/${locale}/clients`, permissions: ["clients.read"] },
@@ -108,11 +116,12 @@ export default function Sidebar({ isArabic, collapsed, onToggle, userPermissions
     },
     {
       key: "inventory",
-      label: isArabic ? "المخازن" : "Inventory",
+      label: isArabic ? "مخازن" : "Warehouses",
       items: [
-        { label: isArabic ? "المستودعات" : "Warehouses", icon: <Warehouse size={20} />, href: `/${locale}/warehouses`, permissions: ["warehouses.read"] },
-        { label: isArabic ? "التصنيفات" : "Categories", icon: <Layers size={20} />, href: `/${locale}/categories`, permissions: ["categories.read"] },
+        { label: isArabic ? "المخازن" : "Warehouses", icon: <Warehouse size={20} />, href: `/${locale}/warehouses`, permissions: ["warehouses.read"] },
+        { label: isArabic ? "حركات المخزون" : "Stock Movements", icon: <ArrowRightLeft size={20} />, href: `/${locale}/stock-movements`, permissions: ["stock-movements.read"] },
         { label: isArabic ? "المخزون" : "Inventory", icon: <Package size={20} />, href: `/${locale}/inventory`, permissions: ["inventory.read"] },
+        { label: isArabic ? "التصنيفات" : "Categories", icon: <Layers size={20} />, href: `/${locale}/categories`, permissions: ["categories.read"] },
       ],
     },
     {
@@ -128,7 +137,7 @@ export default function Sidebar({ isArabic, collapsed, onToggle, userPermissions
       key: "system",
       label: isArabic ? "النظام" : "System",
       items: [
-        { label: isArabic ? "الإشعارات" : "Notifications", icon: <Bell size={20} />, href: `/${locale}/notifications`, permissions: ["notifications.read"] },
+        { label: isArabic ? "الإشعارات" : "Notifications", icon: <Bell size={20} />, href: `/${locale}/notifications` },
       ],
     },
   ];
@@ -187,7 +196,7 @@ export default function Sidebar({ isArabic, collapsed, onToggle, userPermissions
                   transition={{ duration: 0.2 }}
                   className="overflow-hidden"
                 >
-                  {group.items.filter((item) => mounted ? hasPermission(item.permissions) : true).map((item) => (
+                  {group.items.filter(canShowItem).map((item) => (
                     <div key={item.label}>
                       {item.href ? (
                         <Link

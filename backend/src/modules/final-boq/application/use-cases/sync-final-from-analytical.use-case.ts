@@ -11,10 +11,14 @@ import {
   IFinalBoqAllocationReader,
   IFinalBoqRepository,
 } from '../../domain/final-boq.repository';
-import { syncFinalFromAnalytical } from '../../domain/final-boq-rules';
+import { syncFinalFromAnalytical, findCommittedDecreaseViolations } from '../../domain/final-boq-rules';
 import { SyncFinalFromAnalyticalInput, FinalBoqItemResult } from '../dto/final-boq.dto';
+import {
+  FinalBoqApplicationError,
+  FinalBoqErrorCode,
+} from '../errors/final-boq-application.error';
 import { getOrCreateFinalBoq, toFinalBoqItemResult, toItemStateInput } from './final-boq-mappers';
-import { OwnershipService } from '@/common/services/ownership.service';
+import { OwnershipActor, OwnershipService } from '@/common/services/ownership.service';
 import { AuditService } from '@/modules/audit/audit.service';
 
 /**
@@ -31,8 +35,8 @@ export class SyncFinalFromAnalyticalUseCase {
     private readonly audit: AuditService,
   ) {}
 
-  async execute(input: SyncFinalFromAnalyticalInput, userProjectId?: string | null, userId?: string): Promise<Result<FinalBoqItemResult[]>> {
-    await this.ownership.verifyBuildingAccess(userProjectId, input.buildingId);
+  async execute(input: SyncFinalFromAnalyticalInput, user?: OwnershipActor, userId?: string): Promise<Result<FinalBoqItemResult[]>> {
+    await this.ownership.verifyBuildingAccess(user, input.buildingId);
     const buildingId = new UniqueEntityId(input.buildingId);
     const building = await this.buildings.findById(buildingId);
     if (!building) {
@@ -45,16 +49,31 @@ export class SyncFinalFromAnalyticalUseCase {
     const aggregate = await getOrCreateFinalBoq(building, this.finalBoq);
     const allocationRefs = await this.allocations.getAllocationsForBuilding(buildingId);
 
+    const analyticalState = analyticalItems.map((a) => ({
+      itemCode: a.itemCode,
+      description: a.description,
+      unit: a.unit,
+      quantity: a.quantity,
+      unitPrice: a.unitPrice,
+      totalValue: a.totalValue,
+    }));
+
+    const currentState = aggregate.items.map(toItemStateInput);
+    const violations = findCommittedDecreaseViolations(analyticalState, currentState);
+    if (violations.length > 0) {
+      const first = violations[0];
+      const existing = aggregate.findItemByCode(first.itemCode);
+      return Result.fail(
+        new FinalBoqApplicationError(
+          FinalBoqErrorCode.QUANTITY_CANNOT_DECREASE,
+          `لا يمكن تقليل كمية البند ${first.itemCode} من ${existing?.quantity ?? '?'} إلى ${first.quantity} بعد تحليله أو توزيعه`,
+        ),
+      );
+    }
+
     const next = syncFinalFromAnalytical(
-      analyticalItems.map((a) => ({
-        itemCode: a.itemCode,
-        description: a.description,
-        unit: a.unit,
-        quantity: a.quantity,
-        unitPrice: a.unitPrice,
-        totalValue: a.totalValue,
-      })),
-      aggregate.items.map(toItemStateInput),
+      analyticalState,
+      currentState,
       allocationRefs,
     );
 

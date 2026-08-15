@@ -44,6 +44,11 @@ export class CreateMiscellaneousDto {
   @MaxLength(1000)
   notes?: string;
 
+  @ApiProperty({ example: 'data:application/pdf;base64,...' })
+  @IsString()
+  @IsNotEmpty()
+  invoiceFile!: string;
+
   @ApiProperty({ example: 'a1b2c3d4-...' })
   @IsUUID()
   @IsNotEmpty()
@@ -80,4 +85,14 @@ export class UpdateMiscellaneousDto {
   @IsString()
   @MaxLength(1000)
   notes?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  invoiceFile?: string;
+
+  @ApiPropertyOptional({ example: 'a1b2c3d4-...' })
+  @IsOptional()
+  @IsUUID()
+  createdBy?: string;
 }

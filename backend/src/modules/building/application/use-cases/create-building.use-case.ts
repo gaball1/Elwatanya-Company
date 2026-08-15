@@ -3,7 +3,7 @@ import { UniqueEntityId } from '@/shared/kernel/unique-entity-id.vo';
 import { Building } from '../../domain/building.entity';
 import { IBuildingRepository } from '../../domain/building.repository';
 import { IProjectRepository } from '@/modules/project/domain/project.repository';
-import { OwnershipService } from '@/common/services/ownership.service';
+import { OwnershipActor, OwnershipService } from '@/common/services/ownership.service';
 import { CreateBuildingInput, BuildingResult } from '../dto/building.dto';
 import {
   BuildingApplicationError,
@@ -20,8 +20,8 @@ export class CreateBuildingUseCase {
     private readonly eventBus: EventBusImpl,
   ) {}
 
-  async execute(input: CreateBuildingInput, userProjectId?: string | null): Promise<Result<BuildingResult>> {
-    await this.ownership.verifyProjectAccess(userProjectId, input.projectId);
+  async execute(input: CreateBuildingInput, user?: OwnershipActor): Promise<Result<BuildingResult>> {
+    await this.ownership.verifyProjectAccess(user, input.projectId);
     const projectId = new UniqueEntityId(input.projectId);
     const project = await this.projects.findById(projectId);
     if (!project) {

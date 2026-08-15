@@ -3,7 +3,7 @@
 
 import { useToast } from "@/components/ui/Toast";
 import { useParams } from "next/navigation";
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { Card } from "@/components/ui";
 import { Can } from '@/components/Can';
 import {
@@ -21,12 +21,16 @@ import {
 import { miscellaneousService, type Miscellaneous, type CreateMiscellaneousData } from "@/services/miscellaneous.service";
 import { projectService, type Project } from "@/services/project.service";
 import { printAsPDF } from "@/lib/printUtils";
+import { sanitizeInput, isValidAmount } from "@/lib/security";
+import { useAuth } from "@/hooks/useAuth";
 
 export default function MiscellaneousPage() {
   const params = useParams();
   const locale = (params.locale as string) ?? "ar";
   const isArabic = locale === "ar";
   const { showToast, ToastComponent } = useToast();
+  const { user } = useAuth();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [records, setRecords] = useState<Miscellaneous[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -46,6 +50,7 @@ export default function MiscellaneousPage() {
     date: new Date().toISOString().split("T")[0],
     notes: "",
   });
+  const [invoiceFile, setInvoiceFile] = useState<File | null>(null);
 
   const categoryOptions = [
     { value: "all", label: isArabic ? "الكل" : "All" },
@@ -88,6 +93,8 @@ export default function MiscellaneousPage() {
   const openAddModal = () => {
     setEditingRecord(null);
     setForm({ projectId: "", description: "", amount: "0", category: "other", date: new Date().toISOString().split("T")[0], notes: "" });
+    setInvoiceFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
     setShowModal(true);
   };
 
@@ -101,20 +108,28 @@ export default function MiscellaneousPage() {
       date: record.date.split("T")[0],
       notes: record.notes,
     });
+    setInvoiceFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
     setShowModal(true);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.projectId || !form.description) { showToast(isArabic ? "يرجى ملء الحقول المطلوبة" : "Please fill required fields", "error"); return; }
+    const amount = parseFloat(form.amount) || 0;
+    if (!isValidAmount(amount)) { showToast(isArabic ? "المبلغ غير صحيح" : "Invalid amount", "error"); return; }
+    if (!invoiceFile && !editingRecord?.invoiceFile) { showToast(isArabic ? "يرجى رفع الفاتورة" : "Please upload the invoice", "error"); return; }
     try {
+      const invoiceBase64 = invoiceFile ? await fileToBase64(invoiceFile) : (editingRecord?.invoiceFile ?? undefined);
       const payload: CreateMiscellaneousData = {
         projectId: form.projectId,
-        description: form.description,
-        amount: parseFloat(form.amount) || 0,
+        description: sanitizeInput(form.description),
+        amount,
         category: form.category,
         date: form.date,
-        notes: form.notes,
+        notes: sanitizeInput(form.notes),
+        invoiceFile: invoiceBase64,
+        createdBy: user?.id ?? '',
       };
       if (editingRecord) {
         await miscellaneousService.update(editingRecord.id, payload);
@@ -125,10 +140,33 @@ export default function MiscellaneousPage() {
       }
       setShowModal(false);
       setEditingRecord(null);
+      setInvoiceFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
       await fetchData();
-    } catch {
-      showToast(isArabic ? "خطأ في الحفظ" : "Error saving", "error");
+    } catch (error: any) {
+      showToast(error?.message ? error.message : (isArabic ? "خطأ في الحفظ" : "Error saving"), "error");
     }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        showToast(isArabic ? "حجم الملف كبير جداً (الحد الأقصى 5 ميجابايت)" : "File too large (max 5MB)", "error");
+        e.target.value = "";
+        return;
+      }
+      setInvoiceFile(file);
+    }
+  };
+
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = (error) => reject(error);
+    });
   };
 
   const handleDelete = async () => {
@@ -188,7 +226,7 @@ export default function MiscellaneousPage() {
           <div className="p-2 rounded-lg bg-gold/10"><DollarSign size={20} className="text-gold" /></div>
           <div>
             <p className="text-xs text-text-muted">{isArabic ? "إجمالي المصروفات" : "Total Expenses"}</p>
-            <p className="text-lg font-bold text-text-primary">{totalAmount.toLocaleString()} {isArabic ? "ج.م" : "EGP"}</p>
+            <p className="text-lg font-bold text-text-primary">{totalAmount.toLocaleString(isArabic ? "ar-EG" : "en-US")} {isArabic ? "ج.م" : "EGP"}</p>
           </div>
         </div>
         <div className="flex flex-col sm:flex-row gap-3">
@@ -223,12 +261,12 @@ export default function MiscellaneousPage() {
                   </div>
                   <div>
                     <p className="text-sm font-medium text-text-primary">{record.description}</p>
-                    <p className="text-xs text-text-muted">{getProjectName(record.projectId)} — {new Date(record.date).toLocaleDateString()}</p>
+                    <p className="text-xs text-text-muted">{getProjectName(record.projectId)} — {new Date(record.date).toLocaleDateString(isArabic ? "ar-EG" : "en-US")}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-4">
                   <div className="text-right">
-                    <p className="text-sm font-bold text-text-primary">{record.amount.toLocaleString()} {isArabic ? "ج.م" : "EGP"}</p>
+                    <p className="text-sm font-bold text-text-primary">{record.amount.toLocaleString(isArabic ? "ar-EG" : "en-US")} {isArabic ? "ج.م" : "EGP"}</p>
                     <span className="text-xs px-2 py-0.5 rounded-full bg-surface-tertiary text-text-muted">
                       {categoryOptions.find((c) => c.value === record.category)?.label || record.category}
                     </span>
@@ -267,6 +305,11 @@ export default function MiscellaneousPage() {
               </select>
               <input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} className="w-full p-3 border rounded-xl" />
               <textarea placeholder={isArabic ? "ملاحظات" : "Notes"} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} className="w-full p-3 border rounded-xl resize-none" rows={2} />
+              <div>
+                <label className="block text-sm font-medium mb-1">{isArabic ? "فاتورة" : "Invoice"} <span className="text-danger">*</span></label>
+                <input ref={fileInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx" onChange={handleFileChange} className="w-full p-2 border rounded-xl" required={!editingRecord} />
+                {invoiceFile && <p className="text-xs text-success mt-1">{invoiceFile.name}</p>}
+              </div>
               <div className="flex gap-3">
                 <button type="button" onClick={() => setShowModal(false)} className="flex-1 px-4 py-2 border rounded-xl">{isArabic ? "إلغاء" : "Cancel"}</button>
                 <button type="submit" className="flex-1 px-4 py-2 bg-primary text-white rounded-xl">{editingRecord ? (isArabic ? "تحديث" : "Update") : (isArabic ? "حفظ" : "Save")}</button>

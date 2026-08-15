@@ -1,12 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { Result } from '@/shared/kernel/result';
 import { UniqueEntityId } from '@/shared/kernel/unique-entity-id.vo';
+import { Prisma } from '@prisma/client';
 import { IBuildingRepository } from '@/modules/building/domain/building.repository';
 import {
   BuildingApplicationError,
   BuildingErrorCode,
 } from '@/modules/building/application/errors/building-application.error';
-import { OwnershipService } from '@/common/services/ownership.service';
+import { OwnershipActor, OwnershipService } from '@/common/services/ownership.service';
 import { FinancialService } from '@/common/services/financial.service';
 import { EventBusImpl } from '@/modules/domain-events/event-bus.impl';
 import { PaymentCreatedEvent, PaymentApprovedEvent } from '@/modules/domain-events/events';
@@ -25,6 +26,21 @@ export interface PaymentResult {
   status: string;
 }
 
+/** Mirrors the عهدة guard used by purchases/miscellaneous: fund must exist and cover the amount. */
+async function ensureProjectFund(tx: Prisma.TransactionClient, projectId: string, amount: number): Promise<void> {
+  const fund = await tx.projectFund.findFirst({
+    where: { projectId, deletedAt: null },
+  });
+  if (!fund) {
+    throw new Error('لا توجد عهدة لهذا المشروع. برجاء إنشاء عهدة أولاً');
+  }
+  if (new Prisma.Decimal(amount).gt(fund.currentBalance)) {
+    throw new Error(
+      `رصيد العهدة غير كافٍ. المتاح: ${Number(fund.currentBalance).toLocaleString('en-EG')}، المطلوب: ${amount.toLocaleString('en-EG')}`,
+    );
+  }
+}
+
 /** Mirrors getPayments */
 export class ListPaymentsUseCase {
   constructor(
@@ -33,8 +49,8 @@ export class ListPaymentsUseCase {
     private readonly ownership: OwnershipService,
   ) {}
 
-  async execute(buildingId: string, contractorId: string, userProjectId?: string | null): Promise<Result<PaymentResult[]>> {
-    await this.ownership.verifyBuildingAccess(userProjectId, buildingId);
+  async execute(buildingId: string, contractorId: string, user?: OwnershipActor): Promise<Result<PaymentResult[]>> {
+    await this.ownership.verifyBuildingAccess(user, buildingId);
     const building = await this.buildings.findById(new UniqueEntityId(buildingId));
     if (!building) {
       return Result.fail(
@@ -74,9 +90,9 @@ export class GetPaymentUseCase {
     buildingId: string,
     contractorId: string,
     paymentId: string,
-    userProjectId?: string | null,
+    user?: OwnershipActor,
   ): Promise<Result<PaymentResult>> {
-    await this.ownership.verifyBuildingAccess(userProjectId, buildingId);
+    await this.ownership.verifyBuildingAccess(user, buildingId);
     const building = await this.buildings.findById(new UniqueEntityId(buildingId));
     if (!building) {
       return Result.fail(
@@ -120,8 +136,8 @@ export class AddPaymentUseCase {
     date: string;
     extractId?: string;
     notes?: string;
-  }, userProjectId?: string | null): Promise<Result<PaymentResult>> {
-    await this.ownership.verifyBuildingAccess(userProjectId, input.buildingId);
+  }, user?: OwnershipActor): Promise<Result<PaymentResult>> {
+    await this.ownership.verifyBuildingAccess(user, input.buildingId);
 
     const building = await this.buildings.findById(new UniqueEntityId(input.buildingId));
     if (!building) {
@@ -147,6 +163,7 @@ export class AddPaymentUseCase {
       await this.prisma.$transaction(async (tx) => {
         await this.payments.save(payment, tx);
         const meta = JSON.stringify({ buildingId: input.buildingId, contractorId: input.contractorId });
+        await ensureProjectFund(tx, building.projectId.toValue(), input.amount);
         await this.financialService.recordExpense({
           projectId: building.projectId.toValue(),
           amount: input.amount,
@@ -212,9 +229,9 @@ export class UpdatePaymentUseCase {
       status?: 'pending' | 'approved';
       approvedBy?: string;
     },
-    userProjectId?: string | null,
+    user?: OwnershipActor,
   ): Promise<Result<PaymentResult>> {
-    await this.ownership.verifyBuildingAccess(userProjectId, input.buildingId);
+    await this.ownership.verifyBuildingAccess(user, input.buildingId);
 
     const building = await this.buildings.findById(new UniqueEntityId(input.buildingId));
     if (!building) {
@@ -252,6 +269,7 @@ export class UpdatePaymentUseCase {
       await this.prisma.$transaction(async (tx) => {
         await this.payments.update(payment, tx);
         if (amountDelta > 0) {
+          await ensureProjectFund(tx, building.projectId.toValue(), amountDelta);
           await this.financialService.recordExpense({
             projectId: building.projectId.toValue(),
             amount: amountDelta,
@@ -320,9 +338,9 @@ export class DeletePaymentUseCase {
       contractorId: string;
       paymentId: string;
     },
-    userProjectId?: string | null,
+    user?: OwnershipActor,
   ): Promise<Result<void>> {
-    await this.ownership.verifyBuildingAccess(userProjectId, input.buildingId);
+    await this.ownership.verifyBuildingAccess(user, input.buildingId);
 
     const building = await this.buildings.findById(new UniqueEntityId(input.buildingId));
     if (!building) {

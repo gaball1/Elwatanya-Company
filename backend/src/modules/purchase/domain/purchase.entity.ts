@@ -22,6 +22,7 @@ export interface PurchaseProps {
   createdBy: string;
   categoryId: string;
   inventoryItemId: string;
+  warehouseId: string | null;
   deletedAt: Date | null;
 }
 
@@ -54,6 +55,7 @@ export class Purchase extends AggregateRoot {
   get createdBy(): string { return this.props.createdBy; }
   get categoryId(): string { return this.props.categoryId; }
   get inventoryItemId(): string { return this.props.inventoryItemId; }
+  get warehouseId(): string | null { return this.props.warehouseId; }
   get deletedAt(): Date | null { return this.props.deletedAt; }
   get isDeleted(): boolean { return this.props.deletedAt !== null; }
 
@@ -72,6 +74,7 @@ export class Purchase extends AggregateRoot {
     createdBy: string;
     categoryId?: string;
     inventoryItemId?: string;
+    warehouseId?: string | null;
   }): Result<Purchase> {
     const guard1 = Guard.againstNullOrUndefined(input.projectId, 'projectId');
     const guard2 = Guard.againstNullOrUndefined(input.itemName, 'itemName');
@@ -89,6 +92,9 @@ export class Purchase extends AggregateRoot {
     if (input.unitPrice < 0) return Result.fail(new Error('Unit price cannot be negative'));
     if (!input.unit.trim()) return Result.fail(new Error('Unit cannot be empty'));
 
+    const invoiceFile = input.invoiceFile?.trim() ?? '';
+    if (invoiceFile.length === 0) return Result.fail(new Error('Invoice file is required'));
+
     const total = Math.round(input.quantity * input.unitPrice * 100) / 100;
 
     return Result.ok(
@@ -104,11 +110,12 @@ export class Purchase extends AggregateRoot {
         date: input.date,
         status: 'pending',
         notes: input.notes ?? '',
-        invoiceFile: input.invoiceFile ?? null,
+        invoiceFile,
         supplierName: input.supplierName ?? '',
         createdBy: input.createdBy,
         categoryId: input.categoryId ?? '',
         inventoryItemId: input.inventoryItemId ?? '',
+        warehouseId: input.warehouseId ?? null,
         deletedAt: null,
       }),
     );
@@ -136,6 +143,7 @@ export class Purchase extends AggregateRoot {
     supplierId?: string | null;
     categoryId?: string;
     inventoryItemId?: string;
+    warehouseId?: string | null;
   }): Result<void> {
     if (this.isDeleted) return Result.fail(new Error('Cannot update a deleted purchase'));
 
@@ -164,6 +172,7 @@ export class Purchase extends AggregateRoot {
     if (fields.supplierId !== undefined) this.props.supplierId = fields.supplierId;
     if (fields.categoryId !== undefined) this.props.categoryId = fields.categoryId;
     if (fields.inventoryItemId !== undefined) this.props.inventoryItemId = fields.inventoryItemId;
+    if (fields.warehouseId !== undefined) this.props.warehouseId = fields.warehouseId;
 
     this.props.total = Math.round(this.props.quantity * this.props.unitPrice * 100) / 100;
 
@@ -177,9 +186,17 @@ export class Purchase extends AggregateRoot {
     return Result.ok();
   }
 
+  public assignWarehouse(warehouseId: string): Result<void> {
+    if (this.isDeleted) return Result.fail(new Error('Cannot assign a warehouse to a deleted purchase'));
+    if (!warehouseId.trim()) return Result.fail(new Error('Warehouse id is required'));
+    this.props.warehouseId = warehouseId;
+    return Result.ok();
+  }
+
   public approve(): Result<void> {
     if (this.isDeleted) return Result.fail(new Error('Cannot approve a deleted purchase'));
     if (this.props.status === 'cancelled') return Result.fail(new Error('Cannot approve a cancelled purchase'));
+    if (this.props.status === 'received') return Result.fail(new Error('Cannot approve a received purchase'));
     this.props.status = 'approved';
     return Result.ok();
   }
@@ -187,6 +204,8 @@ export class Purchase extends AggregateRoot {
   public markReceived(): Result<void> {
     if (this.isDeleted) return Result.fail(new Error('Cannot mark a deleted purchase as received'));
     if (this.props.status === 'cancelled') return Result.fail(new Error('Cannot receive a cancelled purchase'));
+    if (this.props.status === 'received') return Result.fail(new Error('Purchase is already received'));
+    if (this.props.status !== 'approved') return Result.fail(new Error('Purchase must be approved before receiving'));
     this.props.status = 'received';
     return Result.ok();
   }

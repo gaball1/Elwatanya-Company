@@ -20,11 +20,12 @@ import {
 } from '@nestjs/swagger';
 import { RequirePermission } from '../../common/decorators/permissions.decorator';
 import { Permissions } from '../../common/constants/permissions.constant';
-import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
 import { CreateBuildingUseCase } from './application/use-cases/create-building.use-case';
 import { UpdateBuildingUseCase } from './application/use-cases/update-building.use-case';
 import { GetBuildingUseCase } from './application/use-cases/get-building.use-case';
 import { ListBuildingsByProjectUseCase } from './application/use-cases/list-buildings-by-project.use-case';
+import { ListAllBuildingsUseCase } from './application/use-cases/list-all-buildings.use-case';
 import { SoftDeleteBuildingUseCase } from './application/use-cases/soft-delete-building.use-case';
 import {
   BuildingApplicationError,
@@ -41,6 +42,7 @@ export class BuildingController {
     private readonly updateBuilding: UpdateBuildingUseCase,
     private readonly getBuilding: GetBuildingUseCase,
     private readonly listBuildingsByProject: ListBuildingsByProjectUseCase,
+    private readonly listAllBuildings: ListAllBuildingsUseCase,
     private readonly softDeleteBuilding: SoftDeleteBuildingUseCase,
   ) {}
   @Post('projects/:projectId/buildings')
@@ -50,7 +52,7 @@ export class BuildingController {
   async create(
     @Param('projectId', ParseUUIDPipe) projectId: string,
     @Body() dto: CreateBuildingDto,
-    @CurrentUser('projectId') currentProjectId?: string,
+    @CurrentUser() user?: JwtPayload,
   ) {
     const result = await this.createBuilding.execute({
       projectId,
@@ -63,7 +65,7 @@ export class BuildingController {
       latitude: dto.latitude,
       longitude: dto.longitude,
       allowedRadius: dto.allowedRadius,
-    }, currentProjectId);
+    }, user);
     if (result.isFailure) {
       throw this.mapError(result.error);
     }
@@ -73,19 +75,30 @@ export class BuildingController {
   @Get('projects/:projectId/buildings')
   @ApiOperation({ summary: 'List buildings for a project' })
   @RequirePermission(Permissions.Buildings.Read)
-  async listByProject(@Param('projectId', ParseUUIDPipe) projectId: string, @CurrentUser('projectId') currentProjectId?: string) {
-    const result = await this.listBuildingsByProject.execute(projectId, currentProjectId);
+  async listByProject(@Param('projectId', ParseUUIDPipe) projectId: string, @CurrentUser() user?: JwtPayload) {
+    const result = await this.listBuildingsByProject.execute(projectId, user);
     if (result.isFailure) {
       throw this.mapError(result.error);
     }
     return { buildings: result.getValue() };
   }
 
+  @Get('buildings')
+  @ApiOperation({ summary: 'List all buildings' })
+  @RequirePermission(Permissions.Buildings.Read)
+  async listAll() {
+    const result = await this.listAllBuildings.execute();
+    if (result.isFailure) {
+      throw new BadRequestException(result.error?.message ?? 'Failed to list buildings');
+    }
+    return { items: result.getValue() };
+  }
+
   @Get('buildings/:id')
   @ApiOperation({ summary: 'Get building by id' })
   @RequirePermission(Permissions.Buildings.Read)
-  async getById(@Param('id', ParseUUIDPipe) id: string, @CurrentUser('projectId') projectId?: string) {
-    const result = await this.getBuilding.execute(id, projectId);
+  async getById(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user?: JwtPayload) {
+    const result = await this.getBuilding.execute(id, user);
     if (result.isFailure) {
       throw this.mapError(result.error);
     }
@@ -97,7 +110,7 @@ export class BuildingController {
   async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateBuildingDto,
-    @CurrentUser('projectId') projectId?: string,
+    @CurrentUser() user?: JwtPayload,
   ) {
     const result = await this.updateBuilding.execute({
       buildingId: id,
@@ -110,7 +123,7 @@ export class BuildingController {
       latitude: dto.latitude,
       longitude: dto.longitude,
       allowedRadius: dto.allowedRadius,
-    }, projectId);
+    }, user);
     if (result.isFailure) {
       throw this.mapError(result.error);
     }
@@ -120,8 +133,8 @@ export class BuildingController {
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Soft-delete a building' })
   @RequirePermission(Permissions.Buildings.Delete)
-  async remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser('projectId') projectId?: string) {
-    const result = await this.softDeleteBuilding.execute(id, projectId);
+  async remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user?: JwtPayload) {
+    const result = await this.softDeleteBuilding.execute(id, user);
     if (result.isFailure) {
       throw this.mapError(result.error);
     }

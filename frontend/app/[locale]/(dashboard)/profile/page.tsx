@@ -1,15 +1,35 @@
 /* eslint-disable */
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Card, Button, Input } from "@/components/ui";
 import { useToast } from "@/components/ui/Toast";
 import { useUser } from "@/hooks/useUser";
 import {
-  User, Mail, Shield, FolderKanban, Building2, Calendar, KeyRound, Save, Camera,
+  User, Mail, Shield, FolderKanban, Building2, Calendar, KeyRound, Save, Camera, RefreshCw,
 } from "lucide-react";
 import { apiClient } from "@/lib/api/apiClient";
+
+function compressImage(dataUrl: string, maxWidth: number, quality: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = document.createElement('img');
+    img.onload = () => {
+      const scale = Math.min(1, maxWidth / img.width);
+      const w = Math.round(img.width * scale);
+      const h = Math.round(img.height * scale);
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) { reject(new Error('Canvas context not available')); return; }
+      ctx.drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL('image/jpeg', quality));
+    };
+    img.onerror = () => reject(new Error('Image load failed'));
+    img.src = dataUrl;
+  });
+}
 
 export default function ProfilePage() {
   const params = useParams();
@@ -26,6 +46,9 @@ export default function ProfilePage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [saving, setSaving] = useState(false);
   const [changingPwd, setChangingPwd] = useState(false);
+  const [avatar, setAvatar] = useState<string | null>(null);
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadProfile = useCallback(async () => {
     if (!user) return;
@@ -42,6 +65,55 @@ export default function ProfilePage() {
   }, [user]);
 
   useEffect(() => { loadProfile(); }, [loadProfile]);
+
+  const handleAvatarPick = async (file: File | null) => {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      showToast(isArabic ? "يرجى اختيار ملف صورة" : "Please choose an image file", "error");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const raw = String(reader.result);
+      try {
+        const compressed = await compressImage(raw, 256, 0.7);
+        setAvatar(compressed);
+      } catch {
+        setAvatar(raw);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSaveAvatar = async () => {
+    if (!avatar) return;
+    setAvatarUploading(true);
+    try {
+      await apiClient('/profile/avatar', { method: 'PUT', body: { avatarUrl: avatar } });
+      showToast(isArabic ? "تم تحديث الصورة الشخصية" : "Profile picture updated", "success");
+      await loadProfile();
+      await refresh();
+    } catch {
+      showToast(isArabic ? "فشل تحديث الصورة الشخصية" : "Failed to update profile picture", "error");
+    } finally {
+      setAvatarUploading(false);
+    }
+  };
+
+  const handleRemoveAvatar = async () => {
+    setAvatarUploading(true);
+    try {
+      await apiClient('/profile/avatar', { method: 'PUT', body: { avatarUrl: '' } });
+      showToast(isArabic ? "تمت إزالة الصورة الشخصية" : "Profile picture removed", "success");
+      setAvatar(null);
+      await loadProfile();
+      await refresh();
+    } catch {
+      showToast(isArabic ? "فشلت العملية" : "Operation failed", "error");
+    } finally {
+      setAvatarUploading(false);
+    }
+  };
 
   const handleSaveProfile = async () => {
     if (!name.trim()) return;
@@ -116,13 +188,49 @@ export default function ProfilePage() {
         <Card className="lg:col-span-1 p-6">
           <div className="flex flex-col items-center text-center">
             <div className="relative w-24 h-24 rounded-full bg-gold/20 flex items-center justify-center mb-4">
-              <span className="text-3xl font-bold text-gold">
-                {profile.name?.charAt(0).toUpperCase() ?? "U"}
-              </span>
-              <button className="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-gold text-white flex items-center justify-center shadow-md hover:bg-gold/90 transition-colors">
+              {(avatar || profile.avatarUrl) ? (
+                <img
+                  src={avatar || profile.avatarUrl}
+                  alt={profile.name}
+                  className="w-24 h-24 rounded-full object-cover"
+                />
+              ) : (
+                <span className="text-3xl font-bold text-gold">
+                  {profile.name?.charAt(0).toUpperCase() ?? "U"}
+                </span>
+              )}
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-gold text-white flex items-center justify-center shadow-md hover:bg-gold/90 transition-colors"
+                title={isArabic ? "تغيير الصورة" : "Change picture"}
+              >
                 <Camera size={14} />
               </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => { void handleAvatarPick(e.target.files?.[0] ?? null); e.target.value = ""; }}
+              />
             </div>
+            {(avatar || profile.avatarUrl) && (
+              <div className="flex items-center gap-2 mb-2">
+                {avatar && (
+                  <Button onClick={handleSaveAvatar} disabled={avatarUploading} size="sm" className="flex items-center gap-1.5">
+                    {avatarUploading ? <RefreshCw size={14} className="animate-spin" /> : <Save size={14} />}
+                    {isArabic ? "حفظ الصورة" : "Save"}
+                  </Button>
+                )}
+                <button
+                  onClick={handleRemoveAvatar}
+                  disabled={avatarUploading}
+                  className="text-xs text-danger hover:underline disabled:opacity-50"
+                >
+                  {isArabic ? "إزالة" : "Remove"}
+                </button>
+              </div>
+            )}
             <h2 className="text-lg font-bold text-text-primary">{profile.name}</h2>
             <p className="text-sm text-text-muted">{profile.email}</p>
             <div className="mt-4 w-full space-y-2">
