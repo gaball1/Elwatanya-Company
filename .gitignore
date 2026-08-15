@@ -73,6 +73,13 @@ uploads/
 backend/uploads/
 frontend/uploads/
 
+# Backup artifacts (user data, not source)
+backups/
+scripts/backup/backup.env
+
+# Archived files (rollback copies, not source)
+docs/_archive/
+
 # QA / temp / generated artifacts (not part of source)
 .admintoken
 .purchasid
