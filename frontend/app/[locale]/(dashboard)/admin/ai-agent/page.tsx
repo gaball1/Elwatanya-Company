@@ -10,7 +10,7 @@ import {
   Bot, MessageSquare, Activity, AlertTriangle,
   BarChart3, Clock, Cpu, TrendingUp,
 } from "lucide-react";
-import { aiAgentService } from "@/services/ai-agent.service";
+import { aiAgentService, type IntentStat, type ToolStat, type WorkflowStat, type HourlyTraffic } from "@/services/ai-agent.service";
 
 interface Stats {
   totalRequests: number;
@@ -27,29 +27,32 @@ export default function AgentAnalyticsPage() {
   const isArabic = locale === "ar";
 
   const [stats, setStats] = useState<Stats | null>(null);
-  const [topIntents, setTopIntents] = useState<any[]>([]);
-  const [toolStats, setToolStats] = useState<any[]>([]);
-  const [workflowStats, setWorkflowStats] = useState<any[]>([]);
-  const [hourly, setHourly] = useState<any[]>([]);
+  const [topIntents, setTopIntents] = useState<IntentStat[]>([]);
+  const [toolStats, setToolStats] = useState<ToolStat[]>([]);
+  const [workflowStats, setWorkflowStats] = useState<WorkflowStat[]>([]);
+  const [hourly, setHourly] = useState<HourlyTraffic[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchData = () => {
+  const fetchAnalytics = async () => {
     setLoading(true);
     setError(null);
-    aiAgentService.getAnalytics()
-      .then((data: any) => {
-        setStats(data.summary);
-        setTopIntents(data.topIntents || []);
-        setToolStats(data.toolStats || []);
-        setWorkflowStats(data.workflowStats || []);
-        setHourly(data.hourly || []);
-      })
-      .catch((err: any) => setError(err?.message || "Failed to load analytics"))
-      .finally(() => setLoading(false));
+    try {
+      const data = await aiAgentService.getAnalytics();
+      setStats(data.summary);
+      setTopIntents(data.topIntents || []);
+      setToolStats(data.toolStats || []);
+      setWorkflowStats(data.workflowStats || []);
+      setHourly(data.hourly || []);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to load analytics");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  useEffect(() => { fetchData(); }, []);
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { fetchAnalytics().catch(() => {}); }, []);
 
   const formatUptime = (seconds: number) => {
     const h = Math.floor(seconds / 3600);
@@ -82,7 +85,7 @@ export default function AgentAnalyticsPage() {
           </p>
         </div>
         <button
-          onClick={fetchData}
+          onClick={fetchAnalytics}
           disabled={loading}
           className="px-4 py-2 text-sm bg-gold text-white rounded-xl hover:bg-gold-dark disabled:opacity-50 transition-colors"
         >
@@ -142,7 +145,7 @@ export default function AgentAnalyticsPage() {
             <p className="text-sm text-text-muted text-center py-8">{isArabic ? "لا توجد بيانات" : "No data yet"}</p>
           ) : (
             <div className="space-y-2">
-              {topIntents.map((item: any, i: number) => {
+              {topIntents.map((item, i) => {
                 const maxCount = topIntents[0]?.count || 1;
                 const pct = (item.count / maxCount) * 100;
                 return (
@@ -174,7 +177,7 @@ export default function AgentAnalyticsPage() {
             <p className="text-sm text-text-muted text-center py-8">{isArabic ? "لا توجد بيانات" : "No data yet"}</p>
           ) : (
             <div className="space-y-2">
-              {toolStats.map((item: any) => (
+              {toolStats.map((item) => (
                 <div key={item.tool} className="flex items-center justify-between text-sm py-1.5">
                   <span className="text-text-primary truncate">{item.tool}</span>
                   <div className="flex items-center gap-3 shrink-0">
@@ -198,7 +201,7 @@ export default function AgentAnalyticsPage() {
             <p className="text-sm text-text-muted text-center py-8">{isArabic ? "لم يتم تشغيل أي سير عمل" : "No workflows executed yet"}</p>
           ) : (
             <div className="space-y-3">
-              {workflowStats.map((w: any) => (
+              {workflowStats.map((w) => (
                 <div key={w.workflow} className="flex items-center justify-between text-sm">
                   <span className="text-text-primary truncate">{w.workflow}</span>
                   <div className="flex items-center gap-2 shrink-0">
@@ -222,8 +225,8 @@ export default function AgentAnalyticsPage() {
             <p className="text-sm text-text-muted text-center py-8">{isArabic ? "لا توجد بيانات" : "No data yet"}</p>
           ) : (
             <div className="space-y-1">
-              {hourly.map((h: any) => {
-                const maxCount = Math.max(...hourly.map((x: any) => x.count), 1);
+              {hourly.map((h) => {
+                const maxCount = Math.max(...hourly.map((x) => x.count), 1);
                 const pct = (h.count / maxCount) * 100;
                 const label = h.hour.length >= 13 ? h.hour.substring(11, 13) + ":00" : h.hour;
                 return (
