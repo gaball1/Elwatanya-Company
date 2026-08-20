@@ -92,8 +92,8 @@ export const aiAgentService = {
     return data.topics;
   },
   async getAnalytics(): Promise<AgentAnalytics> {
-    const data = await apiClient<{ success: boolean; data: AgentAnalytics }>('/ai-agent/analytics', { method: 'GET' });
-    return data.data;
+    const data = await apiClient<AgentAnalytics>('/ai-agent/analytics', { method: 'GET' });
+    return data;
   },
   async listConversations(search?: string): Promise<ConversationSummary[]> {
     const data = await apiClient<{ items: ConversationSummary[] }>(
