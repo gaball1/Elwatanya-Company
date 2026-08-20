@@ -49,11 +49,41 @@ export class AuditService {
     });
   }
 
+  /**
+   * Resolve a user search term (email, name, or UUID) to matching user IDs.
+   */
+  private async resolveUserIds(search: string): Promise<string[] | null> {
+    const trimmed = search.trim();
+    if (!trimmed) return null;
+
+    const users = await this.prisma.user.findMany({
+      where: {
+        OR: [
+          { email: { contains: trimmed, mode: 'insensitive' } },
+          { name: { contains: trimmed, mode: 'insensitive' } },
+          { id: trimmed },
+        ],
+      },
+      select: { id: true },
+      take: 20,
+    });
+
+    return users.length > 0 ? users.map((u) => u.id) : [];
+  }
+
   async findAll(params: { entity?: string; action?: string; userId?: string; skip?: number; take?: number }) {
     const where: any = {};
     if (params.entity) where.entity = params.entity;
     if (params.action) where.action = params.action;
-    if (params.userId) where.userId = params.userId;
+    if (params.userId) {
+      const ids = await this.resolveUserIds(params.userId);
+      if (ids !== null) {
+        if (ids.length === 0) {
+          return { items: [], total: 0 };
+        }
+        where.userId = ids.length === 1 ? ids[0] : { in: ids };
+      }
+    }
 
     const [items, total] = await Promise.all([
       this.prisma.auditLog.findMany({

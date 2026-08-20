@@ -33,9 +33,9 @@ export class LlmConfigService {
       apiKey,
       baseUrl,
       model,
-      temperature: Number(this.config.get<string>('OPENAI_TEMPERATURE') || '0.2'),
-      maxTokens: Number(this.config.get<string>('OPENAI_MAX_TOKENS') || '1500'),
-      maxIterations: Number(this.config.get<string>('OPENAI_MAX_ITERATIONS') || '6'),
+      temperature: Number(this.config.get<string>('OPENAI_TEMPERATURE') || '0.3'),
+      maxTokens: Number(this.config.get<string>('OPENAI_MAX_TOKENS') || '4096'),
+      maxIterations: Number(this.config.get<string>('OPENAI_MAX_ITERATIONS') || '8'),
       apiUrl,
     };
   }

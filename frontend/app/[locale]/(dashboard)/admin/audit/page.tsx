@@ -154,12 +154,12 @@ export default function AuditLogPage() {
             </select>
           </div>
           <div className="flex-1 min-w-[160px]">
-            <label className="block text-xs text-text-secondary mb-1">{isArabic ? "معرف المستخدم" : "User ID"}</label>
+            <label className="block text-xs text-text-secondary mb-1">{isArabic ? "المستخدم" : "User"}</label>
             <input
               type="text"
               value={filters.userId}
               onChange={(e) => setFilters((f) => ({ ...f, userId: e.target.value }))}
-              placeholder={isArabic ? "بحث بالمستخدم..." : "Search by user..."}
+              placeholder={isArabic ? "بحث بالاسم أو البريد..." : "Search by name or email..."}
               className="w-full px-3 py-2 border rounded-lg text-sm bg-surface text-text-primary"
             />
           </div>
