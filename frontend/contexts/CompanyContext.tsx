@@ -23,20 +23,30 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
   const [company, setCompany] = useState<Company | null>(null);
   const [loading, setLoading] = useState(true);
 
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const data = await companyService.get();
+        if (!cancelled) setCompany(data);
+      } catch {
+        // silently fail
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    load();
+    return () => { cancelled = true; };
+  }, []);
+
   const fetchCompany = useCallback(async () => {
     try {
       const data = await companyService.get();
       setCompany(data);
     } catch {
-      // silently fail — will retry on next mount
-    } finally {
-      setLoading(false);
+      // silently fail
     }
   }, []);
-
-  useEffect(() => {
-    fetchCompany();
-  }, [fetchCompany]);
 
   return (
     <CompanyContext.Provider value={{ company, loading, refresh: fetchCompany }}>

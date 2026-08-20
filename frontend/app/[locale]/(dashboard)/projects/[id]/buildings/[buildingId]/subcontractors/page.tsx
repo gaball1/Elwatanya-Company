@@ -105,7 +105,7 @@ export default function BuildingSubcontractorsPage() {
                 key: "agreedPrice",
                 labelAr: "السعر المتفق عليه",
                 labelEn: "Agreed Price",
-                format: (v: any) => v ? Number(v).toLocaleString() : "—",
+                format: (v: string | number | null | undefined) => v ? Number(v).toLocaleString() : "—",
               },
             ]}
             titleAr="مقاولي المبنى"

@@ -33,6 +33,9 @@ concurrency:
 env:
   NODE_VERSION: 22
   NEXT_TELEMETRY_DISABLED: "1"
+  DATABASE_URL: "postgresql://dummy:dummy@localhost:5432/dummy"
+  JWT_SECRET: "ci-test-secret"
+  JWT_REFRESH_SECRET: "ci-test-refresh-secret"
 
 jobs:
   # --- Security gates first (fast feedback, fail early) ----------------------

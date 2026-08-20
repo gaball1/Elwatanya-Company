@@ -10,6 +10,7 @@ export interface TimelineEvent {
   description: string;
   userId?: string;
   userName?: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   metadata?: Record<string, any>;
   createdAt: string;
 }

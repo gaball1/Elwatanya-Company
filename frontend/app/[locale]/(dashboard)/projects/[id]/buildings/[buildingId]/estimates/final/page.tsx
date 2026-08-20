@@ -277,7 +277,6 @@ function DistributeComponentModal({
           : [{ contractorId: "", quantity: 0 }]
       );
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, component?.id]);
 
   if (!isOpen || !component || !item) {
@@ -486,7 +485,6 @@ function DistributeItemModal({
           : [{ contractorId: "", quantity: 0 }]
       );
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, item?.itemCode]);
 
   if (!isOpen || !item) {
@@ -794,7 +792,6 @@ function EditComponentModal({
     if (isOpen && component) {
       setUnitPrice(component.unitPrice);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, component?.id]);
 
   if (!isOpen || !item || !component) {

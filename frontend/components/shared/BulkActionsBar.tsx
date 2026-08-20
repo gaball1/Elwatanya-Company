@@ -1,4 +1,3 @@
-/* eslint-disable */
 "use client";
 
 import { Trash2, Download, X, CheckSquare } from "lucide-react";

@@ -88,7 +88,7 @@ function sanitizeAttrs(name: string, attrBlock: string): string {
   let m: RegExpExecArray | null;
   while ((m = ATTR_RE.exec(attrBlock)) !== null) {
     const attrName = m[1].toLowerCase();
-    let attrValue = m[2];
+    const attrValue = m[2];
 
     if (attrName.startsWith('on')) continue; // event handlers
     if (attrName === 'style') {
