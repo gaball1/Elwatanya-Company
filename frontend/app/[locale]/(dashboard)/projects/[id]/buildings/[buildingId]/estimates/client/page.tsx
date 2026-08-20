@@ -14,6 +14,7 @@ import { employerBoqService } from "@/services/employerBoq.service";
 import type { EmployerBoqItem } from "@/types/boq";
 import { parseBoqExcelFile, exportBoqToExcel } from "@/lib/boqExcel";
 import { Can } from "@/components/Can";
+import DataLoader from "@/components/shared/DataLoader";
 
 const PAGE_SIZE = 50;
 
@@ -347,7 +348,7 @@ export default function EmployerBoqPage() {
     showToast(isArabic ? "تم التصدير" : "Exported", "success");
   };
 
-  const handlePrint = () => {
+  const handlePrint = (logoUrl?: string) => {
     const rows = filteredItems
       .map(
         (i, idx) =>
@@ -358,16 +359,16 @@ export default function EmployerBoqPage() {
       isArabic ? "مقايسة جهة الإسناد" : "Employer BOQ",
       `<div class="header"><h1>${isArabic ? "مقايسة جهة الإسناد" : "Employer BOQ"}</h1></div>
       <table><thead><tr><th>م</th><th>كود</th><th>البند</th><th>وحدة</th><th>كمية</th><th>فئة</th><th>قيمة</th></tr></thead><tbody>${rows}
-      <tr><td colspan="6" style="text-align:left;font-weight:700">الإجمالي</td><td class="gold">${(total ?? 0).toLocaleString()}</td></tr></tbody></table>`
+      <tr><td colspan="6" style="text-align:left;font-weight:700">الإجمالي</td><td class="gold">${(total ?? 0).toLocaleString()}</td></tr></tbody></table>`,
+      "",
+      { logoUrl }
     );
   };
 
   if (!mounted) {
     return (
       <div className="min-h-screen bg-gray-light -m-6 flex items-center justify-center">
-        <div className="animate-pulse text-text-muted">
-          {isArabic ? "جاري التحميل..." : "Loading..."}
-        </div>
+        <DataLoader />
       </div>
     );
   }
@@ -380,7 +381,7 @@ export default function EmployerBoqPage() {
         subtitle={isArabic ? "المصدر الرئيسي للبنود" : "Main BOQ source"}
         fallbackHref={back}
         isArabic={isArabic}
-        onPrint={handlePrint}
+        onPrint={(logoUrl) => handlePrint(logoUrl)}
         onExport={() => handleExport("excel")}
       />
       <div className="px-6 pb-6">
@@ -553,8 +554,8 @@ export default function EmployerBoqPage() {
               <tbody>
                 {initialLoading ? (
                   <tr>
-                    <td colSpan={8} className="p-8 text-center text-text-secondary">
-                      <div className="animate-pulse">{isArabic ? "جاري تحميل البنود..." : "Loading items..."}</div>
+                    <td colSpan={8} className="text-center py-4">
+                      <DataLoader />
                     </td>
                   </tr>
                 ) : filteredItems.length === 0 ? (

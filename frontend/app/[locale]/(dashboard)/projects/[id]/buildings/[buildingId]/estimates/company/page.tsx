@@ -13,6 +13,7 @@ import { getDocSignatures, setDocSignatures } from "@/lib/signatures";
 import type { EmployerBoqItem } from "@/types/boq";
 import { employerBoqService } from "@/services/employerBoq.service";
 import { analyticalBoqService } from "@/services/analyticalBoq.service";
+import DataLoader from "@/components/shared/DataLoader";
 import { finalBoqService } from "@/services/finalBoq.service";
 import type { AnalyticalBoqItem } from "@/types/boq";
 import { Can } from "@/components/Can";
@@ -120,9 +121,7 @@ export default function AnalyticalBoqPage() {
   if (!mounted) {
     return (
       <div className="min-h-screen bg-gray-light -m-6 flex items-center justify-center">
-        <div className="animate-pulse text-text-muted">
-          {isArabic ? "جاري التحميل..." : "Loading..."}
-        </div>
+        <DataLoader />
       </div>
     );
   }
@@ -193,7 +192,7 @@ export default function AnalyticalBoqPage() {
           );
           showToast(isArabic ? "تم التصدير" : "Exported", "success");
         }}
-        onPrint={() =>
+        onPrint={(logoUrl) =>
           printHtml(
             isArabic ? "المقايسة التحليلية" : "Analytical BOQ",
             `<div class="header"><h1>${
@@ -206,7 +205,9 @@ export default function AnalyticalBoqPage() {
                   `<tr><td>${i.itemCode}</td><td>${i.description}</td><td>${i.unit}</td><td>${i.quantity}</td><td>${i.unitPrice}</td><td>${i.totalValue}</td></tr>`
               )
               .join("")}
-            </tbody></table>`
+            </tbody></table>`,
+            "",
+            { logoUrl }
           )
         }
       />

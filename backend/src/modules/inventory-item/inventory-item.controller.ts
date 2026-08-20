@@ -3,6 +3,8 @@ import { handleError } from '../../common/utils/handle-error';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { RequirePermission } from '../../common/decorators/permissions.decorator';
 import { Permissions } from '../../common/constants/permissions.constant';
+import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
+import { OwnershipService } from '@/common/services/ownership.service';
 import { ListInventoryItemsUseCase } from './application/use-cases/list-inventory-items.use-case';
 import { CreateInventoryItemUseCase } from './application/use-cases/create-inventory-item.use-case';
 import { UpdateInventoryItemUseCase } from './application/use-cases/update-inventory-item.use-case';
@@ -20,13 +22,14 @@ export class InventoryItemController {
     private readonly updateItem: UpdateInventoryItemUseCase,
     private readonly deleteItem: DeleteInventoryItemUseCase,
     private readonly increaseItem: IncreaseInventoryItemUseCase,
+    private readonly ownership: OwnershipService,
   ) {}
 
   @Get()
   @ApiOperation({ summary: 'List inventory items (optional filters by categoryId, warehouseId, or projectId)' })
   @RequirePermission(Permissions.Inventory.Read)
-  async list(@Query('categoryId') categoryId?: string, @Query('warehouseId') warehouseId?: string, @Query('projectId') projectId?: string) {
-    const result = await this.listItems.execute(categoryId, warehouseId, projectId);
+  async list(@Query('categoryId') categoryId?: string, @Query('warehouseId') warehouseId?: string, @Query('projectId') projectId?: string, @CurrentUser() user?: JwtPayload) {
+    const result = await this.listItems.execute(categoryId, warehouseId, projectId, user);
     return { items: result.getValue() };
   }
 
@@ -44,8 +47,8 @@ export class InventoryItemController {
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Create an inventory item' })
   @RequirePermission(Permissions.Inventory.Create)
-  async create(@Body() dto: CreateInventoryItemDto) {
-    const result = await this.createItem.execute({ code: dto.code, name: dto.name, description: dto.description, categoryId: dto.categoryId, warehouseId: dto.warehouseId, projectId: dto.projectId, unit: dto.unit, quantity: dto.quantity, reason: dto.reason, minQuantity: dto.minQuantity, price: dto.price, status: dto.status });
+  async create(@Body() dto: CreateInventoryItemDto, @CurrentUser() user?: JwtPayload, @CurrentUser('sub') userId?: string) {
+    const result = await this.createItem.execute({ code: dto.code, name: dto.name, description: dto.description, categoryId: dto.categoryId, warehouseId: dto.warehouseId, projectId: dto.projectId, unit: dto.unit, quantity: dto.quantity, reason: dto.reason, minQuantity: dto.minQuantity, price: dto.price, status: dto.status }, user, userId);
     if (result.isFailure) handleError(result.error?.message, 'Failed to create inventory item');
     return { item: result.getValue() };
   }
@@ -53,8 +56,8 @@ export class InventoryItemController {
   @Patch(':id')
   @ApiOperation({ summary: 'Update inventory item' })
   @RequirePermission(Permissions.Inventory.Update)
-  async update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateInventoryItemDto) {
-    const result = await this.updateItem.execute({ id, code: dto.code, name: dto.name, description: dto.description, categoryId: dto.categoryId, warehouseId: dto.warehouseId, projectId: dto.projectId, unit: dto.unit, quantity: dto.quantity, minQuantity: dto.minQuantity, price: dto.price, status: dto.status });
+  async update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateInventoryItemDto, @CurrentUser() user?: JwtPayload, @CurrentUser('sub') userId?: string) {
+    const result = await this.updateItem.execute({ id, code: dto.code, name: dto.name, description: dto.description, categoryId: dto.categoryId, warehouseId: dto.warehouseId, projectId: dto.projectId, unit: dto.unit, quantity: dto.quantity, minQuantity: dto.minQuantity, price: dto.price, status: dto.status }, user, userId);
     if (result.isFailure) handleError(result.error?.message, 'Failed to update inventory item');
     return { item: result.getValue() };
   }
@@ -63,8 +66,8 @@ export class InventoryItemController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Increase item quantity ("توريد") with an optional reason' })
   @RequirePermission(Permissions.Inventory.Update)
-  async increase(@Param('id', ParseUUIDPipe) id: string, @Body() dto: IncreaseInventoryItemDto) {
-    const result = await this.increaseItem.execute({ id, quantity: dto.quantity, reason: dto.reason, unitCost: dto.unitCost });
+  async increase(@Param('id', ParseUUIDPipe) id: string, @Body() dto: IncreaseInventoryItemDto, @CurrentUser() user?: JwtPayload) {
+    const result = await this.increaseItem.execute({ id, quantity: dto.quantity, reason: dto.reason, unitCost: dto.unitCost }, user);
     if (result.isFailure) handleError(result.error?.message, 'Failed to increase inventory item quantity');
     return { item: result.getValue() };
   }
@@ -73,8 +76,8 @@ export class InventoryItemController {
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Soft-delete an inventory item' })
   @RequirePermission(Permissions.Inventory.Delete)
-  async remove(@Param('id', ParseUUIDPipe) id: string) {
-    const result = await this.deleteItem.execute(id);
+  async remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user?: JwtPayload) {
+    const result = await this.deleteItem.execute(id, user);
     if (result.isFailure) handleError(result.error?.message, 'Failed to delete inventory item');
   }
 }

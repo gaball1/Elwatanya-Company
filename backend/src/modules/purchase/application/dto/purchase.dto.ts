@@ -34,7 +34,6 @@ export interface CreatePurchaseInput {
   notes?: string;
   invoiceFile?: string | null;
   supplierName?: string;
-  createdBy: string;
   categoryId?: string;
   inventoryItemId?: string;
 }
@@ -51,7 +50,6 @@ export interface UpdatePurchaseInput {
   supplierName?: string;
   buildingId?: string | null;
   supplierId?: string | null;
-  createdBy?: string;
   categoryId?: string;
   inventoryItemId?: string;
 }

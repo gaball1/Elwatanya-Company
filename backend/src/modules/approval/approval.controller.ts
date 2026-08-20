@@ -1,4 +1,4 @@
-import { Body, Controller, ForbiddenException, Get, HttpCode, HttpStatus, NotFoundException, Param, ParseUUIDPipe, Patch, Post, Query, Req } from '@nestjs/common';
+import { Body, Controller, ForbiddenException, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, Post, Query, Req } from '@nestjs/common';
 import { handleError } from '../../common/utils/handle-error';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { RequirePermission } from '../../common/decorators/permissions.decorator';
@@ -6,6 +6,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Permissions } from '../../common/constants/permissions.constant';
 import { isAdminUser } from '../../common/utils/is-admin.util';
 import { ListApprovalsUseCase } from './application/use-cases/list-approvals.use-case';
+import { GetApprovalByIdUseCase } from './application/use-cases/get-approval-by-id.use-case';
 import { RequestApprovalUseCase } from './application/use-cases/request-approval.use-case';
 import { ApproveApprovalUseCase } from './application/use-cases/approve-approval.use-case';
 import { RejectApprovalUseCase } from './application/use-cases/reject-approval.use-case';
@@ -19,6 +20,7 @@ import { RequestApprovalDto, ApproveOrRejectDto, ListApprovalsQueryDto } from '.
 export class ApprovalController {
   constructor(
     private readonly listApprovals: ListApprovalsUseCase,
+    private readonly getApprovalById: GetApprovalByIdUseCase,
     private readonly requestApproval: RequestApprovalUseCase,
     private readonly approveApproval: ApproveApprovalUseCase,
     private readonly rejectApproval: RejectApprovalUseCase,
@@ -61,13 +63,9 @@ export class ApprovalController {
   @ApiOperation({ summary: 'Get approval request by id' })
   @RequirePermission(Permissions.Approvals.Read)
   async getById(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: any) {
-    const isAdmin = this.canViewAll(user);
-    const result = await this.listApprovals.execute({}, { userId: user?.sub, isAdmin });
+    const result = await this.getApprovalById.execute(id);
     if (result.isFailure) handleError(result.error?.message, 'Failed to get approval');
-    const { items } = result.getValue();
-    const approval = items.find((a) => a.id === id);
-    if (!approval) throw new NotFoundException('Approval request not found');
-    return { approval };
+    return { approval: result.getValue() };
   }
 
   @Post()

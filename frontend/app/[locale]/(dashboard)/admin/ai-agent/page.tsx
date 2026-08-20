@@ -204,7 +204,7 @@ export default function AgentAnalyticsPage() {
                   <span className="text-text-primary truncate">{w.workflow}</span>
                   <div className="flex items-center gap-2 shrink-0">
                     <span className="text-xs text-success">{w.completed} ✓</span>
-                    <span className="text-xs text-text-muted">{w.started} started</span>
+                    <span className="text-xs text-text-muted">{w.started} {isArabic ? "بدأ" : "started"}</span>
                     {w.failed > 0 && <span className="text-xs text-danger">{w.failed} ✗</span>}
                   </div>
                 </div>

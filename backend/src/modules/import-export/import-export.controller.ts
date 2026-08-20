@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Param, Query, UploadedFile, UseInterceptors, Res, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Param, Query, UploadedFile, UseInterceptors, Res, UseGuards, BadRequestException } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Response } from 'express';
@@ -6,6 +6,7 @@ import { ImportExportService } from './import-export.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RequirePermission } from '../../common/decorators/permissions.decorator';
 import { FormatType } from './domain/import-export-handler.interface';
+import { MAX_FILE_SIZE_BYTES } from '../file/domain/file-security.constants';
 
 @ApiTags('Import / Export')
 @ApiBearerAuth()
@@ -18,13 +19,13 @@ export class ImportExportController {
   @ApiOperation({ summary: 'Import data from file' })
   @ApiConsumes('multipart/form-data')
   @RequirePermission('import-export:import')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_FILE_SIZE_BYTES, files: 1 } }))
   async import(
     @Param('entityType') entityType: string,
     @Query('format') format: FormatType,
     @UploadedFile() file: any,
   ) {
-    if (!file) throw new Error('File is required');
+    if (!file) throw new BadRequestException('File is required');
     const result = await this.service.importFromBuffer(entityType, file.buffer, format);
     return result;
   }

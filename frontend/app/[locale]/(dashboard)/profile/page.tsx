@@ -5,6 +5,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Card, Button, Input } from "@/components/ui";
 import { useToast } from "@/components/ui/Toast";
+import DataLoader from "@/components/shared/DataLoader";
 import { useUser } from "@/hooks/useUser";
 import {
   User, Mail, Shield, FolderKanban, Building2, Calendar, KeyRound, Save, Camera, RefreshCw,
@@ -160,14 +161,7 @@ export default function ProfilePage() {
   };
 
   if (loading || !profile) {
-    return (
-      <div className="p-6">
-        <div className="animate-pulse space-y-6">
-          <div className="h-8 w-48 bg-surface-secondary rounded" />
-          <div className="h-64 bg-surface-secondary rounded-xl" />
-        </div>
-      </div>
-    );
+    return <DataLoader />;
   }
 
   return (
@@ -333,7 +327,7 @@ export default function ProfilePage() {
                 <p className="text-sm font-medium text-text-muted mb-2">{isArabic ? "الصلاحيات" : "Roles"}</p>
                 <div className="flex flex-wrap gap-2">
                   {profile.roles?.map((role: any) => (
-                    <span key={role.id} className="px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
+                    <span key={role.id} className="px-3 py-1 rounded-full text-xs font-medium bg-primary/10 text-primary">
                       {role.name}
                     </span>
                   ))}

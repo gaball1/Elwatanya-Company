@@ -8,6 +8,7 @@ import { PrismaService } from '@/prisma/prisma.service';
 import { EventBusImpl } from '@/modules/domain-events/event-bus.impl';
 import { FundTransactionCreatedEvent } from '@/modules/domain-events/events';
 import { applyFundBalanceEffects, balanceEffectsFor } from '../fund-balance.util';
+import { OwnershipActor, OwnershipService } from '@/common/services/ownership.service';
 
 export class CreateFundTransactionUseCase {
   constructor(
@@ -15,13 +16,15 @@ export class CreateFundTransactionUseCase {
     private readonly notifications: NotificationService,
     private readonly prisma: PrismaService,
     private readonly eventBus: EventBusImpl,
+    private readonly ownership: OwnershipService,
   ) {}
 
-  async execute(input: CreateFundTransactionInput): Promise<Result<FundTransactionResult>> {
+  async execute(input: CreateFundTransactionInput, user: OwnershipActor | undefined, userId?: string): Promise<Result<FundTransactionResult>> {
     if (!input.description || !input.description.trim()) {
       return Result.fail(new Error('وصف (سبب) المعاملة المالية مطلوب'));
     }
 
+    const createdBy = userId ?? 'system';
     const result = FundTransaction.create({
       fundId: input.fundId,
       type: input.type,
@@ -32,7 +35,7 @@ export class CreateFundTransactionUseCase {
       status: input.status,
       referenceId: input.referenceId,
       notes: input.notes,
-      createdBy: input.createdBy,
+      createdBy,
     });
 
     if (result.isFailure) return Result.fail(result.error as Error);
@@ -43,6 +46,8 @@ export class CreateFundTransactionUseCase {
       where: { id: input.fundId },
     });
     if (!fund) return Result.fail(new Error('العهدة غير موجودة'));
+
+    await this.ownership.verifyProjectAccess(user, fund.projectId);
 
     if (transaction.type === 'deduct') {
       if (transaction.category === 'purchase' || transaction.category === 'miscellaneous') {
@@ -86,7 +91,7 @@ export class CreateFundTransactionUseCase {
           entityType: 'fund_transaction',
           entityId: transaction.id.toValue(),
           link: `/projects/${fund.projectId}/treasury`,
-          createdBy: input.createdBy,
+          createdBy,
         });
 
         await this.eventBus.publish(
@@ -101,7 +106,7 @@ export class CreateFundTransactionUseCase {
               amount: input.amount,
               description: input.description ?? '',
               status: input.status ?? 'pending',
-              createdBy: input.createdBy,
+              createdBy,
             },
           ),
         );
@@ -118,7 +123,7 @@ export class CreateFundTransactionUseCase {
               amount: input.amount,
               description: input.description ?? '',
               status: input.status ?? 'pending',
-              createdBy: input.createdBy,
+              createdBy,
             },
           ),
         );

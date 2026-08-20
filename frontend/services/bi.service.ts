@@ -12,6 +12,7 @@ export interface KpiDefinition {
 export interface KpiResult {
   key: string;
   name: string;
+  nameArabic?: string;
   description: string;
   category: string;
   value: number;

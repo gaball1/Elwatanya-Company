@@ -1,12 +1,13 @@
 import { IsEmail, IsNotEmpty, IsString, MinLength, IsOptional, IsUUID } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsStrongPassword } from '../../common/validators/password.validator';
 
 export class LoginDto {
   @ApiProperty({ example: 'admin@elwataniya.com' })
   @IsEmail()
   email!: string;
 
-  @ApiProperty({ example: 'Admin@123' })
+  @ApiProperty({ example: 'SecurePass123!' })
   @IsString()
   @IsNotEmpty()
   @MinLength(6)
@@ -18,9 +19,9 @@ export class RegisterDto {
   @IsEmail()
   email!: string;
 
-  @ApiProperty({ example: 'SecurePass123' })
+  @ApiProperty({ example: 'SecurePass123!' })
   @IsString()
-  @MinLength(8)
+  @IsStrongPassword()
   password!: string;
 
   @ApiProperty({ example: 'Ahmed Hassan' })
@@ -30,10 +31,10 @@ export class RegisterDto {
 }
 
 export class RefreshTokenDto {
-  @ApiProperty()
+  @ApiProperty({ required: false })
   @IsString()
-  @IsNotEmpty()
-  refreshToken!: string;
+  @IsOptional()
+  refreshToken?: string;
 }
 
 export class ForgotPasswordDto {
@@ -48,9 +49,9 @@ export class ResetPasswordDto {
   @IsNotEmpty()
   token!: string;
 
-  @ApiProperty({ example: 'NewSecurePass123' })
+  @ApiProperty({ example: 'NewSecurePass123!' })
   @IsString()
-  @MinLength(8)
+  @IsStrongPassword()
   password!: string;
 }
 
@@ -60,9 +61,9 @@ export class ChangePasswordDto {
   @IsNotEmpty()
   currentPassword!: string;
 
-  @ApiProperty({ example: 'NewSecurePass123' })
+  @ApiProperty({ example: 'NewSecurePass123!' })
   @IsString()
-  @MinLength(8)
+  @IsStrongPassword()
   newPassword!: string;
 }
 

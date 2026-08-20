@@ -14,6 +14,7 @@ export interface PdfSignature {
 export interface PdfDocumentProps {
   title: string;
   arabicTitle?: string;
+  subtitle?: string;
   documentNumber?: string;
   version?: string;
   generatedBy: string;
@@ -38,6 +39,7 @@ export class PdfDocument {
 
   get title(): string { return this.props.title; }
   get arabicTitle(): string | undefined { return this.props.arabicTitle; }
+  get subtitle(): string | undefined { return this.props.subtitle; }
   get documentNumber(): string | undefined { return this.props.documentNumber; }
   get version(): string | undefined { return this.props.version; }
   get generatedBy(): string { return this.props.generatedBy; }

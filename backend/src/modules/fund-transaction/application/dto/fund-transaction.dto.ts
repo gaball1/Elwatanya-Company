@@ -26,7 +26,6 @@ export interface CreateFundTransactionInput {
   status?: FundTransactionStatus;
   referenceId?: string;
   notes?: string;
-  createdBy?: string;
 }
 
 export interface UpdateFundTransactionInput {
@@ -40,5 +39,4 @@ export interface UpdateFundTransactionInput {
   status?: FundTransactionStatus;
   referenceId?: string;
   notes?: string;
-  createdBy?: string;
 }

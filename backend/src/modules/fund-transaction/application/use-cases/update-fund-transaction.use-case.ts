@@ -5,16 +5,31 @@ import { UpdateFundTransactionInput, FundTransactionResult } from '../dto/fund-t
 import { toResult } from './list-fund-transactions.use-case';
 import { PrismaService } from '@/prisma/prisma.service';
 import { applyFundBalanceEffects, balanceEffectsFor } from '../fund-balance.util';
+import { OwnershipActor, OwnershipService } from '@/common/services/ownership.service';
 
 export class UpdateFundTransactionUseCase {
   constructor(
     private readonly transactions: IFundTransactionRepository,
     private readonly prisma: PrismaService,
+    private readonly ownership: OwnershipService,
   ) {}
 
-  async execute(input: UpdateFundTransactionInput): Promise<Result<FundTransactionResult>> {
+  async execute(input: UpdateFundTransactionInput, user: OwnershipActor | undefined, userId?: string): Promise<Result<FundTransactionResult>> {
     const transaction = await this.transactions.findById(new UniqueEntityId(input.id));
     if (!transaction) return Result.fail(new Error('Fund transaction not found'));
+
+    const oldFund = await this.prisma.projectFund.findUnique({
+      where: { id: transaction.fundId },
+      select: { projectId: true },
+    });
+    if (oldFund) await this.ownership.verifyProjectAccess(user, oldFund.projectId);
+    if (input.fundId && input.fundId !== transaction.fundId) {
+      const newFund = await this.prisma.projectFund.findUnique({
+        where: { id: input.fundId },
+        select: { projectId: true },
+      });
+      if (newFund) await this.ownership.verifyProjectAccess(user, newFund.projectId);
+    }
 
     const oldFundId = transaction.fundId;
     const oldEffect = balanceEffectsFor(transaction.type, transaction.category, transaction.status as any, transaction.amount);
@@ -29,7 +44,7 @@ export class UpdateFundTransactionUseCase {
       status: input.status,
       referenceId: input.referenceId,
       notes: input.notes,
-      createdBy: input.createdBy,
+      createdBy: userId ?? 'system',
     });
 
     if (updateResult.isFailure) return Result.fail(updateResult.error as Error);

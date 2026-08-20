@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '@/prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
 import { CreateUserDto, UpdateUserDto, AssignRolesDto, AssignProjectsDto, ResetPasswordDto, QueryUsersDto } from './dto/admin-users.dto';
@@ -110,7 +110,7 @@ export class AdminUsersService {
       await this.assertEmployeeAvailable(dto.employeeId);
     }
 
-    const passwordHash = await bcrypt.hash(dto.password, 10);
+    const passwordHash = await bcrypt.hash(dto.password, 12);
     const user = await this.prisma.user.create({
       data: {
         email: dto.email,
@@ -198,7 +198,7 @@ export class AdminUsersService {
     const user = await this.prisma.user.findUnique({ where: { id } });
     if (!user) throw new NotFoundException('User not found');
 
-    const passwordHash = await bcrypt.hash(dto.newPassword, 10);
+    const passwordHash = await bcrypt.hash(dto.newPassword, 12);
     await this.prisma.user.update({
       where: { id },
       data: { passwordHash },
@@ -213,9 +213,21 @@ export class AdminUsersService {
     return { success: true, message: 'Password reset successfully' };
   }
 
-  async assignRoles(id: string, dto: AssignRolesDto) {
+  async assignRoles(id: string, dto: AssignRolesDto, actorRoleNames: string[] = []) {
     const user = await this.prisma.user.findUnique({ where: { id } });
     if (!user) throw new NotFoundException('User not found');
+
+    // Guard: only SUPER_ADMINs can assign the SUPER_ADMIN role
+    if (dto.roleIds.length > 0) {
+      const roles = await this.prisma.role.findMany({
+        where: { id: { in: dto.roleIds } },
+        select: { name: true },
+      });
+      const assigningSuperAdmin = roles.some((r) => r.name === 'SUPER_ADMIN');
+      if (assigningSuperAdmin && !actorRoleNames.includes('SUPER_ADMIN')) {
+        throw new ForbiddenException('Only SUPER_ADMIN can assign the SUPER_ADMIN role');
+      }
+    }
 
     // Remove existing role assignments
     await this.prisma.userRoleAssignment.deleteMany({ where: { userId: id } });

@@ -4,6 +4,7 @@ import { PrismaService } from '@/prisma/prisma.service';
 import { IInventoryItemRepository } from '../../domain/inventory-item.repository';
 import { toResult } from './list-inventory-items.use-case';
 import { InventoryItemResult } from '../dto/inventory-item.dto';
+import { OwnershipActor, OwnershipService } from '@/common/services/ownership.service';
 
 export interface IncreaseInventoryItemInput {
   id: string;
@@ -21,9 +22,10 @@ export class IncreaseInventoryItemUseCase {
   constructor(
     private readonly items: IInventoryItemRepository,
     private readonly prisma: PrismaService,
+    private readonly ownership: OwnershipService,
   ) {}
 
-  async execute(input: IncreaseInventoryItemInput): Promise<Result<InventoryItemResult>> {
+  async execute(input: IncreaseInventoryItemInput, user?: OwnershipActor): Promise<Result<InventoryItemResult>> {
     try {
       if (!input.quantity || input.quantity <= 0) {
         return Result.fail(new Error('Quantity must be a positive number'));
@@ -33,6 +35,8 @@ export class IncreaseInventoryItemUseCase {
       if (!item) {
         return Result.fail(new Error('Inventory item not found'));
       }
+
+      if (item.projectId) await this.ownership.verifyProjectAccess(user, item.projectId);
 
       const receiveResult = item.receiveStock(input.quantity, input.unitCost ?? item.avgCost);
       if (receiveResult.isFailure) return Result.fail(receiveResult.error as Error);

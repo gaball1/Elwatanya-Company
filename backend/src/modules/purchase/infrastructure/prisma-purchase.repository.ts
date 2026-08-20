@@ -75,6 +75,15 @@ export class PrismaPurchaseRepository implements IPurchaseRepository {
     return records.map((r) => this.toDomain(r));
   }
 
+  async findByProjectIds(projectIds: string[], status?: string, tx?: Prisma.TransactionClient): Promise<Purchase[]> {
+    const client = tx || this.prisma;
+    const records = await client.purchase.findMany({
+      where: { projectId: { in: projectIds }, status: status || undefined, deletedAt: null },
+      orderBy: { date: 'desc' },
+    });
+    return records.map((r) => this.toDomain(r));
+  }
+
   async findByStatus(status: string, projectId?: string, tx?: Prisma.TransactionClient): Promise<Purchase[]> {
     const client = tx || this.prisma;
     const records = await client.purchase.findMany({

@@ -4,6 +4,7 @@
 import { useParams } from "next/navigation";
 import { useState, useMemo, useCallback, useEffect } from "react";
 import { Card } from "@/components/ui";
+import DataLoader from "@/components/shared/DataLoader";
 import { Can } from '@/components/Can';
 import {
   Tags,
@@ -15,8 +16,8 @@ import {
   Filter,
   Download,
   ArrowUpDown,
-  Printer,
 } from "lucide-react";
+import PrintPdfButton from "@/components/shared/PrintPdfButton";
 import { categoryService, type Category } from "@/services/category.service";
 import { useToast } from "@/components/ui/Toast";
 import { printAsPDF } from "@/lib/printUtils";
@@ -161,7 +162,7 @@ export default function CategoriesPage() {
     }
   }, [deletingId, isArabic, fetchCategories]);
 
-  const handlePrintPDF = useCallback(() => {
+  const handlePrintPDF = useCallback((logoUrl?: string) => {
     const headers = [
       isArabic ? "رمز التصنيف" : "Code",
       isArabic ? "اسم التصنيف" : "Name",
@@ -173,16 +174,16 @@ export default function CategoriesPage() {
       c.code,
       c.name,
       c.description || "—",
-      c.parentId || "—",
+      categories.find((cat) => cat.id === c.parentId)?.name || "—",
       c.status === "active" ? (isArabic ? "نشط" : "Active") : (isArabic ? "غير نشط" : "Inactive"),
     ]);
-    printAsPDF(rows, headers, isArabic ? "تقرير التصنيفات" : "Categories Report", isArabic);
+    printAsPDF(rows, headers, isArabic ? "تقرير التصنيفات" : "Categories Report", isArabic, { logoUrl });
   }, [filteredAndSortedCategories, isArabic]);
 
   const exportToExcel = useCallback(() => {
     const headers = ["رمز التصنيف", "اسم التصنيف", "الوصف", "التصنيف الأب", "الحالة"];
     const rows = filteredAndSortedCategories.map((c) => [
-      c.code, c.name, c.description || "", c.parentId || "", c.status === "active" ? "نشط" : "غير نشط",
+      c.code, c.name, c.description || "", categories.find((cat) => cat.id === c.parentId)?.name || "", c.status === "active" ? "نشط" : "غير نشط",
     ]);
     const csvContent = [headers, ...rows].map((row) => row.join(",")).join("\n");
     const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
@@ -218,9 +219,7 @@ export default function CategoriesPage() {
             <p className="text-sm text-text-secondary mt-1">{isArabic ? "إدارة تصنيفات المخزون" : "Manage inventory categories"}</p>
           </div>
           <div className="flex gap-2">
-            <button onClick={handlePrintPDF} className="flex items-center gap-2 px-4 py-2 border border-info text-info rounded-lg hover:bg-info hover:text-white transition">
-              <Printer size={18} /> {isArabic ? "طباعة PDF" : "Print PDF"}
-            </button>
+            <PrintPdfButton label={isArabic ? "طباعة PDF" : "Print PDF"} onPrint={handlePrintPDF} />
             <button onClick={exportToExcel} className="flex items-center gap-2 px-4 py-2 border border-success-dark text-success-dark rounded-lg hover:bg-success-dark hover:text-white transition">
               <Download size={18} /> {isArabic ? "تصدير Excel" : "Export Excel"}
             </button>
@@ -267,7 +266,7 @@ export default function CategoriesPage() {
 
       <div className="p-6 pt-0">
         {loading ? (
-          <Card className="p-12 text-center"><p className="text-text-secondary">{isArabic ? "جاري التحميل..." : "Loading..."}</p></Card>
+          <DataLoader />
         ) : filteredAndSortedCategories.length === 0 ? (
           <Card className="p-12 text-center">
             <Tags size={64} className="mx-auto text-text-muted mb-4" />
@@ -300,7 +299,7 @@ export default function CategoriesPage() {
                   </div>
                   <div className="mt-4 space-y-2 text-sm text-text-secondary">
                     <p>{isArabic ? "الوصف" : "Description"}: {category.description || "—"}</p>
-                    <p>{isArabic ? "التصنيف الأب" : "Parent"}: {category.parentId || "—"}</p>
+                    <p>{isArabic ? "التصنيف الأب" : "Parent"}: {categories.find((c) => c.id === category.parentId)?.name || "—"}</p>
                   </div>
                   <div className="mt-3 pt-3 border-t border-border-light flex justify-between items-center">
                     <span className={`text-xs px-2 py-1 rounded-full ${status.className}`}>{status.text}</span>
@@ -325,7 +324,22 @@ export default function CategoriesPage() {
               <input type="text" name="code" placeholder={isArabic ? "رمز التصنيف" : "Category Code"} value={form.code} onChange={handleInputChange} className="w-full p-3 border rounded-xl" required />
               <input type="text" name="name" placeholder={isArabic ? "اسم التصنيف" : "Category Name"} value={form.name} onChange={handleInputChange} className="w-full p-3 border rounded-xl" required />
               <textarea name="description" placeholder={isArabic ? "الوصف" : "Description"} value={form.description} onChange={handleInputChange} className="w-full p-3 border rounded-xl" rows={3} />
-              <input type="text" name="parentId" placeholder={isArabic ? "معرّف التصنيف الأب" : "Parent Category ID"} value={form.parentId} onChange={handleInputChange} className="w-full p-3 border rounded-xl" />
+              <div>
+                <label className="block text-sm text-text-secondary mb-1">{isArabic ? "التصنيف الأب (اختياري)" : "Parent Category (Optional)"}</label>
+                <select name="parentId" value={form.parentId} onChange={handleInputChange} className="w-full p-3 border rounded-xl">
+                  <option value="">{isArabic ? "— تصنيف رئيسي (بدون أب) —" : "— Top-level (no parent) —"}</option>
+                  {categories
+                    .filter((c) => c.id !== editingCategory?.id)
+                    .map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name} ({c.code})
+                      </option>
+                    ))}
+                </select>
+                {categories.length === 0 && (
+                  <p className="text-xs text-text-muted mt-1">{isArabic ? "لا توجد تصنيفات بعد — سيتم إنشاء هذا كتصنيف رئيسي" : "No categories yet — this will be a top-level category"}</p>
+                )}
+              </div>
               <select name="status" value={form.status} onChange={handleInputChange} className="w-full p-3 border rounded-xl">
                 <option value="active">{isArabic ? "نشط" : "Active"}</option>
                 <option value="inactive">{isArabic ? "غير نشط" : "Inactive"}</option>

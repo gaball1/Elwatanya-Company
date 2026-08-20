@@ -78,6 +78,68 @@ export class AnalyzeFinalBoqItemUseCase {
   }
 }
 
+/** Mirrors unanalyzeFinalItem — reverts analyzed state back to pending. */
+export class UnanalyzeFinalBoqItemUseCase {
+  constructor(
+    private readonly finalBoq: IFinalBoqRepository,
+    private readonly buildings: IBuildingRepository,
+    private readonly allocations: IFinalBoqAllocationReader,
+    private readonly ownership: OwnershipService,
+    private readonly audit: AuditService,
+  ) {}
+
+  async execute(input: { buildingId: string; itemCode: string }, user?: OwnershipActor, userId?: string): Promise<Result<FinalBoqItemResult>> {
+    await this.ownership.verifyBuildingAccess(user, input.buildingId);
+    const buildingId = new UniqueEntityId(input.buildingId);
+    const building = await this.buildings.findById(buildingId);
+    if (!building) {
+      return Result.fail(
+        new BuildingApplicationError(BuildingErrorCode.NOT_FOUND, 'Building not found'),
+      );
+    }
+
+    const aggregate = await getOrCreateFinalBoq(building, this.finalBoq);
+    const item = aggregate.findItemByCode(input.itemCode);
+    if (!item) {
+      return Result.fail(
+        new FinalBoqApplicationError(FinalBoqErrorCode.ITEM_NOT_FOUND, 'Final BOQ item not found'),
+      );
+    }
+
+    if (!item.isAnalyzed) {
+      return Result.fail(
+        new FinalBoqApplicationError(FinalBoqErrorCode.ITEM_IS_ANALYZED, 'Item is not analyzed'),
+      );
+    }
+
+    const allocationRefs = await this.allocations.getAllocationsForBuilding(buildingId);
+    const hasDistributedComponents = item.components.some((comp) => {
+      const allocated = allocationRefs
+        .filter((a) => a.itemCode === input.itemCode && a.componentId === comp.id.toValue())
+        .reduce((sum, a) => sum + a.assignedQuantity, 0);
+      return allocated > 0;
+    });
+
+    if (hasDistributedComponents) {
+      return Result.fail(
+        new FinalBoqApplicationError(
+          FinalBoqErrorCode.COMPONENT_HAS_ALLOCATIONS,
+          'Cannot unanalyze: some components have been distributed to contractors',
+        ),
+      );
+    }
+
+    item.unanalyze();
+    await this.finalBoq.save(aggregate);
+
+    if (userId) {
+      this.audit.log({ userId, entity: 'final_boq', entityId: item.id.toValue(), action: 'UNANALYZE', before: null, after: { itemCode: item.businessCode } });
+    }
+
+    return Result.ok(toFinalBoqItemResult(item, allocationRefs));
+  }
+}
+
 /** Mirrors addComponentToFinalItem */
 export class AddFinalBoqComponentUseCase {
   constructor(
@@ -163,6 +225,26 @@ export class RemoveFinalBoqComponentUseCase {
       );
     }
 
+    const component = item.findComponent(new UniqueEntityId(input.componentId));
+    if (!component) {
+      return Result.fail(
+        new FinalBoqApplicationError(
+          FinalBoqErrorCode.COMPONENT_NOT_FOUND,
+          'Component not found',
+        ),
+      );
+    }
+
+    const allocationRefs = await this.allocations.getAllocationsForBuilding(buildingId);
+    if (getComponentAllocatedQty(allocationRefs, input.itemCode, input.componentId) > 0) {
+      return Result.fail(
+        new FinalBoqApplicationError(
+          FinalBoqErrorCode.COMPONENT_HAS_ALLOCATIONS,
+          `لا يمكن حذف المكوّن ${component.name} بعد توزيعه — يرجى إلغاء التوزيع أولاً`,
+        ),
+      );
+    }
+
     if (!item.removeComponent(new UniqueEntityId(input.componentId))) {
       return Result.fail(
         new FinalBoqApplicationError(
@@ -176,7 +258,6 @@ export class RemoveFinalBoqComponentUseCase {
     if (userId) {
       this.audit.log({ userId, entity: 'final_boq', entityId: item.id.toValue(), action: 'REMOVE_COMPONENT', before: null, after: { itemCode: item.businessCode, componentId: input.componentId } });
     }
-    const allocationRefs = await this.allocations.getAllocationsForBuilding(buildingId);
     return Result.ok(toFinalBoqItemResult(item, allocationRefs));
   }
 }

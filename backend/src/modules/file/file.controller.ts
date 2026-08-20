@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Delete, Param, Query, Body, UploadedFile, UseInterceptors, BadRequestException, Res, UseGuards, ForbiddenException } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Param, Query, Body, UploadedFile, UseInterceptors, BadRequestException, Res, UseGuards, ForbiddenException, ParseUUIDPipe } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Response } from 'express';
@@ -16,6 +16,14 @@ import { isSafeInlineMimeType, MAX_FILE_SIZE_BYTES } from './domain/file-securit
 @Controller('files')
 export class FileController {
   constructor(private readonly fileService: FileService) {}
+
+  // SECURITY NOTE (P1-5): FileRecord has no direct `projectId` field.
+  // Files are linked to entities via `entityType`/`entityId`, but not all entity
+  // types are project-scoped (e.g. `company`, `settings` are global). Tracing a
+  // file back to its project requires a per-entityType resolver, which is too
+  // fragile to implement generically here. Until a `projectId` column is added
+  // to FileRecord, project-level access scoping cannot be enforced for downloads
+  // or list queries.
 
   @Post('upload')
   @ApiOperation({ summary: 'Upload a file' })
@@ -75,7 +83,7 @@ export class FileController {
   @Get('download/:id')
   @ApiOperation({ summary: 'Download a file by ID' })
   @RequirePermission(Permissions.Files.Read)
-  async download(@Param('id') id: string, @Res() res: Response) {
+  async download(@Param('id', ParseUUIDPipe) id: string, @Res() res: Response) {
     const { stream, mimeType, fileName } = await this.fileService.getFileStream(id);
     const disposition = isSafeInlineMimeType(mimeType) ? 'inline' : 'attachment';
     res.setHeader('Content-Type', mimeType);
@@ -87,7 +95,7 @@ export class FileController {
   @Public()
   @Get('public/:id')
   @ApiOperation({ summary: 'Download a company branding asset without authentication (logo, stamp, watermark, signature)' })
-  async downloadPublicCompanyAsset(@Param('id') id: string, @Res() res: Response) {
+  async downloadPublicCompanyAsset(@Param('id', ParseUUIDPipe) id: string, @Res() res: Response) {
     const file = await this.fileService.getFile(id);
     if (file.category !== 'company') {
       throw new ForbiddenException('This file is not a public company asset');
@@ -123,7 +131,7 @@ export class FileController {
   @Delete(':id')
   @ApiOperation({ summary: 'Delete a file' })
   @RequirePermission(Permissions.Files.Delete)
-  async delete(@Param('id') id: string) {
+  async delete(@Param('id', ParseUUIDPipe) id: string) {
     await this.fileService.deleteFile(id);
     return { deleted: true };
   }

@@ -9,21 +9,42 @@ function isNativeImplementation(fn: unknown): boolean {
   }
 }
 
+function isBinaryContentType(contentType: string): boolean {
+  return /application\/pdf|image\/|application\/octet-stream|application\/zip|application\/vnd\.ms-excel|application\/vnd\.openxmlformats/i.test(contentType);
+}
+
 function xhrFetch(url: string, options: RequestInit): Promise<Response> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open(options.method ?? "GET", url, true);
     const headers = new Headers(options.headers);
     headers.forEach((value, key) => xhr.setRequestHeader(key, value));
-    xhr.responseType = "text";
+    if (options.credentials === "include" || options.credentials === "same-origin") {
+      xhr.withCredentials = true;
+    }
+    xhr.responseType = "arraybuffer";
     xhr.onload = () => {
       const status = xhr.status;
       const statusText = xhr.statusText;
-      // 204/205/304 are null-body statuses: Response must not be given a body.
       if (status === 204 || status === 205 || status === 304) {
         resolve(new Response(null, { status, statusText }));
+        return;
+      }
+      const rawBuffer = xhr.response as ArrayBuffer;
+      const contentType = xhr.getResponseHeader("Content-Type") || "text/plain;charset=UTF-8";
+      if (isBinaryContentType(contentType)) {
+        resolve(new Response(new Blob([rawBuffer], { type: contentType }), {
+          status,
+          statusText,
+          headers: new Headers({ "Content-Type": contentType }),
+        }));
       } else {
-        resolve(new Response(xhr.responseText ?? "", { status, statusText }));
+        const decoder = new TextDecoder("utf-8");
+        resolve(new Response(decoder.decode(rawBuffer), {
+          status,
+          statusText,
+          headers: new Headers({ "Content-Type": contentType }),
+        }));
       }
     };
     xhr.onerror = () => reject(new TypeError("Failed to fetch"));

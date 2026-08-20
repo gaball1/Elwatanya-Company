@@ -22,6 +22,8 @@ import { attendanceService, type AttendanceOverride } from "@/services/attendanc
 import { useAuth } from "@/hooks/useAuth";
 import { Can } from "@/components/Can";
 import { useHasPermission } from "@/hooks/usePermissions";
+import DataLoader from "@/components/shared/DataLoader";
+import ExportButtons from "@/components/shared/ExportButtons";
 
 export default function AttendanceOverridesPage() {
   const params = useParams();
@@ -178,11 +180,7 @@ export default function AttendanceOverridesPage() {
     status === "approved" ? "success" : status === "rejected" ? "danger" : "warning";
 
   if (authLoading) {
-    return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto" />
-      </div>
-    );
+    return <DataLoader fullPage />;
   }
 
   if (!canManage) {
@@ -204,11 +202,7 @@ export default function AttendanceOverridesPage() {
   }
 
   if (loading && overrides.length === 0) {
-    return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto" />
-      </div>
-    );
+    return <DataLoader fullPage />;
   }
 
   return (
@@ -224,14 +218,33 @@ export default function AttendanceOverridesPage() {
             {isArabic ? "مراجعة واعتماد طلبات التجاوز" : "Review and approve override requests"}
           </p>
         </div>
-        <button
-          onClick={() => loadData(true)}
-          disabled={refreshing}
-          className="flex items-center gap-2 px-4 py-2 text-sm bg-gold text-white rounded-xl hover:bg-gold-dark disabled:opacity-50 transition-colors"
-        >
-          {refreshing && <RefreshCw size={14} className="animate-spin" />}
-          {isArabic ? "تحديث" : "Refresh"}
-        </button>
+        <div className="flex items-center gap-2">
+          <ExportButtons
+            data={filteredOverrides}
+            columns={[
+              { key: "employee", labelAr: "الموظف", labelEn: "Employee", format: (_v: any, row: AttendanceOverride) => row.employee?.fullName ?? "—" },
+              { key: "type", labelAr: "النوع", labelEn: "Type", format: (v: string) => v === "check_in" ? (isArabic ? "حضور" : "Check-in") : (isArabic ? "انصراف" : "Check-out") },
+              { key: "date", labelAr: "التاريخ", labelEn: "Date", format: (v: string) => formatDay(v) },
+              { key: "checkIn", labelAr: "الحضور", labelEn: "Check-in", format: (_v: any, row: AttendanceOverride) => formatTime(row.payload?.checkInTime) },
+              { key: "checkOut", labelAr: "الانصراف", labelEn: "Check-out", format: (_v: any, row: AttendanceOverride) => formatTime(row.payload?.checkOutTime) },
+              { key: "workHours", labelAr: "ساعات العمل", labelEn: "Work Hours", format: (_v: any, row: AttendanceOverride) => formatDuration(computeWorkMinutes(row)) },
+              { key: "status", labelAr: "الحالة", labelEn: "Status", format: (v: string) => statusLabel(v) },
+              { key: "reason", labelAr: "السبب", labelEn: "Reason", format: (_v: any, row: AttendanceOverride) => row.reason ?? "—" },
+            ]}
+            titleAr="تقرير تعديلات الحضور"
+            titleEn="Attendance Overrides Report"
+            filename="attendance_overrides"
+            locale={locale}
+          />
+          <button
+            onClick={() => loadData(true)}
+            disabled={refreshing}
+            className="flex items-center gap-2 px-4 py-2 text-sm bg-gold text-white rounded-xl hover:bg-gold-dark disabled:opacity-50 transition-colors"
+          >
+            {refreshing && <RefreshCw size={14} className="animate-spin" />}
+            {isArabic ? "تحديث" : "Refresh"}
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

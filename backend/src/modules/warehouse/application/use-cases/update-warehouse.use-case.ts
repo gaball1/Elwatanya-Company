@@ -3,13 +3,19 @@ import { UniqueEntityId } from '@/shared/kernel/unique-entity-id.vo';
 import { IWarehouseRepository } from '../../domain/warehouse.repository';
 import { UpdateWarehouseInput, WarehouseResult } from '../dto/warehouse.dto';
 import { toResult } from './list-warehouses.use-case';
+import { OwnershipActor, OwnershipService } from '@/common/services/ownership.service';
 
 export class UpdateWarehouseUseCase {
-  constructor(private readonly warehouses: IWarehouseRepository) {}
+  constructor(
+    private readonly warehouses: IWarehouseRepository,
+    private readonly ownership: OwnershipService,
+  ) {}
 
-  async execute(input: UpdateWarehouseInput): Promise<Result<WarehouseResult>> {
+  async execute(input: UpdateWarehouseInput, user: OwnershipActor | undefined, userId?: string): Promise<Result<WarehouseResult>> {
     const warehouse = await this.warehouses.findById(new UniqueEntityId(input.id));
     if (!warehouse) return Result.fail(new Error('Warehouse not found'));
+
+    if (warehouse.projectId) await this.ownership.verifyProjectAccess(user, warehouse.projectId);
 
     if (input.code !== undefined && input.code.trim() !== warehouse.code) {
       const codeClash = await this.warehouses.findByCodeIncludingDeleted(input.code.trim());

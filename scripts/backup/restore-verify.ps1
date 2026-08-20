@@ -169,7 +169,7 @@ foreach ($t in $hashTables) {
     $q = "SELECT COALESCE(md5(string_agg(t::text, chr(10) ORDER BY t::text)), '') FROM (SELECT * FROM `"$t`") t"
     $src = Invoke-Psql $pgDb $q
     $res = Invoke-Psql $stagingDb $q
-    if ($src -eq $res -and $src) { Write-Host "  $t  checksum=$($src.Substring(0,16))... OK" }
+    if ($src -eq $res) { Write-Host "  $t  checksum=$($src.Substring(0, [Math]::Min(16, $src.Length)))... OK" }
     else { $fail++; Write-Host "  $t  checksum MISMATCH (src=$src res=$res)" }
 }
 

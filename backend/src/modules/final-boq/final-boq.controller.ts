@@ -3,6 +3,7 @@ import {
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   HttpCode,
   HttpStatus,
@@ -30,6 +31,7 @@ import {
 } from './application/use-cases/update-final-boq-item.use-case';
 import {
   AnalyzeFinalBoqItemUseCase,
+  UnanalyzeFinalBoqItemUseCase,
   AddFinalBoqComponentUseCase,
   UpdateFinalBoqComponentUseCase,
   RemoveFinalBoqComponentUseCase,
@@ -59,6 +61,7 @@ export class FinalBoqController {
     private readonly updateFinalItemQuantity: UpdateFinalItemQuantityUseCase,
     private readonly removeFinalBoqItem: RemoveFinalBoqItemUseCase,
     private readonly analyzeFinalBoqItem: AnalyzeFinalBoqItemUseCase,
+    private readonly unanalyzeFinalBoqItem: UnanalyzeFinalBoqItemUseCase,
     private readonly addFinalBoqComponent: AddFinalBoqComponentUseCase,
     private readonly updateFinalBoqComponent: UpdateFinalBoqComponentUseCase,
     private readonly removeFinalBoqComponent: RemoveFinalBoqComponentUseCase,
@@ -182,6 +185,21 @@ export class FinalBoqController {
     return { item: result.getValue() };
   }
 
+  @Post('buildings/:buildingId/boq/final/items/:itemCode/unanalyze')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Unanalyze final item — revert to pending' })
+  @RequirePermission(Permissions.FinalBoq.Analyze)
+  async unanalyze(
+    @Param('buildingId', ParseUUIDPipe) buildingId: string,
+    @Param('itemCode') itemCode: string,
+    @CurrentUser() user?: JwtPayload,
+    @CurrentUser('sub') userId?: string,
+  ) {
+    const result = await this.unanalyzeFinalBoqItem.execute({ buildingId, itemCode }, user, userId);
+    if (result.isFailure) throw this.mapError(result.error);
+    return { item: result.getValue() };
+  }
+
   @Post('buildings/:buildingId/boq/final/items/:itemCode/components')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Add component to final item' })
@@ -259,6 +277,10 @@ export class FinalBoqController {
         case FinalBoqErrorCode.COMPONENT_NOT_FOUND:
         case FinalBoqErrorCode.EMPLOYER_ITEM_NOT_FOUND:
           return new NotFoundException(error.message);
+        case FinalBoqErrorCode.ITEM_IS_COMMITTED:
+        case FinalBoqErrorCode.COMPONENT_HAS_ALLOCATIONS:
+        case FinalBoqErrorCode.QUANTITY_CANNOT_DECREASE:
+          return new ForbiddenException(error.message);
         default:
           return new BadRequestException(error.message);
       }

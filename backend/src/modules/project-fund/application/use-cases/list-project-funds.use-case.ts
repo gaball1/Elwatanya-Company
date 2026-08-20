@@ -1,6 +1,7 @@
 import { Result } from '@/shared/kernel/result';
 import { ProjectFund } from '../../domain/project-fund.entity';
 import { ProjectFundResult } from '../dto/project-fund.dto';
+import { OwnershipActor, OwnershipService } from '@/common/services/ownership.service';
 
 export function toResult(f: ProjectFund): ProjectFundResult {
   return {
@@ -16,10 +17,15 @@ export function toResult(f: ProjectFund): ProjectFundResult {
 }
 
 export class ListProjectFundsUseCase {
-  constructor(private readonly funds: import('../../domain/project-fund.repository').IProjectFundRepository) {}
+  constructor(
+    private readonly funds: import('../../domain/project-fund.repository').IProjectFundRepository,
+    private readonly ownership: OwnershipService,
+  ) {}
 
-  async execute(): Promise<Result<ProjectFundResult[]>> {
-    const list = await this.funds.findAll();
+  async execute(user?: OwnershipActor): Promise<Result<ProjectFundResult[]>> {
+    const accessible = this.ownership.getAccessibleProjectIds(user);
+    const projectIds = accessible === null ? undefined : accessible.length > 0 ? accessible : [];
+    const list = await this.funds.findAll(projectIds);
     return Result.ok(list.map(toResult));
   }
 }

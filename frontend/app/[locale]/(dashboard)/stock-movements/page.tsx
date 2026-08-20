@@ -6,6 +6,8 @@ import { useParams } from "next/navigation";
 import { useState, useMemo, useCallback, useEffect } from "react";
 import { Card } from "@/components/ui";
 import { Can } from '@/components/Can';
+import DataLoader from "@/components/shared/DataLoader";
+import PrintPdfButton from "@/components/shared/PrintPdfButton";
 import {
   ArrowUpDown,
   Plus,
@@ -15,7 +17,6 @@ import {
   Search,
   Filter,
   Download,
-  Printer,
   Package,
   ArrowRightLeft,
 } from "lucide-react";
@@ -181,11 +182,11 @@ export default function StockMovementsPage() {
     showToast(isArabic ? "تم التصدير" : "Exported", "success");
   };
 
-  const handlePrintPDF = () => {
+  const handlePrintPDF = useCallback((logoUrl?: string) => {
     const headers = [isArabic ? "الصنف" : "Item", isArabic ? "النوع" : "Type", isArabic ? "الكمية" : "Qty", isArabic ? "التاريخ" : "Date", isArabic ? "المرجع" : "Ref", isArabic ? "السبب" : "Reason", isArabic ? "ملاحظات" : "Notes"];
     const rows = filteredAndSorted.map((m) => [getItemName(m.itemId), m.type, m.quantity.toString(), m.date, m.reference, m.reason, m.notes]);
-    printAsPDF(rows, headers, isArabic ? "حركات المخزون" : "Stock Movements Report", isArabic);
-  };
+    printAsPDF(rows, headers, isArabic ? "حركات المخزون" : "Stock Movements Report", isArabic, { logoUrl });
+  }, [filteredAndSorted, isArabic]);
 
   const typeBadgeClass = (type: string) => {
     switch (type) {
@@ -205,7 +206,7 @@ export default function StockMovementsPage() {
           <p className="text-sm text-text-muted mt-1">{isArabic ? "إدارة حركات الصرف والاستلام والتحويل" : "Manage issue, receive, and transfer movements"}</p>
         </div>
         <div className="flex gap-2">
-          <button onClick={handlePrintPDF} className="flex items-center gap-2 px-4 py-2 border border-info text-info rounded-lg hover:bg-info hover:text-white transition"><Printer size={18} /> PDF</button>
+          <PrintPdfButton label={isArabic ? "طباعة PDF" : "Print PDF"} onPrint={handlePrintPDF} />
           <button onClick={exportToCsv} className="flex items-center gap-2 px-4 py-2 border border-success text-success rounded-lg hover:bg-success hover:text-white transition"><Download size={18} /> CSV</button>
           <Can permission="stock-movements.create">
             <button onClick={openAddModal} className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition"><Plus size={18} /> {isArabic ? "حركة جديدة" : "New Movement"}</button>
@@ -229,7 +230,7 @@ export default function StockMovementsPage() {
       </Card>
 
       {loading ? (
-        <div className="text-center py-20 text-text-muted">{isArabic ? "جاري التحميل..." : "Loading..."}</div>
+        <DataLoader />
       ) : filteredAndSorted.length === 0 ? (
         <Card className="p-12 text-center">
           <ArrowRightLeft size={48} className="mx-auto text-text-muted mb-4 opacity-50" />

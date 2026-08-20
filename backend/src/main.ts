@@ -4,11 +4,14 @@ import { ConfigService } from "@nestjs/config";
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
 import { Logger as PinoLogger } from "nestjs-pino";
 import { AppModule } from "./app.module";
-import { LoggerModule } from "nestjs-pino";
 import { json, urlencoded } from "express";
+import * as cookieParser from "cookie-parser";
 async function bootstrap() {
   const logger = new Logger("Bootstrap");
   const app = await NestFactory.create(AppModule, { bodyParser: false });
+
+  // Express trust proxy: required for correct req.ip behind reverse proxies
+  (app.getHttpAdapter().getInstance() as any).set("trust proxy", 1);
 
   // Use nestjs-pino logger
   //app.useLogger(app.get(PinoLogger));
@@ -18,7 +21,13 @@ async function bootstrap() {
     app.useLogger(pinoLogger);
   }
 
+  // Graceful shutdown: enables lifecycle hooks for SIGTERM/SIGINT so
+  // onApplicationShutdown implementations (Prisma disconnect, Playwright
+  // browser close, open connections) run on kill/deploy.
+  app.enableShutdownHooks();
+
   const configService = app.get(ConfigService);
+  const nodeEnv = configService.get<string>("NODE_ENV", "development");
   const port = configService.get<number>("PORT", 3001);
   const corsOrigin = configService.get<string>(
     "CORS_ORIGIN",
@@ -30,6 +39,7 @@ async function bootstrap() {
   // frontend surfaced as a generic "فشل إضافة/حفظ المشتريات" message.
   app.use(json({ limit: "30mb" }));
   app.use(urlencoded({ extended: true, limit: "30mb" }));
+  app.use(cookieParser());
 
   app.enableCors({
     origin: corsOrigin.split(",").map((o) => o.trim()),
@@ -48,21 +58,25 @@ async function bootstrap() {
     })
   );
 
-  const swaggerConfig = new DocumentBuilder()
-    .setTitle("El Wataniya ERP API")
-    .setDescription(
-      "Production-grade Construction ERP backend API. Business modules will be added incrementally."
-    )
-    .setVersion("0.1.0")
-    .addBearerAuth()
-    .build();
+  if (nodeEnv !== "production") {
+    const swaggerConfig = new DocumentBuilder()
+      .setTitle("El Wataniya ERP API")
+      .setDescription(
+        "Production-grade Construction ERP backend API. Business modules will be added incrementally."
+      )
+      .setVersion("0.1.0")
+      .addBearerAuth()
+      .build();
 
-  const document = SwaggerModule.createDocument(app, swaggerConfig);
-  SwaggerModule.setup("api/v1/docs", app, document);
+    const document = SwaggerModule.createDocument(app, swaggerConfig);
+    SwaggerModule.setup("api/v1/docs", app, document);
+  }
 
   await app.listen(port);
   logger.log(`Application running on http://localhost:${port}`);
-  logger.log(`Swagger docs at http://localhost:${port}/api/v1/docs`);
+  if (nodeEnv !== "production") {
+    logger.log(`Swagger docs at http://localhost:${port}/api/v1/docs`);
+  }
 }
 
 bootstrap();

@@ -9,6 +9,7 @@ export default function ThemeToggle() {
   const { resolved, toggle } = useTheme();
   return (
     <button
+      suppressHydrationWarning
       onClick={toggle}
       className="p-2 rounded-lg text-text-secondary hover:bg-surface-secondary transition-colors"
       aria-label={`Switch to ${resolved === "dark" ? "light" : "dark"} mode`}

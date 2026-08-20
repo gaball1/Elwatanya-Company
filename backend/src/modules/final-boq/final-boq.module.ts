@@ -30,6 +30,7 @@ import {
 } from './application/use-cases/update-final-boq-item.use-case';
 import {
   AnalyzeFinalBoqItemUseCase,
+  UnanalyzeFinalBoqItemUseCase,
   AddFinalBoqComponentUseCase,
   UpdateFinalBoqComponentUseCase,
   RemoveFinalBoqComponentUseCase,
@@ -137,6 +138,17 @@ import { FinalBoqController } from './final-boq.controller';
         ownership: OwnershipService,
         audit: AuditService,
       ) => new AnalyzeFinalBoqItemUseCase(finalBoq, buildings, allocations, ownership, audit),
+      inject: [FINAL_BOQ_REPOSITORY, BUILDING_REPOSITORY, FINAL_BOQ_ALLOCATION_READER, OwnershipService, AuditService],
+    },
+    {
+      provide: UnanalyzeFinalBoqItemUseCase,
+      useFactory: (
+        finalBoq: IFinalBoqRepository,
+        buildings: IBuildingRepository,
+        allocations: IFinalBoqAllocationReader,
+        ownership: OwnershipService,
+        audit: AuditService,
+      ) => new UnanalyzeFinalBoqItemUseCase(finalBoq, buildings, allocations, ownership, audit),
       inject: [FINAL_BOQ_REPOSITORY, BUILDING_REPOSITORY, FINAL_BOQ_ALLOCATION_READER, OwnershipService, AuditService],
     },
     {

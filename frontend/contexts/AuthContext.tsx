@@ -14,7 +14,7 @@ import { apiClient, ApiError } from "@/lib/api/apiClient";
 import { isNetworkError } from "@/lib/api/fetchTransport";
 import {
   getAccessToken,
-  getRefreshToken,
+  saveAccessToken,
 } from "@/lib/api/tokenStorage";
 import {
   authService,
@@ -86,14 +86,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       const hasAccess = getAccessToken();
-      const hasRefresh = getRefreshToken();
 
-      if (!hasAccess && !hasRefresh) {
-        if (!cancelled) setLoading(false);
-        return;
+      if (hasAccess) {
+        try {
+          const { user: currentUser } = await authService.getCurrentUser();
+          const mapped = mapApiUserToUser(currentUser);
+          if (!cancelled) {
+            resetUnreadCount();
+            setUser(mapped);
+            setCachedUser(mapped);
+            setLoading(false);
+          }
+          return;
+        } catch (error) {
+          if (isTransientFailure(error)) {
+            if (!cancelled) setLoading(false);
+            return;
+          }
+        }
       }
 
       try {
+        await authService.refresh();
         const { user: currentUser } = await authService.getCurrentUser();
         const mapped = mapApiUserToUser(currentUser);
         if (!cancelled) {
@@ -107,29 +121,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return;
         }
         try {
-          await authService.refresh();
-          const { user: currentUser } = await authService.getCurrentUser();
-          const mapped = mapApiUserToUser(currentUser);
-          if (!cancelled) {
-            resetUnreadCount();
-            setUser(mapped);
-            setCachedUser(mapped);
-          }
-        } catch (error2) {
-          if (isTransientFailure(error2)) {
-            if (!cancelled) setLoading(false);
-            return;
-          }
-          try {
-            await authService.logout();
-          } catch {
-            // ignore
-          }
-          if (!cancelled) {
-            resetUnreadCount();
-            setUser(null);
-            setCachedUser(null);
-          }
+          await authService.logout();
+        } catch {
+          // ignore
+        }
+        if (!cancelled) {
+          resetUnreadCount();
+          setUser(null);
+          setCachedUser(null);
         }
       } finally {
         if (!cancelled) {
@@ -179,9 +178,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           skipAuth: true,
           skipAuthRetry: true,
         });
-        const { saveAccessToken, saveRefreshToken } = await import("@/lib/api/tokenStorage");
         saveAccessToken(data.accessToken);
-        saveRefreshToken(data.refreshToken);
         const mapped = mapApiUserToUser(data.user);
         resetUnreadCount();
         setUser(mapped);

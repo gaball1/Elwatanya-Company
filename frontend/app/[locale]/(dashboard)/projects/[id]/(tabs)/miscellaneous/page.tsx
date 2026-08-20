@@ -30,6 +30,7 @@ import { approvalService } from "@/services/approval.service";
 import { miscellaneousService, type Miscellaneous } from "@/services/miscellaneous.service";
 import { Can } from "@/components/Can";
 import { useAuth } from "@/hooks/useAuth";
+import DataLoader from "@/components/shared/DataLoader";
 
 export default function ProjectMiscellaneousPage() {
   const params = useParams();
@@ -453,6 +454,10 @@ export default function ProjectMiscellaneousPage() {
     },
     []
   );
+
+  if (loading) {
+    return <DataLoader />;
+  }
 
   return (
     <div className="space-y-6" suppressHydrationWarning>

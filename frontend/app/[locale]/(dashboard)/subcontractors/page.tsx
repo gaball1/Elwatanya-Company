@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { useState, useMemo, useCallback, useEffect } from "react";
 import { Card } from "@/components/ui";
 import { Can } from "@/components/Can";
+import PrintPdfButton from "@/components/shared/PrintPdfButton";
 import {
   Users,
   Plus,
@@ -21,11 +22,11 @@ import {
   Download,
   ArrowUpDown,
   MapPin,
-  Printer,
 } from "lucide-react";
 import { subcontractorService, type Subcontractor } from "@/services/subcontractor.service";
 import { useToast } from "@/components/ui/Toast";
 import { printAsPDF } from "@/lib/printUtils";
+import DataLoader from "@/components/shared/DataLoader";
 
 export default function SubcontractorsPage() {
   const params = useParams();
@@ -164,10 +165,10 @@ export default function SubcontractorsPage() {
     }
   }, [deletingId, isArabic, fetchSubcontractors]);
 
-  const handlePrintPDF = useCallback(() => {
+  const handlePrintPDF = useCallback((logoUrl?: string) => {
     const headers = [isArabic ? "الاسم" : "Name", isArabic ? "نوع العمل" : "Work Type", isArabic ? "نوع المصنعية" : "Margin Type", isArabic ? "قيمة المصنعية" : "Margin Value", isArabic ? "الهاتف" : "Phone", isArabic ? "البريد" : "Email", isArabic ? "العنوان" : "Address", isArabic ? "تاريخ التسجيل" : "Join Date", isArabic ? "الحالة" : "Status"];
     const rows = filteredAndSortedSubs.map((sub: any) => [sub.name, sub.workType, sub.marginType === "percentage" ? (isArabic ? "نسبة" : "Percentage") : (isArabic ? "ثابت" : "Fixed"), sub.marginType === "percentage" ? `${sub.marginValue}%` : `${sub.marginValue} ج.م`, sub.phone, sub.email || "—", sub.address || "—", sub.joinDate || "—", sub.status === "active" ? (isArabic ? "نشط" : "Active") : (isArabic ? "غير نشط" : "Inactive")]);
-    printAsPDF(rows, headers, isArabic ? "تقرير المقاولين" : "Subcontractors Report", isArabic);
+    printAsPDF(rows, headers, isArabic ? "تقرير المقاولين" : "Subcontractors Report", isArabic, { logoUrl });
   }, [filteredAndSortedSubs, isArabic]);
 
   const exportToExcel = useCallback(() => {
@@ -201,7 +202,7 @@ export default function SubcontractorsPage() {
         <div className="flex justify-between items-center flex-wrap gap-4">
           <div><h1 className="text-2xl font-bold text-primary">{isArabic ? "المقاولين الباطنين" : "Subcontractors"}</h1><p className="text-sm text-text-secondary mt-1">{isArabic ? "إدارة بيانات المقاولين والمصنعيات" : "Manage subcontractor data and margins"}</p></div>
           <div className="flex gap-2">
-            <button onClick={handlePrintPDF} className="flex items-center gap-2 px-4 py-2 border border-info text-info rounded-lg hover:bg-info hover:text-white transition"><Printer size={18} /> {isArabic ? "طباعة PDF" : "Print PDF"}</button>
+            <PrintPdfButton label={isArabic ? "طباعة PDF" : "Print PDF"} onPrint={handlePrintPDF} />
             <button onClick={exportToExcel} className="flex items-center gap-2 px-4 py-2 border border-green-600 text-success-dark rounded-lg hover:bg-success-dark hover:text-white transition"><Download size={18} /> {isArabic ? "تصدير Excel" : "Export Excel"}</button>
             <Can permission="subcontractors.create"><button onClick={openAddModal} className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition"><Plus size={18} /> {isArabic ? "إضافة مقاول" : "Add Subcontractor"}</button></Can>
           </div>
@@ -228,7 +229,7 @@ export default function SubcontractorsPage() {
 
       <div className="p-6 pt-0">
         {loading ? (
-          <Card className="p-12 text-center"><Users size={64} className="mx-auto text-text-muted mb-4" /><p className="text-text-secondary">{isArabic ? "جاري تحميل البيانات..." : "Loading data..."}</p></Card>
+          <DataLoader />
         ) : filteredAndSortedSubs.length === 0 ? (
           <Card className="p-12 text-center"><Users size={64} className="mx-auto text-text-muted mb-4" /><p className="text-text-secondary">{isArabic ? "لا يوجد مقاولين مطابقين للبحث" : "No matching subcontractors found"}</p></Card>
         ) : (

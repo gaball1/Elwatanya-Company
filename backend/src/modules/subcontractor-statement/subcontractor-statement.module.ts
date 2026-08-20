@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '@/prisma/prisma.module';
+import { PrismaService } from '@/prisma/prisma.service';
+import { OwnershipService } from '@/common/services/ownership.service';
 import { SUBCONTRACTOR_STATEMENT_REPOSITORY } from './domain/subcontractor-statement.repository';
 import { ISubcontractorStatementRepository } from './domain/subcontractor-statement.repository';
 import { PrismaSubcontractorStatementRepository } from './infrastructure/prisma-subcontractor-statement.repository';
@@ -13,11 +15,16 @@ import { SubcontractorStatementController } from './subcontractor-statement.cont
   imports: [PrismaModule],
   controllers: [SubcontractorStatementController],
   providers: [
+    {
+      provide: OwnershipService,
+      useFactory: (prisma: PrismaService) => new OwnershipService(prisma),
+      inject: [PrismaService],
+    },
     { provide: SUBCONTRACTOR_STATEMENT_REPOSITORY, useClass: PrismaSubcontractorStatementRepository },
-    { provide: ListSubcontractorStatementsUseCase, useFactory: (r: ISubcontractorStatementRepository) => new ListSubcontractorStatementsUseCase(r), inject: [SUBCONTRACTOR_STATEMENT_REPOSITORY] },
-    { provide: CreateSubcontractorStatementUseCase, useFactory: (r: ISubcontractorStatementRepository) => new CreateSubcontractorStatementUseCase(r), inject: [SUBCONTRACTOR_STATEMENT_REPOSITORY] },
-    { provide: UpdateSubcontractorStatementUseCase, useFactory: (r: ISubcontractorStatementRepository) => new UpdateSubcontractorStatementUseCase(r), inject: [SUBCONTRACTOR_STATEMENT_REPOSITORY] },
-    { provide: DeleteSubcontractorStatementUseCase, useFactory: (r: ISubcontractorStatementRepository) => new DeleteSubcontractorStatementUseCase(r), inject: [SUBCONTRACTOR_STATEMENT_REPOSITORY] },
+    { provide: ListSubcontractorStatementsUseCase, useFactory: (r: ISubcontractorStatementRepository, ownership: OwnershipService) => new ListSubcontractorStatementsUseCase(r, ownership), inject: [SUBCONTRACTOR_STATEMENT_REPOSITORY, OwnershipService] },
+    { provide: CreateSubcontractorStatementUseCase, useFactory: (r: ISubcontractorStatementRepository, ownership: OwnershipService) => new CreateSubcontractorStatementUseCase(r, ownership), inject: [SUBCONTRACTOR_STATEMENT_REPOSITORY, OwnershipService] },
+    { provide: UpdateSubcontractorStatementUseCase, useFactory: (r: ISubcontractorStatementRepository, ownership: OwnershipService) => new UpdateSubcontractorStatementUseCase(r, ownership), inject: [SUBCONTRACTOR_STATEMENT_REPOSITORY, OwnershipService] },
+    { provide: DeleteSubcontractorStatementUseCase, useFactory: (r: ISubcontractorStatementRepository, ownership: OwnershipService) => new DeleteSubcontractorStatementUseCase(r, ownership), inject: [SUBCONTRACTOR_STATEMENT_REPOSITORY, OwnershipService] },
   ],
   exports: [SUBCONTRACTOR_STATEMENT_REPOSITORY],
 })

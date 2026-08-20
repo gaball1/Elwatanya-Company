@@ -5,26 +5,30 @@ import { isIP } from 'net';
 const IPV4_PRIVATE = /^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.|0\.0\.0\.0)/;
 const IPV6_PRIVATE = /^(::1$|::|fe8|fe9|fea|feb|fc|fd|2001:db8:)/i;
 
-/** True when the given host is an internal/private address that must never be fetched. */
+// Reserved/internal hostname suffixes that never resolve to a public endpoint.
+// Checked synchronously so guards work without a DNS round-trip.
+const INTERNAL_HOSTNAME_RE =
+  /(^|\.)localhost$|(^|\.)internal$|(^|\.)local$|(^|\.)lan$|(^|\.)home$|(^|\.)corp$|^metadata\.google\.internal$/i;
+
+/** True when the given address/hostname targets an internal/private endpoint. */
 export function isPrivateAddress(address: string): boolean {
   if (!address) return false;
-  if (address.toLowerCase() === 'localhost') return true;
-  if (isIP(address) === 4) return IPV4_PRIVATE.test(address);
-  if (isIP(address) === 6) return IPV6_PRIVATE.test(address);
-  // Hostname: resolve once and inspect the resulting address.
+  const host = address.toLowerCase();
+  if (host === 'localhost') return true;
+  if (INTERNAL_HOSTNAME_RE.test(host)) return true;
+  const bare = host.replace(/^\[(.*)\]$/, '$1'); // strip IPv6 brackets
+  if (isIP(bare) === 4) return IPV4_PRIVATE.test(bare);
+  if (isIP(bare) === 6) return IPV6_PRIVATE.test(bare);
+  // Hostname: DNS resolution is performed by isHostnamePrivate().
   return false;
 }
 
-async function isPrivateHostname(hostname: string): Promise<boolean> {
+/** True when the hostname itself (or any resolved address) is private/internal. */
+export function isHostnamePrivate(hostname: string): Promise<boolean> {
   const host = hostname.toLowerCase();
-  if (host === 'localhost' || host.endsWith('.localhost') || host === 'metadata.google.internal') return true;
+  if (isPrivateAddress(host)) return Promise.resolve(true);
   return lookup(host)
-    .then(({ address }) => {
-      if (isIP(address) === 4 && IPV4_PRIVATE.test(address)) return true;
-      if (isIP(address) === 6 && IPV6_PRIVATE.test(address)) return true;
-      // Also flag link-local/metadata ranges by resolved address string.
-      return /^169\.254\.|^fe8|^fe9|^fea|^feb/.test(address);
-    })
+    .then(({ address }) => isPrivateAddress(address))
     .catch(() => true);
 }
 
@@ -56,7 +60,7 @@ export async function assertSafeUrl(rawUrl: string): Promise<string> {
     throw new BadRequestException('Fetching private/internal addresses is not allowed');
   }
 
-  if (await isPrivateHostname(parsed.hostname)) {
+  if (await isHostnamePrivate(parsed.hostname)) {
     throw new BadRequestException('Fetching private/internal addresses is not allowed');
   }
 

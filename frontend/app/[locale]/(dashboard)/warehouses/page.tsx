@@ -5,6 +5,8 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useState, useMemo, useCallback, useEffect } from "react";
 import { Card } from "@/components/ui";
+import DataLoader from "@/components/shared/DataLoader";
+import PrintPdfButton from "@/components/shared/PrintPdfButton";
 import { Can } from '@/components/Can';
 import {
   Warehouse,
@@ -16,7 +18,6 @@ import {
   Filter,
   Download,
   ArrowUpDown,
-  Printer,
   MapPin,
   Hash,
 } from "lucide-react";
@@ -150,7 +151,7 @@ export default function WarehousesPage() {
     }
   }, [deletingId, isArabic, fetchWarehouses]);
 
-  const handlePrintPDF = useCallback(() => {
+  const handlePrintPDF = useCallback((logoUrl?: string) => {
     const headers = [
       isArabic ? "الكود" : "Code",
       isArabic ? "اسم المستودع" : "Name",
@@ -163,7 +164,7 @@ export default function WarehousesPage() {
       w.location || "—",
       w.status === "active" ? (isArabic ? "نشط" : "Active") : (isArabic ? "غير نشط" : "Inactive"),
     ]);
-    printAsPDF(rows, headers, isArabic ? "تقرير المستودعات" : "Warehouses Report", isArabic);
+    printAsPDF(rows, headers, isArabic ? "تقرير المستودعات" : "Warehouses Report", isArabic, { logoUrl });
   }, [filteredAndSortedWarehouses, isArabic]);
 
   const exportToExcel = useCallback(() => {
@@ -205,9 +206,7 @@ export default function WarehousesPage() {
             <p className="text-sm text-text-secondary mt-1">{isArabic ? "إدارة المستودعات والمخازن" : "Manage warehouses & storage"}</p>
           </div>
           <div className="flex gap-2">
-            <button onClick={handlePrintPDF} className="flex items-center gap-2 px-4 py-2 border border-info text-info rounded-lg hover:bg-info hover:text-white transition">
-              <Printer size={18} /> {isArabic ? "طباعة PDF" : "Print PDF"}
-            </button>
+            <PrintPdfButton label={isArabic ? "طباعة PDF" : "Print PDF"} onPrint={handlePrintPDF} />
             <button onClick={exportToExcel} className="flex items-center gap-2 px-4 py-2 border border-green-600 text-success-dark rounded-lg hover:bg-success-dark hover:text-white transition">
               <Download size={18} /> {isArabic ? "تصدير Excel" : "Export Excel"}
             </button>
@@ -254,7 +253,7 @@ export default function WarehousesPage() {
 
       <div className="p-6 pt-0">
         {loading ? (
-          <Card className="p-12 text-center"><p className="text-text-secondary">{isArabic ? "جاري التحميل..." : "Loading..."}</p></Card>
+          <DataLoader />
         ) : filteredAndSortedWarehouses.length === 0 ? (
           <Card className="p-12 text-center">
             <Warehouse size={64} className="mx-auto text-text-muted mb-4" />

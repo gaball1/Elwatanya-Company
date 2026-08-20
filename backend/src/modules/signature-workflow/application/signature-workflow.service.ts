@@ -1,5 +1,17 @@
-import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  BadRequestException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { SignatureWorkflowRepository } from '../infrastructure/signature-workflow.repository';
+
+export interface SignatureActor {
+  sub: string;
+  role?: string;
+  roleNames?: string[];
+}
 
 @Injectable()
 export class SignatureWorkflowService {
@@ -49,7 +61,7 @@ export class SignatureWorkflowService {
     });
   }
 
-  async sign(requestId: string, userId: string, status: 'signed' | 'rejected', comment?: string, imageUrl?: string) {
+  async sign(requestId: string, actor: SignatureActor, status: 'signed' | 'rejected', comment?: string, imageUrl?: string) {
     const request = await this.repo.getRequest(requestId);
     if (!request) throw new NotFoundException('Signature request not found');
     if (request.status === 'completed' || request.status === 'rejected') {
@@ -63,9 +75,21 @@ export class SignatureWorkflowService {
     const currentAction = request.actions.find((a: any) => a.stepOrder === request.currentStep);
     if (!currentAction) throw new BadRequestException('No pending action found');
 
+    // Authorization: the signer must be the actual assignee of the current
+    // step — either the exact user (step.userId) or a member of the step's
+    // role (step.roleName). Steps without an assignee are denied (fail-closed).
+    const roleNames = actor.roleNames ?? [];
+    const matchesUser = Boolean(currentAction.stepUserId) && currentAction.stepUserId === actor.sub;
+    const matchesRole =
+      Boolean(currentAction.roleName) &&
+      (roleNames.includes(currentAction.roleName) || actor.role === currentAction.roleName);
+    if (!matchesUser && !matchesRole) {
+      throw new ForbiddenException('You are not assigned to the current signature step');
+    }
+
     await this.repo.updateAction(currentAction.id, {
       status,
-      signedBy: userId,
+      signedBy: actor.sub,
       signedAt: new Date(),
       comment: comment || '',
       imageUrl,
@@ -91,7 +115,7 @@ export class SignatureWorkflowService {
     return request;
   }
 
-  async getPendingRequests(userId: string, roleName: string) {
-    return this.repo.getPendingRequests(userId, roleName);
+  async getPendingRequests(userId: string, roleNames: string[]) {
+    return this.repo.getPendingRequests(userId, roleNames);
   }
 }

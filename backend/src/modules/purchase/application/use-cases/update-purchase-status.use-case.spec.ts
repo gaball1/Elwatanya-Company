@@ -45,14 +45,19 @@ function makeUseCase(over: Record<string, unknown> = {}) {
     reverseStockIn: vi.fn(async () => undefined),
     ...(over.stock ?? {}),
   };
+  const ownership = {
+    verifyProjectAccess: vi.fn(async () => undefined),
+    ...(over.ownership ?? {}),
+  };
   const uc = new UpdatePurchaseStatusUseCase(
     repo as any,
     financial as any,
     prisma as any,
     notifications as any,
     stock as any,
+    ownership as any,
   );
-  return { uc, repo, financial, notifications, stock, prisma };
+  return { uc, repo, financial, notifications, stock, prisma, ownership };
 }
 
 const ID = new UniqueEntityId().toValue();
@@ -62,7 +67,7 @@ describe('UpdatePurchaseStatusUseCase', () => {
     const purchase = buildPurchase('approved');
     const { uc, repo, stock, notifications } = makeUseCase({ purchase });
 
-    const result = await uc.execute(ID, 'received', 'wh-1');
+    const result = await uc.execute(ID, 'received', 'wh-1', { roleNames: ['SUPER_ADMIN'] });
 
     expect(result.isSuccess).toBe(true);
     const transitionArgs = repo.transition.mock.calls[0];
@@ -83,7 +88,7 @@ describe('UpdatePurchaseStatusUseCase', () => {
     const purchase = buildPurchase('received');
     const { uc, financial, stock, notifications } = makeUseCase({ purchase });
 
-    const result = await uc.execute(ID, 'cancelled');
+    const result = await uc.execute(ID, 'cancelled', undefined, { roleNames: ['SUPER_ADMIN'] });
 
     expect(result.isSuccess).toBe(true);
     expect(stock.reverseStockIn).toHaveBeenCalled();
@@ -109,7 +114,7 @@ describe('UpdatePurchaseStatusUseCase', () => {
       notifications,
     });
 
-    const result = await uc.execute(ID, 'received', 'wh-1');
+    const result = await uc.execute(ID, 'received', 'wh-1', { roleNames: ['SUPER_ADMIN'] });
 
     expect(result.isFailure).toBe(true);
     expect(stock.stockIn).not.toHaveBeenCalled();
@@ -119,8 +124,24 @@ describe('UpdatePurchaseStatusUseCase', () => {
 
   it('fails fast with Purchase not found', async () => {
     const { uc } = makeUseCase({ purchase: null });
-    const result = await uc.execute(ID, 'approved');
+    const result = await uc.execute(ID, 'approved', undefined, { roleNames: ['SUPER_ADMIN'] });
     expect(result.isFailure).toBe(true);
     expect(result.error?.message).toContain('Purchase not found');
+  });
+
+  it('denies access to a purchase in a project the user does not own', async () => {
+    const purchase = buildPurchase('approved');
+    const { uc } = makeUseCase({
+      purchase,
+      ownership: {
+        verifyProjectAccess: vi.fn(async () => {
+          throw new Error('Access denied to this project');
+        }),
+      },
+    });
+
+    await expect(
+      uc.execute(ID, 'received', 'wh-1', { roleNames: ['USER'], projectId: 'other-project' }),
+    ).rejects.toThrow('Access denied to this project');
   });
 });

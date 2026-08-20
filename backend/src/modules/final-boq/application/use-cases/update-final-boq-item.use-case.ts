@@ -217,11 +217,23 @@ export class RemoveFinalBoqItemUseCase {
       );
     }
 
-    if (!aggregate.removeItemByCode(itemCode)) {
+    const item = aggregate.findItemByCode(itemCode);
+    if (!item) {
       return Result.fail(
         new FinalBoqApplicationError(FinalBoqErrorCode.ITEM_NOT_FOUND, 'Final BOQ item not found'),
       );
     }
+
+    if (isFinalItemCommitted(toItemStateInput(item))) {
+      return Result.fail(
+        new FinalBoqApplicationError(
+          FinalBoqErrorCode.ITEM_IS_COMMITTED,
+          `لا يمكن حذف البند ${item.businessCode} بعد تحليله أو توزيعه — يرجى التأكيد من الحذف بعد إلغاء التوزيع والتحليل`,
+        ),
+      );
+    }
+
+    aggregate.removeItemByCode(itemCode);
 
     await this.finalBoq.save(aggregate);
     if (userId) {

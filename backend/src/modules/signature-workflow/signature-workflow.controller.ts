@@ -1,8 +1,10 @@
-import { Controller, Get, Post, Put, Delete, Param, Body, Req } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Param, Body, Req, ParseUUIDPipe } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { SignatureWorkflowService } from './application/signature-workflow.service';
 import { RequirePermission } from '../../common/decorators/permissions.decorator';
 import { Permissions } from '../../common/constants/permissions.constant';
+import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
+import { CreateWorkflowDto, UpdateWorkflowDto } from './dto/signature-workflow.dto';
 
 @ApiTags('Signature Workflow')
 @ApiBearerAuth()
@@ -16,8 +18,8 @@ export class SignatureWorkflowController {
   @Post('workflows')
   @ApiOperation({ summary: 'Create a new signature workflow definition' })
   @RequirePermission(Permissions.Reports.Generate)
-  createWorkflow(@Body() body: any) {
-    return this.service.createWorkflow(body);
+  createWorkflow(@Body() dto: CreateWorkflowDto) {
+    return this.service.createWorkflow(dto);
   }
 
   @Get('workflows')
@@ -28,21 +30,21 @@ export class SignatureWorkflowController {
 
   @Get('workflows/:id')
   @ApiOperation({ summary: 'Get workflow by ID' })
-  getWorkflow(@Param('id') id: string) {
+  getWorkflow(@Param('id', ParseUUIDPipe) id: string) {
     return this.service.getWorkflow(id);
   }
 
   @Put('workflows/:id')
   @ApiOperation({ summary: 'Update workflow name, description, or active status' })
   @RequirePermission(Permissions.Reports.Generate)
-  updateWorkflow(@Param('id') id: string, @Body() body: any) {
-    return this.service.updateWorkflow(id, body);
+  updateWorkflow(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateWorkflowDto) {
+    return this.service.updateWorkflow(id, dto);
   }
 
   @Delete('workflows/:id')
   @ApiOperation({ summary: 'Delete a workflow definition' })
   @RequirePermission(Permissions.Reports.Generate)
-  deleteWorkflow(@Param('id') id: string) {
+  deleteWorkflow(@Param('id', ParseUUIDPipe) id: string) {
     return this.service.deleteWorkflow(id);
   }
 
@@ -57,11 +59,11 @@ export class SignatureWorkflowController {
   @Post('requests/:id/sign')
   @ApiOperation({ summary: 'Sign or reject a pending signature request' })
   sign(
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() body: { status: 'signed' | 'rejected'; comment?: string; imageUrl?: string },
-    @Req() req: any,
+    @CurrentUser() user: JwtPayload,
   ) {
-    return this.service.sign(id, req.user?.sub || 'system', body.status, body.comment, body.imageUrl);
+    return this.service.sign(id, user, body.status, body.comment, body.imageUrl);
   }
 
   @Get('status/:entityType/:entityId')
@@ -72,8 +74,8 @@ export class SignatureWorkflowController {
 
   @Get('pending')
   @ApiOperation({ summary: 'Get pending signature requests for current user' })
-  getPending(@Req() req: any) {
-    const role = req.user?.role || 'USER';
-    return this.service.getPendingRequests(req.user?.sub, role);
+  getPending(@CurrentUser() user: JwtPayload) {
+    const roleNames = user.roleNames && user.roleNames.length > 0 ? user.roleNames : [user.role];
+    return this.service.getPendingRequests(user.sub, roleNames);
   }
 }

@@ -7,6 +7,7 @@ import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { Search, Bell, ChevronDown, LogOut, User, Menu, Globe } from "lucide-react";
 import ThemeToggle from "@/components/ui/ThemeToggle";
+import GlobalSearch from "@/components/shared/GlobalSearch";
 import { useTheme } from "@/components/ThemeProvider";
 import { notificationService, type Notification } from "@/services/notification.service";
 import { useUnreadCount, refreshUnreadCount } from "@/hooks/useNotifications";
@@ -28,7 +29,7 @@ export default function Topbar({ isArabic, onMenuToggle }: TopbarProps) {
   const [notifOpen, setNotifOpen] = useState(false);
   const [notifItems, setNotifItems] = useState<Notification[]>([]);
   const { unreadCount, refresh } = useUnreadCount();
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const profileRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
   const { resolved } = useTheme();
@@ -41,6 +42,18 @@ export default function Topbar({ isArabic, onMenuToggle }: TopbarProps) {
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
+
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        setSearchOpen((o) => !o);
+      }
+      if (e.key === "Escape" && searchOpen) setSearchOpen(false);
+    };
+    document.addEventListener("keydown", handleKey);
+    return () => document.removeEventListener("keydown", handleKey);
+  }, [searchOpen]);
 
   useEffect(() => {
     if (!notifOpen) return;
@@ -149,7 +162,7 @@ export default function Topbar({ isArabic, onMenuToggle }: TopbarProps) {
       <div className="flex items-center justify-between h-16 px-4 sm:px-6">
         {/* Left side — Breadcrumb + Desktop Menu Toggle */}
         <div className="flex items-center gap-3">
-          <button onClick={onMenuToggle} className="p-2 rounded-lg text-text-muted hover:text-text-primary hover:bg-surface-secondary transition-colors lg:hidden">
+          <button suppressHydrationWarning onClick={onMenuToggle} className="p-2 rounded-lg text-text-muted hover:text-text-primary hover:bg-surface-secondary transition-colors lg:hidden">
             <Menu size={20} />
           </button>
           <nav className="hidden sm:flex items-center gap-1.5 text-sm">
@@ -175,23 +188,10 @@ export default function Topbar({ isArabic, onMenuToggle }: TopbarProps) {
         {/* Right side */}
         <div className="flex items-center gap-2">
           {/* Search */}
-          <div className="relative">
-            <button onClick={() => setSearchOpen(!searchOpen)} className="p-2 rounded-lg text-text-muted hover:text-text-primary hover:bg-surface-secondary transition-colors">
-              <Search size={18} />
-            </button>
-            {searchOpen && (
-              <div className="absolute left-0 top-full mt-2 w-72 bg-surface border border-border rounded-xl shadow-dropdown p-2 animate-fade-in-down">
-                <div className="relative">
-                  <Search size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted" />
-                  <input
-                    autoFocus
-                    placeholder={isArabic ? "بحث..." : "Search..."}
-                    className="w-full bg-surface-secondary border border-border rounded-lg px-9 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-gold"
-                  />
-                </div>
-              </div>
-            )}
-          </div>
+          <button suppressHydrationWarning onClick={() => setSearchOpen(true)} className="p-2 rounded-lg text-text-muted hover:text-text-primary hover:bg-surface-secondary transition-colors">
+            <Search size={18} />
+          </button>
+          <GlobalSearch open={searchOpen} onClose={() => setSearchOpen(false)} />
 
           {/* Language */}
           <Link
@@ -207,7 +207,7 @@ export default function Topbar({ isArabic, onMenuToggle }: TopbarProps) {
 
           {/* Notifications */}
           <div ref={notifRef} className="relative">
-            <button onClick={() => setNotifOpen(!notifOpen)} className="relative p-2 rounded-lg text-text-muted hover:text-text-primary hover:bg-surface-secondary transition-colors">
+            <button suppressHydrationWarning onClick={() => setNotifOpen(!notifOpen)} className="relative p-2 rounded-lg text-text-muted hover:text-text-primary hover:bg-surface-secondary transition-colors">
               <Bell size={18} />
               {unreadCount > 0 && (
                 <span className="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 bg-danger text-white text-[10px] font-bold rounded-full flex items-center justify-center shadow-sm">
@@ -219,7 +219,7 @@ export default function Topbar({ isArabic, onMenuToggle }: TopbarProps) {
               <div className="absolute left-0 top-full mt-2 w-80 bg-surface border border-border rounded-xl shadow-dropdown overflow-hidden animate-fade-in-down">
                 <div className="flex items-center justify-between px-4 py-3 border-b border-border">
                   <h3 className="font-semibold text-sm text-text-primary">{isArabic ? "الإشعارات" : "Notifications"}</h3>
-                  <button onClick={handleMarkAllRead} className="text-xs text-gold hover:underline">{isArabic ? "الكل مقروء" : "Mark all read"}</button>
+                  <button suppressHydrationWarning onClick={handleMarkAllRead} className="text-xs text-gold hover:underline">{isArabic ? "الكل مقروء" : "Mark all read"}</button>
                 </div>
                 <div className="max-h-72 overflow-y-auto">
                   {notifItems.length === 0 && (
@@ -228,6 +228,7 @@ export default function Topbar({ isArabic, onMenuToggle }: TopbarProps) {
                   {notifItems.slice(0, 8).map((n) => (
                     <button
                       key={n.id}
+                      suppressHydrationWarning
                       onClick={() => handleNotifClick(n)}
                       className={cn("w-full text-left flex items-start gap-3 px-4 py-3 border-b border-border last:border-0 hover:bg-surface-secondary transition-colors cursor-pointer", !n.read && "bg-gold-50/50")}
                     >
@@ -249,7 +250,7 @@ export default function Topbar({ isArabic, onMenuToggle }: TopbarProps) {
 
           {/* Profile */}
           <div ref={profileRef} className="relative">
-            <button onClick={() => setProfileOpen(!profileOpen)} className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-surface-secondary transition-colors">
+            <button suppressHydrationWarning onClick={() => setProfileOpen(!profileOpen)} className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-surface-secondary transition-colors">
               {user?.avatarUrl ? (
                 <img
                   src={user.avatarUrl}
@@ -272,9 +273,15 @@ export default function Topbar({ isArabic, onMenuToggle }: TopbarProps) {
                 <Link href={`/${locale}/profile`} className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-text-secondary hover:bg-surface-secondary transition-colors">
                   <User size={16} /> {isArabic ? "الملف الشخصي" : "Profile"}
                 </Link>
-                <Link href={`/${locale}`} className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-danger hover:bg-danger-light transition-colors">
+                <button
+                  onClick={() => {
+                    logout();
+                    router.replace(`/${locale}`);
+                  }}
+                  className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-danger hover:bg-danger-light transition-colors w-full text-start"
+                >
                   <LogOut size={16} /> {isArabic ? "تسجيل الخروج" : "Logout"}
-                </Link>
+                </button>
               </div>
             )}
           </div>

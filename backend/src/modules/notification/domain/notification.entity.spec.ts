@@ -61,7 +61,8 @@ describe('Notification.isVisibleTo', () => {
 
   it('a personal notification is visible to its owner regardless of targets', () => {
     const n = Notification.create({ ...base, userId: 'user-1', targetRoles: ['HR'] }).getValue();
-    expect(n.isVisibleTo([], [])).toBe(true);
+    expect(n.isVisibleTo([], [], 'user-1')).toBe(true);
+    expect(n.isVisibleTo([], [], 'other-user')).toBe(false);
   });
 });
 

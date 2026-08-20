@@ -12,6 +12,7 @@ import {
   type KpiMetric,
   type DrillDownNode,
 } from "@/services/analytics.service";
+import DataLoader from "@/components/shared/DataLoader";
 import { projectService } from "@/services/project.service";
 import {
   DonutChart, ProgressBar, LineChart, HorizontalBars, BarChart,
@@ -33,12 +34,12 @@ const severityColors: Record<string, BadgeVariant> = {
   low: "info",
 };
 
-const classificationLabels: Record<string, string> = {
-  very_profitable: "Profitable",
-  profitable: "Profitable",
-  break_even: "Break even",
-  loss: "Loss",
-  critical_loss: "Critical loss",
+const classificationLabels: Record<string, { ar: string; en: string }> = {
+  very_profitable: { ar: "مربح جداً", en: "Very Profitable" },
+  profitable: { ar: "مربح", en: "Profitable" },
+  break_even: { ar: "تعادل", en: "Break Even" },
+  loss: { ar: "خسارة", en: "Loss" },
+  critical_loss: { ar: "خسارة حرجة", en: "Critical Loss" },
 };
 
 const classificationColors: Record<string, BadgeVariant> = {
@@ -188,14 +189,7 @@ export default function AnalyticsPage() {
       </div>
 
       {loading ? (
-        <div className="space-y-6">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
-              <Card key={i} className="p-4"><div className="h-16 bg-surface rounded animate-pulse" /></Card>
-            ))}
-          </div>
-          <Card className="p-8"><div className="h-48 bg-surface rounded animate-pulse" /></Card>
-        </div>
+        <DataLoader />
       ) : !data ? (
         <Card className="p-12 text-center">
           <Activity className="w-12 h-12 text-text-secondary mx-auto mb-3" />
@@ -317,7 +311,7 @@ export default function AnalyticsPage() {
                 <div className="grid grid-cols-2 gap-2 text-xs">
                   {(Object.entries(data.boq.counts) || []).map(([key, count]) => (
                     <div key={key} className="flex items-center justify-between p-2 bg-surface rounded-lg">
-                      <Badge variant={classificationColors[key] || "default"} size="sm">{t(classificationLabels[key] || key, classificationLabels[key] || key)}</Badge>
+                      <Badge variant={classificationColors[key] || "default"} size="sm">{t(classificationLabels[key]?.en || key, classificationLabels[key]?.ar || key)}</Badge>
                       <span className="font-bold">{count}</span>
                     </div>
                   ))}

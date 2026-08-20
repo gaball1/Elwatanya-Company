@@ -2,17 +2,19 @@
 "use client";
 
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useState, useEffect, useCallback } from "react";
+import { Suspense, useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { Card } from "@/components/ui";
-import { Plus, Trash2, Save } from "lucide-react";
+import { Plus, Trash2, Save, Upload } from "lucide-react";
 import BackButton from "@/components/shared/BackButton";
 import { buildingService } from "@/services/building.service";
 import { projectService } from '@/services/project.service';
 import { clientService, type Client } from '@/services/client.service';
 import { clientStatementService } from '@/services/client-statement.service';
+import { settingsService } from '@/services/settings.service';
 import { employerBoqService } from '@/services/employerBoq.service';
 import { employerBoqToStatementItems } from '@/lib/statementItems';
+import { parseExtractExcelFile } from '@/lib/boqExcel';
 
 // State for projects will be moved inside component
 
@@ -77,6 +79,13 @@ function NewClientStatementPageContent() {
   const [statementNumber, setStatementNumber] = useState("");
   const [deductionPercent, setDeductionPercent] = useState(5);
 
+  useEffect(() => {
+    settingsService
+      .getFinance()
+      .then((settings) => setDeductionPercent(settings.defaultInsurancePercent))
+      .catch(console.error);
+  }, []);
+
   // Items with 13 columns
   const [items, setItems] = useState<Item[]>([
     {
@@ -110,6 +119,8 @@ function NewClientStatementPageContent() {
   >(null);
 
   const [boqLoading, setBoqLoading] = useState(false);
+  const importExcelRef = useRef<HTMLInputElement>(null);
+  const [importing, setImporting] = useState(false);
 
   // تحميل بنود مقايسة جهة الإسناد عند اختيار المبنى
   const loadBoqItems = useCallback(async (targetBuildingId: string) => {
@@ -227,6 +238,49 @@ function NewClientStatementPageContent() {
   const deleteDeduction = (index: number) => {
     setDeductions(deductions.filter((_, i) => i !== index));
     setShowDeleteDeductionConfirm(null);
+  };
+
+  const handleImportExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImporting(true);
+    try {
+      const imported = await parseExtractExcelFile(file);
+      if (imported.length === 0) {
+        alert(isArabic ? "لا توجد بيانات صالحة في الملف" : "No valid rows in file");
+        return;
+      }
+      const newItems = imported.map((row) => {
+        const quantity = row.previous + row.current;
+        return {
+          id: `import-${Date.now()}-${Math.random()}`,
+          itemName: row.description || "",
+          unit: row.unit || "م³",
+          quantity,
+          unitPrice: 0,
+          total: 0,
+          previous: row.previous,
+          current: row.current,
+          totalDone: quantity,
+          final: 0,
+          workValue: 0,
+          deduction: 0,
+          net: 0,
+          notes: "",
+        };
+      });
+      setItems((prev) => [...prev.filter((i) => i.itemName), ...newItems.map((item) => calculateItem(item))]);
+      alert(
+        isArabic
+          ? `تم استيراد ${imported.length} بند من Excel`
+          : `Imported ${imported.length} items from Excel`
+      );
+    } catch {
+      alert(isArabic ? "فشل استيراد ملف Excel" : "Excel import failed");
+    } finally {
+      setImporting(false);
+      if (importExcelRef.current) importExcelRef.current.value = "";
+    }
   };
 
   const handleSubmit = async () => {
@@ -354,12 +408,31 @@ function NewClientStatementPageContent() {
               </h1>
             </div>
           </div>
-          <button
-            onClick={handleSubmit}
-            className="flex items-center gap-2 px-6 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition"
-          >
-            <Save size={18} /> {isArabic ? "حفظ" : "Save"}
-          </button>
+          <div className="flex items-center gap-2">
+            <input
+              ref={importExcelRef}
+              type="file"
+              accept=".xlsx,.xls"
+              className="hidden"
+              onChange={handleImportExcel}
+            />
+            <button
+              onClick={() => importExcelRef.current?.click()}
+              disabled={importing}
+              className="flex items-center gap-2 px-4 py-2 border border-primary text-primary rounded-lg text-sm disabled:opacity-50 hover:bg-primary/5"
+            >
+              <Upload size={16} />
+              {importing
+                ? isArabic ? "جاري الاستيراد..." : "Importing..."
+                : isArabic ? "استيراد Excel" : "Import Excel"}
+            </button>
+            <button
+              onClick={handleSubmit}
+              className="flex items-center gap-2 px-6 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition"
+            >
+              <Save size={18} /> {isArabic ? "حفظ" : "Save"}
+            </button>
+          </div>
         </div>
       </div>
 

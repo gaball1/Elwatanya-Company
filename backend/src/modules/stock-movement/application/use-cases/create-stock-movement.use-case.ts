@@ -8,6 +8,8 @@ import { EventBusImpl } from '@/modules/domain-events/event-bus.impl';
 import { StockMovementCreatedEvent } from '@/modules/domain-events/events';
 import { Prisma } from '@prisma/client';
 import { StockEffectService } from '../stock-effect.service';
+import { OwnershipActor, OwnershipService } from '@/common/services/ownership.service';
+import { verifyStockMovementAccess } from '../stock-movement-ownership.util';
 
 export class CreateStockMovementUseCase {
   constructor(
@@ -15,9 +17,11 @@ export class CreateStockMovementUseCase {
     private readonly prisma: PrismaService,
     private readonly eventBus: EventBusImpl,
     private readonly stockEffect: StockEffectService,
+    private readonly ownership: OwnershipService,
   ) {}
 
-  async execute(input: CreateStockMovementInput): Promise<Result<StockMovementResult>> {
+  async execute(input: CreateStockMovementInput, user: OwnershipActor | undefined, userId?: string): Promise<Result<StockMovementResult>> {
+    const createdBy = userId ?? 'system';
     const result = StockMovement.create({
       itemId: input.itemId,
       type: input.type as StockMovement['type'],
@@ -26,7 +30,7 @@ export class CreateStockMovementUseCase {
       reference: input.reference,
       reason: input.reason,
       notes: input.notes,
-      createdBy: input.createdBy,
+      createdBy,
       issuedTo: input.issuedTo,
       supplier: input.supplier,
       fromWarehouse: input.fromWarehouse,
@@ -36,6 +40,14 @@ export class CreateStockMovementUseCase {
     if (result.isFailure) return Result.fail(result.error as Error);
 
     const stockMovement = result.getValue();
+
+    await verifyStockMovementAccess(
+      this.prisma,
+      this.ownership,
+      user,
+      [stockMovement.itemId],
+      [stockMovement.fromWarehouse, stockMovement.toWarehouse],
+    );
 
     try {
       // Apply the quantity effect and persist the movement atomically so the
@@ -80,7 +92,7 @@ export class CreateStockMovementUseCase {
           itemId: input.itemId,
           type: input.type,
           quantity: input.quantity,
-          createdBy: input.createdBy,
+          createdBy,
         },
       ),
     );

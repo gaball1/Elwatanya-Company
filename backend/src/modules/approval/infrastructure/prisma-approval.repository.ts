@@ -44,6 +44,13 @@ export class PrismaApprovalRepository implements IApprovalRepository {
     return this.prisma.approval.findFirst({ where: { id, deletedAt: null } });
   }
 
+  async findByIdWithNames(id: string): Promise<ApprovalListItem | null> {
+    const approval = await this.findById(id);
+    if (!approval) return null;
+    const [enriched] = await this.attachUserNames([approval]);
+    return enriched;
+  }
+
   async findByEntity(entityType: string, entityId: string): Promise<Approval | null> {
     return this.prisma.approval.findFirst({ where: { entityType, entityId, deletedAt: null } });
   }

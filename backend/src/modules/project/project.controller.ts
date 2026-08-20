@@ -27,6 +27,7 @@ import { UpdateProjectUseCase } from './application/use-cases/update-project.use
 import { GetProjectUseCase } from './application/use-cases/get-project.use-case';
 import { ListProjectsUseCase } from './application/use-cases/list-projects.use-case';
 import { SoftDeleteProjectUseCase } from './application/use-cases/soft-delete-project.use-case';
+import { ProjectDashboardService } from './project-dashboard.service';
 import {
   ProjectApplicationError,
   ProjectErrorCode,
@@ -44,6 +45,7 @@ export class ProjectController {
     private readonly getProject: GetProjectUseCase,
     private readonly listProjects: ListProjectsUseCase,
     private readonly softDeleteProject: SoftDeleteProjectUseCase,
+    private readonly projectDashboard: ProjectDashboardService,
   ) {}
   @Post()
   @HttpCode(HttpStatus.CREATED)
@@ -90,6 +92,14 @@ export class ProjectController {
     }
     return { project: result.getValue() };
   }
+
+  @Get(':id/dashboard')
+  @ApiOperation({ summary: 'Get project dashboard summary' })
+  @RequirePermission(Permissions.Projects.Read)
+  async getDashboard(@Param('id', ParseUUIDPipe) id: string) {
+    return this.projectDashboard.getProjectDashboard(id);
+  }
+
   @Patch(':id')
   @ApiOperation({ summary: 'Update project' })
   @RequirePermission(Permissions.Projects.Update)

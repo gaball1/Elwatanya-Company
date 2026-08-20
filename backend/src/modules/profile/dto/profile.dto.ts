@@ -1,5 +1,6 @@
 import { IsOptional, IsString, MinLength, IsNotEmpty } from 'class-validator';
 import { ApiPropertyOptional, ApiProperty } from '@nestjs/swagger';
+import { IsStrongPassword } from '../../../common/validators/password.validator';
 
 export class UpdateProfileDto {
   @ApiPropertyOptional()
@@ -20,7 +21,7 @@ export class ChangePasswordDto {
 
   @ApiPropertyOptional()
   @IsString()
-  @MinLength(6)
+  @IsStrongPassword()
   newPassword: string;
 }
 

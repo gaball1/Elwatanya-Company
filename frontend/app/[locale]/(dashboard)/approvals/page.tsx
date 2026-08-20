@@ -4,6 +4,7 @@
 import { useParams } from "next/navigation";
 import { useState, useMemo, useCallback, useEffect } from "react";
 import { Card } from "@/components/ui";
+import DataLoader from "@/components/shared/DataLoader";
 import { Can } from '@/components/Can';
 import {
   CheckCircle2,
@@ -13,12 +14,12 @@ import {
   Search,
   Filter,
   Download,
-  Printer,
   User,
   FileText,
   MessageSquare,
   Send,
 } from "lucide-react";
+import PrintPdfButton from "@/components/shared/PrintPdfButton";
 import { approvalService, type Approval } from "@/services/approval.service";
 import { useToast } from "@/components/ui/Toast";
 import { useUser } from "@/hooks/useUser";
@@ -192,7 +193,7 @@ export default function ApprovalsPage() {
     }
   }, [isArabic, fetchApprovals]);
 
-  const handlePrintPDF = useCallback(() => {
+  const handlePrintPDF = useCallback((logoUrl?: string) => {
     const headers = [
       isArabic ? "النوع" : "Type",
       isArabic ? "المرجع" : "Reference",
@@ -211,7 +212,7 @@ export default function ApprovalsPage() {
       a.comment || "—",
       a.createdAt,
     ]);
-    printAsPDF(rows, headers, isArabic ? "تقرير الموافقات" : "Approvals Report", isArabic);
+    printAsPDF(rows, headers, isArabic ? "تقرير الموافقات" : "Approvals Report", isArabic, { logoUrl });
   }, [filteredApprovals, isArabic]);
 
   const exportToExcel = useCallback(() => {
@@ -246,9 +247,7 @@ export default function ApprovalsPage() {
             <p className="text-sm text-text-secondary mt-1">{isArabic ? "إدارة طلبات الموافقة" : "Manage approval requests"}</p>
           </div>
           <div className="flex gap-2">
-            <button onClick={handlePrintPDF} className="flex items-center gap-2 px-4 py-2 border border-info text-info rounded-lg hover:bg-info hover:text-white transition">
-              <Printer size={18} /> {isArabic ? "طباعة PDF" : "Print PDF"}
-            </button>
+            <PrintPdfButton label={isArabic ? "طباعة PDF" : "Print PDF"} onPrint={handlePrintPDF} />
             <button onClick={exportToExcel} className="flex items-center gap-2 px-4 py-2 border border-success-dark text-success-dark rounded-lg hover:bg-success-dark hover:text-white transition">
               <Download size={18} /> {isArabic ? "تصدير Excel" : "Export Excel"}
             </button>
@@ -292,7 +291,7 @@ export default function ApprovalsPage() {
 
       <div className="p-6 pt-0">
         {loading ? (
-          <Card className="p-12 text-center"><p className="text-text-secondary">{isArabic ? "جاري التحميل..." : "Loading..."}</p></Card>
+          <DataLoader />
         ) : filteredApprovals.length === 0 ? (
           <Card className="p-12 text-center">
             <CheckCircle2 size={64} className="mx-auto text-text-muted mb-4" />

@@ -3,11 +3,18 @@ import { IWarehouseRepository } from '../../domain/warehouse.repository';
 import { CreateWarehouseInput, WarehouseResult } from '../dto/warehouse.dto';
 import { Warehouse } from '../../domain/warehouse.entity';
 import { toResult } from './list-warehouses.use-case';
+import { OwnershipActor, OwnershipService } from '@/common/services/ownership.service';
 
 export class CreateWarehouseUseCase {
-  constructor(private readonly warehouses: IWarehouseRepository) {}
+  constructor(
+    private readonly warehouses: IWarehouseRepository,
+    private readonly ownership: OwnershipService,
+  ) {}
 
-  async execute(input: CreateWarehouseInput): Promise<Result<WarehouseResult>> {
+  async execute(input: CreateWarehouseInput, user?: OwnershipActor, userId?: string): Promise<Result<WarehouseResult>> {
+    if (user && input.projectId) await this.ownership.verifyProjectAccess(user, input.projectId);
+    const createdBy = userId ?? 'system';
+
     const existingCode = await this.warehouses.findByCodeIncludingDeleted(input.code);
     if (existingCode) {
       if (existingCode.isDeleted) return Result.fail(new Error(`Warehouse code ${input.code} is marked as deleted. Restore or use a different code.`));

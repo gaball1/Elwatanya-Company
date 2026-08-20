@@ -11,8 +11,9 @@ export async function isFinalItemCommittedForItem(
   finalBoq: IFinalBoqRepository,
   buildingId: UniqueEntityId,
   itemCode: string,
+  preloadedAggregate?: any,
 ): Promise<boolean> {
-  const aggregate = await finalBoq.findByBuildingId(buildingId);
+  const aggregate = preloadedAggregate ?? await finalBoq.findByBuildingId(buildingId);
   if (!aggregate) return false;
   const item = aggregate.findItemByCode(itemCode);
   return isFinalItemCommitted(item ?? undefined);

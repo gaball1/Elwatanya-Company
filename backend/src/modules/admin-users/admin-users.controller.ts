@@ -4,6 +4,7 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { RequirePermission } from '../../common/decorators/permissions.decorator';
+import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
 import { AdminUsersService } from './admin-users.service';
 import {
   CreateUserDto, UpdateUserDto, AssignRolesDto, AssignProjectsDto,
@@ -78,8 +79,12 @@ export class AdminUsersController {
   @Post(':id/roles')
   @ApiOperation({ summary: 'Assign roles to user' })
   @RequirePermission('users.assign-role')
-  async assignRoles(@Param('id', ParseUUIDPipe) id: string, @Body() dto: AssignRolesDto) {
-    return this.adminUsers.assignRoles(id, dto);
+  async assignRoles(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: AssignRolesDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.adminUsers.assignRoles(id, dto, user.roleNames ?? []);
   }
 
   @Post(':id/projects')

@@ -6,6 +6,7 @@ import { EventBusImpl } from '@/modules/domain-events/event-bus.impl';
 import { PrismaService } from '@/prisma/prisma.service';
 import { evaluateGeofence } from '../geofence.util';
 import { AttendanceOverrideService } from '@/modules/attendance-override/attendance-override.service';
+import { NotificationService } from '@/common/services/notification.service';
 import { toResult } from './list-attendance.use-case';
 
 export type CheckOutOutcome =
@@ -13,11 +14,14 @@ export type CheckOutOutcome =
   | { override: { id: string; reason: string; status: string; distance: number | null }; requiresApproval: true };
 
 export class CheckOutUseCase {
+  private readonly MANAGER_ROLES = ['HR', 'CEO', 'TECHNICAL_OFFICE'];
+
   constructor(
     private readonly attendance: IAttendanceRepository,
     private readonly eventBus: EventBusImpl,
     private readonly prisma: PrismaService,
     private readonly overrideService: AttendanceOverrideService,
+    private readonly notifications: NotificationService,
   ) {}
 
   async execute(input: CheckOutInput): Promise<Result<CheckOutOutcome>> {
@@ -44,6 +48,7 @@ export class CheckOutUseCase {
       });
       if (applied.isFailure) return Result.fail(applied.error as Error);
       await this.attendance.save(entity);
+      void this.notifyManagers(entity.employeeId, entity.projectId, entity.buildingId);
       return Result.ok({ record: toResult(entity) });
     }
 
@@ -119,5 +124,38 @@ export class CheckOutUseCase {
       select: { id: true },
     });
     return user?.id ?? null;
+  }
+
+  private async notifyManagers(
+    employeeId: string,
+    projectId?: string | null,
+    buildingId?: string | null,
+  ): Promise<void> {
+    try {
+      const employee = await this.prisma.employee.findUnique({
+        where: { id: employeeId },
+        select: { fullName: true, code: true },
+      });
+      const label = employee?.fullName ?? employeeId;
+      const timeStr = new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Cairo' });
+
+      const link = projectId && buildingId
+        ? `/projects/${projectId}/buildings/${buildingId}/attendance`
+        : '/attendance/history';
+
+      await this.notifications.createForRoles(this.MANAGER_ROLES, {
+        title: 'تسجيل انصراف',
+        titleEn: 'Attendance Check-out',
+        message: `${label} — ${timeStr}`,
+        messageEn: `${label} — ${timeStr}`,
+        type: 'info',
+        entityType: 'attendance',
+        entityId: employeeId,
+        link,
+        createdBy: employeeId,
+      });
+    } catch {
+      // notification failure must never break attendance flow
+    }
   }
 }

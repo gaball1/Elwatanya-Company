@@ -1,9 +1,7 @@
 import { apiClient } from "@/lib/api/apiClient";
 import {
   clearTokens,
-  getRefreshToken,
   saveAccessToken,
-  saveRefreshToken,
 } from "@/lib/api/tokenStorage";
 
 export interface AuthUser {
@@ -43,39 +41,31 @@ export const authService = {
       skipAuthRetry: true,
     });
     saveAccessToken(data.accessToken);
-    saveRefreshToken(data.refreshToken);
     return data;
   },
 
   async logout(): Promise<void> {
-    const refreshToken = getRefreshToken();
-    if (refreshToken) {
-      try {
-        await apiClient<void>("/auth/logout", {
-          method: "POST",
-          body: { refreshToken },
-          skipAuthRetry: true,
-        });
-      } catch {
-        // Ignore logout errors
-      }
+    try {
+      await apiClient<void>("/auth/logout", {
+        method: "POST",
+        body: {},
+        skipAuthRetry: true,
+        skipAuth: true,
+      });
+    } catch {
+      // Ignore logout errors
     }
     clearTokens();
   },
 
   async refresh(): Promise<AuthResponse> {
-    const refreshToken = getRefreshToken();
-    if (!refreshToken) {
-      throw new Error("No refresh token available");
-    }
     const data = await apiClient<AuthResponse>("/auth/refresh", {
       method: "POST",
-      body: { refreshToken },
+      body: {},
       skipAuth: true,
       skipAuthRetry: true,
     });
     saveAccessToken(data.accessToken);
-    saveRefreshToken(data.refreshToken);
     return data;
   },
 

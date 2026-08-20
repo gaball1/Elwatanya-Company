@@ -93,3 +93,7 @@ e2e-acceptance-results.json
 backend/generated-pdfs/
 backend/scripts/reports/
 backend/scripts/*.log
+# TLS certs (production)
+deploy/nginx/certs/
+deploy/nginx/www/
+

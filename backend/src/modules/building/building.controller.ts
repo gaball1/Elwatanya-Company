@@ -59,7 +59,7 @@ export class BuildingController {
       name: dto.name,
       code: dto.code,
       type: dto.type,
-      startDate: dto.startDate ? new Date(dto.startDate) : undefined,
+      startDate: dto.startDate ? new Date(dto.startDate) : null,
       description: dto.description,
       status: dto.status,
       latitude: dto.latitude,

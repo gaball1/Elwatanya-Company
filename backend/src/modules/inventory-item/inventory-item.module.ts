@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '@/prisma/prisma.module';
 import { PrismaService } from '@/prisma/prisma.service';
+import { OwnershipService } from '@/common/services/ownership.service';
 import { INVENTORY_ITEM_REPOSITORY } from './domain/inventory-item.repository';
 import { IInventoryItemRepository } from './domain/inventory-item.repository';
 import { PrismaInventoryItemRepository } from './infrastructure/prisma-inventory-item.repository';
@@ -15,12 +16,17 @@ import { InventoryItemController } from './inventory-item.controller';
   imports: [PrismaModule],
   controllers: [InventoryItemController],
   providers: [
+    {
+      provide: OwnershipService,
+      useFactory: (prisma: PrismaService) => new OwnershipService(prisma),
+      inject: [PrismaService],
+    },
     { provide: INVENTORY_ITEM_REPOSITORY, useClass: PrismaInventoryItemRepository },
-    { provide: ListInventoryItemsUseCase, useFactory: (repo: IInventoryItemRepository, prisma: PrismaService) => new ListInventoryItemsUseCase(repo, prisma), inject: [INVENTORY_ITEM_REPOSITORY, PrismaService] },
-    { provide: CreateInventoryItemUseCase, useFactory: (repo: IInventoryItemRepository, prisma: PrismaService) => new CreateInventoryItemUseCase(repo, prisma), inject: [INVENTORY_ITEM_REPOSITORY, PrismaService] },
-    { provide: UpdateInventoryItemUseCase, useFactory: (repo: IInventoryItemRepository, prisma: PrismaService) => new UpdateInventoryItemUseCase(repo, prisma), inject: [INVENTORY_ITEM_REPOSITORY, PrismaService] },
-    { provide: DeleteInventoryItemUseCase, useFactory: (repo: IInventoryItemRepository) => new DeleteInventoryItemUseCase(repo), inject: [INVENTORY_ITEM_REPOSITORY] },
-    { provide: IncreaseInventoryItemUseCase, useFactory: (repo: IInventoryItemRepository, prisma: PrismaService) => new IncreaseInventoryItemUseCase(repo, prisma), inject: [INVENTORY_ITEM_REPOSITORY, PrismaService] },
+    { provide: ListInventoryItemsUseCase, useFactory: (repo: IInventoryItemRepository, prisma: PrismaService, ownership: OwnershipService) => new ListInventoryItemsUseCase(repo, prisma, ownership), inject: [INVENTORY_ITEM_REPOSITORY, PrismaService, OwnershipService] },
+    { provide: CreateInventoryItemUseCase, useFactory: (repo: IInventoryItemRepository, prisma: PrismaService, ownership: OwnershipService) => new CreateInventoryItemUseCase(repo, prisma, ownership), inject: [INVENTORY_ITEM_REPOSITORY, PrismaService, OwnershipService] },
+    { provide: UpdateInventoryItemUseCase, useFactory: (repo: IInventoryItemRepository, prisma: PrismaService, ownership: OwnershipService) => new UpdateInventoryItemUseCase(repo, prisma, ownership), inject: [INVENTORY_ITEM_REPOSITORY, PrismaService, OwnershipService] },
+    { provide: DeleteInventoryItemUseCase, useFactory: (repo: IInventoryItemRepository, ownership: OwnershipService) => new DeleteInventoryItemUseCase(repo, ownership), inject: [INVENTORY_ITEM_REPOSITORY, OwnershipService] },
+    { provide: IncreaseInventoryItemUseCase, useFactory: (repo: IInventoryItemRepository, prisma: PrismaService, ownership: OwnershipService) => new IncreaseInventoryItemUseCase(repo, prisma, ownership), inject: [INVENTORY_ITEM_REPOSITORY, PrismaService, OwnershipService] },
   ],
   exports: [INVENTORY_ITEM_REPOSITORY],
 })

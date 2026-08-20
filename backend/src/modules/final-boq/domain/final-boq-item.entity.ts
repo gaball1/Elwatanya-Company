@@ -211,6 +211,16 @@ export class FinalBoqItem extends BaseEntity {
     this.props.itemStatus = 'analyzed';
   }
 
+  /** Revert analyzed state — soft-deletes all components, resets status to pending. */
+  public unanalyze(): void {
+    for (const existing of this.components) {
+      existing.softDelete();
+    }
+    this._components = [...this._components.filter((c) => c.deletedAt !== null)];
+    this.props.isAnalyzed = false;
+    this.props.itemStatus = 'pending';
+  }
+
   /** Mirrors addComponentToFinalItem — does not change status, only isAnalyzed. */
   public addComponent(input: {
     name: string;

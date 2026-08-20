@@ -136,7 +136,7 @@ export class SignatureWorkflowRepository {
     );
   }
 
-  async getPendingRequests(userId: string, roleName: string) {
+  async getPendingRequests(userId: string, roleNames: string[]) {
     const rows: any[] = await this.prisma.$queryRawUnsafe(
       `SELECT r.* FROM "SignatureRequest" r
        WHERE r.status IN ('pending', 'in_progress')
@@ -144,10 +144,10 @@ export class SignatureWorkflowRepository {
          SELECT 1 FROM "SignatureAction" a
          JOIN "SignatureWorkflowStep" s ON a."stepId" = s.id
          WHERE a."requestId" = r.id AND a.status = 'pending'
-         AND (s."userId" = $1 OR s."roleName" = $2)
+         AND (s."userId" = $1 OR s."roleName" = ANY($2::text[]))
        )
        ORDER BY r."requestedAt" DESC`,
-      userId, roleName,
+      userId, roleNames,
     );
     for (const row of rows) {
       row.actions = await this.prisma.$queryRawUnsafe(

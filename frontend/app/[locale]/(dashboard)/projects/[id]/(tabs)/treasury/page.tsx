@@ -4,9 +4,9 @@
 import { useParams, useRouter } from "next/navigation";
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { Card } from "@/components/ui";
+import DataLoader from "@/components/shared/DataLoader";
 import {
   Plus,
-  Printer,
   Download,
   Filter,
   Search,
@@ -23,6 +23,7 @@ import { useDebounce } from "@/hooks/useDebounce";
 import { usePagination } from "@/hooks/usePagination";
 import Pagination from "@/components/ui/Pagination";
 import { Can } from "@/components/Can";
+import PrintPdfButton from "@/components/shared/PrintPdfButton";
 import { printHtmlDocument } from "@/lib/printUtils";
 
 function buildTreasuryHref(locale: string, projectId: string, tx: TreasuryTransaction): string | null {
@@ -96,8 +97,8 @@ const TransactionItem = React.memo(
                     }`}
                   >
                     {transaction.status === "pending"
-                      ? "قيد الانتظار"
-                      : "مرفوضة"}
+                      ? isArabic ? "قيد الانتظار" : "Pending"
+                      : isArabic ? "مرفوضة" : "Rejected"}
                   </span>
                 </p>
               )}
@@ -432,7 +433,7 @@ export default function ProjectTreasuryPage() {
   );
 
   // ✅ طباعة PDF محسنة
-  const handlePrint = useCallback(() => {
+  const handlePrint = useCallback((logoUrl?: string) => {
     const title = isArabic ? "تقرير الخزنة" : "Treasury Report";
     const projectName = projectId ? `المشروع: ${projectId}` : "";
     const date = new Date().toLocaleDateString(isArabic ? "ar-EG" : "en-US");
@@ -501,7 +502,6 @@ export default function ProjectTreasuryPage() {
       <div class="print-container">
         <div class="header">
           <h1>${title}</h1>
-          <div class="subtitle">الوطنية للتنمية العمرانية</div>
           <div class="subtitle" style="font-size:13px;color:#666;">${projectName}</div>
           <div class="date">تاريخ التقرير: ${date}</div>
         </div>
@@ -549,14 +549,13 @@ export default function ProjectTreasuryPage() {
           </tbody>
         </table>
         <div class="footer">
-          تم إنشاء هذا التقرير بواسطة النظام الآلي - الوطنية للتنمية العمرانية
         </div>
       </div>
     </body>
     </html>
     `;
 
-    printHtmlDocument(title, htmlContent, `${title}.pdf`);
+    printHtmlDocument(title, htmlContent, `${title}.pdf`, { logoUrl });
   }, [filteredTransactions, isArabic, getTypeLabel, getTypeColor, projectId, rangeIncome, rangeExpenses, previousBalance]);
 
   // ✅ تصدير Excel محسن
@@ -716,13 +715,10 @@ export default function ProjectTreasuryPage() {
           <Download size={18} />
           {isArabic ? "تصدير Excel" : "Export Excel"}
         </button>
-        <button
-          onClick={handlePrint}
-          className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition text-sm font-medium"
-        >
-          <Printer size={18} />
-          {isArabic ? "طباعة PDF" : "Print PDF"}
-        </button>
+        <PrintPdfButton
+          label={isArabic ? "طباعة PDF" : "Print PDF"}
+          onPrint={handlePrint}
+        />
       </div>
 
       {/* Filters */}
@@ -786,9 +782,7 @@ export default function ProjectTreasuryPage() {
       {/* Transactions List */}
       <div className="space-y-2">
         {loading ? (
-          <Card className="p-8 text-center text-text-muted">
-            {isArabic ? "جاري التحميل..." : "Loading..."}
-          </Card>
+          <DataLoader />
         ) : currentItems.length === 0 ? (
           <Card className="p-8 text-center">
             <p className="text-text-secondary">

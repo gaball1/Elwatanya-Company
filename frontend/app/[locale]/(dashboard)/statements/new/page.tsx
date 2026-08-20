@@ -11,6 +11,7 @@ import { Suspense, useEffect, useState } from "react";
 import { projectService } from "@/services/project.service";
 import { subcontractorService } from "@/services/subcontractor.service";
 import { subcontractorStatementService } from "@/services/subcontractor-statement.service";
+import { settingsService } from "@/services/settings.service";
 import BackButton from "@/components/shared/BackButton";
 
 interface Item {
@@ -67,6 +68,13 @@ function NewStatementPageContent() {
   const [blockNumber, setBlockNumber] = useState("");
   const [formNumber, setFormNumber] = useState("");
   const [insurancePercent, setInsurancePercent] = useState(5);
+
+  useEffect(() => {
+    settingsService
+      .getFinance()
+      .then((settings) => setInsurancePercent(settings.defaultInsurancePercent))
+      .catch(console.error);
+  }, []);
 
   // Items
   const [items, setItems] = useState<Item[]>([

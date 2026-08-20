@@ -273,6 +273,7 @@ export default function AiAgentChat() {
   return (
     <>
       <button
+        suppressHydrationWarning
         onClick={() => setOpen(true)}
         className={cn(
           "fixed bottom-6 left-6 z-50 w-14 h-14 rounded-2xl bg-gold text-white shadow-dropdown",

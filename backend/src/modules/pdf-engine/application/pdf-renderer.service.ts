@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
-import { chromium, Browser, BrowserContext } from 'playwright';
+import { chromium, Browser, BrowserContext, Route } from 'playwright';
+import { isHostnamePrivate } from '@/common/utils/ssrf-guard.util';
 
 export const RENDER_TIMEOUT_MS = 30_000;
 
@@ -84,6 +85,13 @@ export class PdfRendererService implements OnModuleDestroy {
       const baseUrl = options.baseUrl || 'http://localhost:3001';
       const normalizedHtml = this.resolveRelativeUrls(html, baseUrl);
 
+      // Defense-in-depth against SSRF: only the application origin, inline
+      // data/blob resources, and public http(s) targets may be fetched while
+      // rendering. Private/internal hosts are aborted (fail-closed).
+      await page.route('**/*', async (route: Route) => {
+        await this.handleRoute(route, baseUrl);
+      });
+
       await page.setContent(normalizedHtml, {
         waitUntil: 'networkidle',
         timeout: RENDER_TIMEOUT_MS,
@@ -128,6 +136,41 @@ export class PdfRendererService implements OnModuleDestroy {
       return Buffer.from(pdfBuffer);
     } finally {
       await context.close();
+    }
+  }
+
+  /**
+   * SSRF filter for every request the headless browser makes while rendering.
+   * Allows: application origin (baseUrl), data:/blob:/about: inline resources,
+   * and public http(s) hosts. Anything else — including internal hostnames,
+   * private networks and unresolvable hosts — is aborted.
+   */
+  private async handleRoute(route: Route, baseUrl: string): Promise<void> {
+    try {
+      const url = new URL(route.request().url());
+
+      if (url.protocol === 'data:' || url.protocol === 'blob:' || url.protocol === 'about:') {
+        await route.continue();
+        return;
+      }
+
+      if (url.protocol === 'http:' || url.protocol === 'https:') {
+        const allowedOrigin = new URL(baseUrl).origin;
+        if (url.origin === allowedOrigin) {
+          await route.continue();
+          return;
+        }
+        if (await isHostnamePrivate(url.hostname)) {
+          await route.abort('blockedbyclient');
+          return;
+        }
+        await route.continue();
+        return;
+      }
+
+      await route.abort('blockedbyclient');
+    } catch {
+      await route.abort('blockedbyclient');
     }
   }
 

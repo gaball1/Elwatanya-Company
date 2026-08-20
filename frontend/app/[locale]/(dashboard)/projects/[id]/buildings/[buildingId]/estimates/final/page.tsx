@@ -3,6 +3,7 @@
 import React from "react";
 
 import { useParams } from "next/navigation";
+import { companyService } from "@/services/company.service";
 import { useState, useEffect } from "react";
 import {
   Plus,
@@ -14,6 +15,7 @@ import {
   ChevronDown,
   ChevronRight,
   Search,
+  Undo2,
 } from "lucide-react";
 import BoqPageHeader from "@/components/boq/BoqPageHeader";
 import SignaturesSection from "@/components/boq/SignaturesSection";
@@ -21,6 +23,7 @@ import DeleteConfirmModal from "@/components/boq/DeleteConfirmModal";
 import { useToast } from "@/components/ui/Toast";
 import { exportToCsv, printHtml } from "@/lib/documentUtils";
 import { getDocSignatures, setDocSignatures } from "@/lib/signatures";
+import DataLoader from "@/components/shared/DataLoader";
 import type { EmployerBoqItem, FinalBoqItem, FinalBoqComponent } from "@/types/boq";
 import { employerBoqService } from "@/services/employerBoq.service";
 import { finalBoqService } from "@/services/finalBoq.service";
@@ -1264,6 +1267,19 @@ export default function FinalBoqPage() {
     }
   };
 
+  const handleUnanalyze = async (itemCode: string) => {
+    try {
+      await finalBoqService.unanalyze(buildingId, itemCode);
+      showToast(
+        isArabic ? "تم إلغاء تحليل البند" : "Item unanalyzed",
+        "success"
+      );
+      await loadItems();
+    } catch (e: any) {
+      showToast(e?.message || "خطأ", "error");
+    }
+  };
+
   const handleDistribute = async (
     distribution: { contractorId: string; quantity: number }[]
   ) => {
@@ -1428,9 +1444,7 @@ export default function FinalBoqPage() {
   if (!mounted || loading) {
     return (
       <div className="min-h-screen bg-gray-light -m-6 flex items-center justify-center">
-        <div className="animate-pulse text-text-muted">
-          {isArabic ? "جاري التحميل..." : "Loading..."}
-        </div>
+        <DataLoader />
       </div>
     );
   }
@@ -1469,36 +1483,17 @@ export default function FinalBoqPage() {
             ])
           )
         }
-        onPrint={() => {
-          // Prompt user for logo image
-          const fileInput = document.createElement("input");
-          fileInput.type = "file";
-          fileInput.accept = "image/*";
-          fileInput.style.display = "none";
-          fileInput.onchange = async (e) => {
-            const target = e.target as HTMLInputElement;
-            const file = target.files?.[0];
-            let logoSrc = "";
-            if (file) {
-              logoSrc = await new Promise<string>((resolve) => {
-                const reader = new FileReader();
-                reader.onload = () => resolve(reader.result as string);
-                reader.readAsDataURL(file);
-              });
-            }
-
+        onPrint={async (logoUrl) => {
             const buildingData = building || { name: "", code: "" };
+            const companyData = await companyService.get().catch(() => null);
+            const companyName = isArabic ? (companyData?.arabicName || companyData?.name || "") : (companyData?.name || companyData?.arabicName || "");
 
             // Header with optional logo, project name, and building name (if buildingId exists)
             const headerHtml = `
               <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 3px double #1e3a5f; padding-bottom: 15px; margin-bottom: 20px;">
                 <div style="text-align: right; line-height: 1.6;">
                   <h1 style="color: #1e3a5f; font-size: 22px; margin: 0 0 5px 0; font-weight: bold;">
-                    ${
-                      isArabic
-                        ? "الوطنية للمقاولات والتوريدات"
-                        : "Al-Wataniya for Contracting & Supplies"
-                    }
+                    ${companyName}
                   </h1>
                   <h2 style="color: #c9a03d; font-size: 16px; margin: 0 0 5px 0; font-weight: bold;">
                     ${isArabic ? "المقايسة النهائية" : "Final BOQ"}
@@ -1521,10 +1516,10 @@ export default function FinalBoqPage() {
                   </div>
                 </div>
                 ${
-                  logoSrc
+                  logoUrl
                     ? `
                   <div>
-                    <img src="${logoSrc}" alt="Logo" style="max-height: 80px; max-width: 150px; object-fit: contain;" />
+                    <img src="${logoUrl}" alt="Logo" style="max-height: 80px; max-width: 150px; object-fit: contain;" />
                   </div>
                 `
                     : `
@@ -1551,8 +1546,8 @@ export default function FinalBoqPage() {
                 color = "#a16207";
                 text = isArabic ? "جزئي" : "Partial";
               } else if (status === "analyzed") {
-                bg = "#dbeafe";
-                color = "#1d4ed8";
+                bg = "#dce7f3";
+                color = "#3d6594";
                 text = isArabic ? "متحلل" : "Analyzed";
               }
               return `<span style="background:${bg}; color:${color}; padding: 3px 8px; border-radius: 12px; font-size: 10px; font-weight: bold; display: inline-block;">${text}</span>`;
@@ -1745,9 +1740,7 @@ export default function FinalBoqPage() {
               </table>
               ${signaturesHtml}
             `;
-            printHtml(isArabic ? "المقايسة النهائية" : "Final BOQ", html);
-          };
-          fileInput.click();
+            printHtml(isArabic ? "المقايسة النهائية" : "Final BOQ", html, "", { logoUrl });
         }}
       />
       <div className="px-6 pb-6">
@@ -1951,6 +1944,21 @@ export default function FinalBoqPage() {
                                 title={isArabic ? "تحليل البند" : "Analyze Item"}
                               >
                                 <Layers size={16} />
+                              </button>
+                            )}
+                           </Can>
+                           <Can permission="final-boq.update">
+                            {item.isAnalyzed && (
+                              <button
+                                onClick={() => {
+                                  if (confirm(isArabic ? "هل تريد إلغاء تحليل هذا البند؟" : "Unanalyze this item?")) {
+                                    handleUnanalyze(item.itemCode);
+                                  }
+                                }}
+                                className="text-danger hover:text-danger-dark p-1"
+                                title={isArabic ? "إلغاء تحليل البند" : "Unanalyze Item"}
+                              >
+                                <Undo2 size={16} />
                               </button>
                             )}
                           </Can>

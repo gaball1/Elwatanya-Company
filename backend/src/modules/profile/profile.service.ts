@@ -86,7 +86,7 @@ export class ProfileService {
     const isMatch = await bcrypt.compare(dto.currentPassword, user.passwordHash);
     if (!isMatch) throw new BadRequestException('Current password is incorrect');
 
-    const passwordHash = await bcrypt.hash(dto.newPassword, 10);
+    const passwordHash = await bcrypt.hash(dto.newPassword, 12);
     await this.prisma.user.update({
       where: { id: userId },
       data: { passwordHash },

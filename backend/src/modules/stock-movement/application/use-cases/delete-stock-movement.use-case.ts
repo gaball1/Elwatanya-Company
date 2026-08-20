@@ -5,6 +5,8 @@ import { EventBusImpl } from '@/modules/domain-events/event-bus.impl';
 import { StockMovementDeletedEvent } from '@/modules/domain-events/events';
 import { PrismaService } from '@/prisma/prisma.service';
 import { StockEffectService } from '../stock-effect.service';
+import { OwnershipActor, OwnershipService } from '@/common/services/ownership.service';
+import { verifyStockMovementAccess } from '../stock-movement-ownership.util';
 
 export class DeleteStockMovementUseCase {
   constructor(
@@ -12,11 +14,20 @@ export class DeleteStockMovementUseCase {
     private readonly prisma: PrismaService,
     private readonly eventBus: EventBusImpl,
     private readonly stockEffect: StockEffectService,
+    private readonly ownership: OwnershipService,
   ) {}
 
-  async execute(id: string): Promise<Result<void>> {
+  async execute(id: string, user: OwnershipActor | undefined): Promise<Result<void>> {
     const stockMovement = await this.stockMovements.findById(new UniqueEntityId(id));
     if (!stockMovement) return Result.fail(new Error('Stock movement not found'));
+
+    await verifyStockMovementAccess(
+      this.prisma,
+      this.ownership,
+      user,
+      [stockMovement.itemId],
+      [stockMovement.fromWarehouse, stockMovement.toWarehouse],
+    );
 
     try {
       // Reverse the quantity effect and soft-delete the movement atomically.

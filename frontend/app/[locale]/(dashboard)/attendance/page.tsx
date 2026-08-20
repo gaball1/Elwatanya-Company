@@ -28,6 +28,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { attendanceService, type Attendance, type AttendanceOverride, type CheckOutData } from "@/services/attendance.service";
 import { employeeService, type Employee } from "@/services/employee.service";
 import { projectService } from "@/services/project.service";
+import DataLoader from "@/components/shared/DataLoader";
 import type { Project } from "@/services/project.service";
 import { buildingService, type Building } from "@/services/building.service";
 import { shiftService, type Shift } from "@/services/shift.service";
@@ -801,11 +802,7 @@ export default function AttendancePage() {
   }, [isArabic, showToast]);
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
-      </div>
-    );
+    return <DataLoader fullPage />;
   }
 
   return (
@@ -825,10 +822,10 @@ export default function AttendancePage() {
 
       {/* Queued items banner */}
       {queuedItems.length > 0 && isOnline && (
-        <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-xl p-3 flex items-center gap-3 text-blue-700 dark:text-blue-300 text-sm">
+        <div className="bg-info-light dark:bg-info/15 border border-info-light dark:border-info/30 rounded-xl p-3 flex items-center gap-3 text-info dark:text-info-light text-sm">
           <RefreshCw size={18} />
           <span>{queuedItems.length} {isArabic ? "عملية في انتظار المزامنة" : "items waiting to sync"}</span>
-          <button onClick={syncQueuedItems} className="px-3 py-1 bg-blue-600 text-white rounded-lg text-xs font-medium">
+          <button onClick={syncQueuedItems} className="px-3 py-1 bg-info text-white rounded-lg text-xs font-medium">
             {isArabic ? "مزامنة" : "Sync"}
           </button>
         </div>

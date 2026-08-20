@@ -1,7 +1,7 @@
 import { Result } from '@/shared/kernel/result';
 import { ClientStatement } from '../../domain/client-statement.entity';
 import { ClientStatementResult } from '../dto/client-statement.dto';
-import { OwnershipActor } from '@/common/services/ownership.service';
+import { OwnershipActor, OwnershipService } from '@/common/services/ownership.service';
 
 export function toResult(s: ClientStatement): ClientStatementResult {
   return {
@@ -27,23 +27,19 @@ export function toResult(s: ClientStatement): ClientStatementResult {
 }
 
 export class ListClientStatementsUseCase {
-  constructor(private readonly repo: import('../../domain/client-statement.repository').IClientStatementRepository) {}
+  constructor(
+    private readonly repo: import('../../domain/client-statement.repository').IClientStatementRepository,
+    private readonly ownership: OwnershipService,
+  ) {}
 
-  async execute(actor?: OwnershipActor): Promise<Result<ClientStatementResult[]>> {
-    const list = await this.repo.findAll();
-
-    // SUPER_ADMIN sees everything; others only statements from assigned projects.
-    let allowed: string[] | null = null;
-    if (actor && typeof actor === 'object') {
-      if (!(Array.isArray(actor.roleNames) && actor.roleNames.includes('SUPER_ADMIN'))) {
-        allowed = actor.projectIds?.length ? actor.projectIds : actor.projectId ? [actor.projectId] : [];
-      }
-    } else if (actor) {
-      allowed = [actor];
+  async execute(user?: OwnershipActor): Promise<Result<ClientStatementResult[]>> {
+    const accessible = this.ownership.getAccessibleProjectIds(user);
+    if (accessible === null) {
+      const list = await this.repo.findAll();
+      return Result.ok(list.map(toResult));
     }
-
-    if (allowed === null) return Result.ok(list.map(toResult));
-    if (allowed.length === 0) return Result.ok([]);
-    return Result.ok(list.filter((s) => allowed!.includes(s.projectId)).map(toResult));
+    if (accessible.length === 0) return Result.ok([]);
+    const list = await this.repo.findAll();
+    return Result.ok(list.filter((s) => accessible.includes(s.projectId)).map(toResult));
   }
 }

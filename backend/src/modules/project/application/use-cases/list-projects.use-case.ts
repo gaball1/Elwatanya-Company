@@ -21,7 +21,8 @@ export class ListProjectsUseCase {
       }
       const allowed = actor.projectIds?.length ? actor.projectIds : actor.projectId ? [actor.projectId] : [];
       if (allowed.length === 0) {
-        return Result.ok([]);
+        // No project restriction — user sees all projects (e.g. accountant, CEO).
+        return Result.ok(projects.map(toProjectResult));
       }
       return Result.ok(
         projects.filter((p) => allowed.includes(p.id.toValue())).map(toProjectResult),
@@ -31,7 +32,7 @@ export class ListProjectsUseCase {
     // Legacy callers passed a single project id.
     const single = actor as string | null | undefined;
     if (!single) {
-      return Result.ok([]);
+      return Result.ok(projects.map(toProjectResult));
     }
     return Result.ok(projects.filter((p) => p.id.toValue() === single).map(toProjectResult));
   }

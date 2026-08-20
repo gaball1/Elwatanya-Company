@@ -2,14 +2,16 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { useState, useEffect } from "react";
-import Link from "next/link";
+import { useState, useEffect, useRef } from "react";
 import { Card } from "@/components/ui";
-import { Plus, Trash2, Save } from "lucide-react";
+import { Plus, Trash2, Save, Upload } from "lucide-react";
 import { clientStatementService } from "@/services/client-statement.service";
+import { settingsService } from "@/services/settings.service";
 import BackButton from "@/components/shared/BackButton";
+import DataLoader from "@/components/shared/DataLoader";
 import { employerBoqService } from '@/services/employerBoq.service';
 import { employerBoqToStatementItems } from '@/lib/statementItems';
+import { parseExtractExcelFile } from '@/lib/boqExcel';
 
 interface Item {
   id: string;
@@ -58,12 +60,21 @@ export default function EditClientStatementPage() {
     }).catch(() => setLoading(false));
   }, [statementId]);
 
+  useEffect(() => {
+    settingsService
+      .getFinance()
+      .then((settings) => setDeductionPercent(settings.defaultInsurancePercent))
+      .catch(console.error);
+  }, []);
+
   const [statementNumber, setStatementNumber] = useState("");
   const [statementDate, setStatementDate] = useState("");
   const [deductionPercent, setDeductionPercent] = useState(5);
   const [items, setItems] = useState<Item[]>([]);
   const [deductions, setDeductions] = useState<Deduction[]>([]);
   const [boqLoading, setBoqLoading] = useState(false);
+  const importExcelRef = useRef<HTMLInputElement>(null);
+  const [importing, setImporting] = useState(false);
 
   const loadBoqItems = async () => {
     const buildingId = existingStatement?.buildingId;
@@ -123,11 +134,7 @@ export default function EditClientStatementPage() {
   }, [existingStatement]);
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-text-secondary">...</p>
-      </div>
-    );
+    return <DataLoader />;
   }
 
   if (!existingStatement)
@@ -206,23 +213,76 @@ export default function EditClientStatementPage() {
     setShowDeleteDeductionConfirm(null);
   };
 
-  const handleSubmit = () => {
-    existingStatement.statementNumber = statementNumber;
-    existingStatement.date = statementDate;
-    existingStatement.items = items
-      .filter((i) => i.itemName)
-      .map((i) => calculateItem(i));
-    // ✅ استخدم as any لحل المشكلة
-    existingStatement.deductions = deductions.filter(
-      (d) => d.name && d.amount > 0
-    ) as any;
-    existingStatement.totalWorkValue = totalWorkValue;
-    existingStatement.totalDeductions = totalDeductions;
-    existingStatement.netPayable = netPayable;
-    alert(
-      isArabic ? "تم تحديث المستخلص بنجاح" : "Statement updated successfully"
-    );
-    router.push(`/${locale}/client-statements/${statementId}`);
+  const handleImportExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImporting(true);
+    try {
+      const imported = await parseExtractExcelFile(file);
+      if (imported.length === 0) {
+        alert(isArabic ? "لا توجد بيانات صالحة في الملف" : "No valid rows in file");
+        return;
+      }
+      const newItems = imported.map((row) => {
+        const quantity = row.previous + row.current;
+        return {
+          id: `import-${Date.now()}-${Math.random()}`,
+          itemName: row.description || "",
+          unit: row.unit || "م³",
+          quantity,
+          unitPrice: 0,
+          total: 0,
+          previous: row.previous,
+          current: row.current,
+          totalDone: quantity,
+          final: 0,
+          workValue: 0,
+          deduction: 0,
+          net: 0,
+          notes: "",
+        };
+      });
+      setItems((prev) => [...prev.filter((i) => i.itemName), ...newItems.map((item) => calculateItem(item))]);
+      alert(
+        isArabic
+          ? `تم استيراد ${imported.length} بند من Excel`
+          : `Imported ${imported.length} items from Excel`
+      );
+    } catch {
+      alert(isArabic ? "فشل استيراد ملف Excel" : "Excel import failed");
+    } finally {
+      setImporting(false);
+      if (importExcelRef.current) importExcelRef.current.value = "";
+    }
+  };
+
+  const handleSubmit = async () => {
+    const payload = {
+      statementNumber,
+      date: statementDate,
+      items: items
+        .filter((i) => i.itemName)
+        .map((i) => calculateItem(i)),
+      deductions: deductions
+        .filter((d) => d.name && d.amount > 0)
+        .map((d) => ({
+          id: d.id,
+          name: d.name,
+          amount: d.amount,
+        })),
+      totalWorkValue,
+      totalDeductions,
+      netPayable,
+    };
+    try {
+      await clientStatementService.update(statementId, payload);
+      alert(
+        isArabic ? "تم تحديث المستخلص بنجاح" : "Statement updated successfully"
+      );
+      router.push(`/${locale}/client-statements/${statementId}`);
+    } catch {
+      alert(isArabic ? "فشل تحديث المستخلص" : "Failed to update statement");
+    }
   };
   return (
     <div className="min-h-screen bg-gray-light pb-10">
@@ -297,12 +357,31 @@ export default function EditClientStatementPage() {
               </h1>
             </div>
           </div>
-          <button
-            onClick={handleSubmit}
-            className="flex items-center gap-2 px-6 py-2 bg-primary text-white rounded-lg"
-          >
-            <Save size={18} /> {isArabic ? "حفظ التغييرات" : "Save Changes"}
-          </button>
+          <div className="flex items-center gap-2">
+            <input
+              ref={importExcelRef}
+              type="file"
+              accept=".xlsx,.xls"
+              className="hidden"
+              onChange={handleImportExcel}
+            />
+            <button
+              onClick={() => importExcelRef.current?.click()}
+              disabled={importing}
+              className="flex items-center gap-2 px-4 py-2 border border-primary text-primary rounded-lg text-sm disabled:opacity-50 hover:bg-primary/5"
+            >
+              <Upload size={16} />
+              {importing
+                ? isArabic ? "جاري الاستيراد..." : "Importing..."
+                : isArabic ? "استيراد Excel" : "Import Excel"}
+            </button>
+            <button
+              onClick={handleSubmit}
+              className="flex items-center gap-2 px-6 py-2 bg-primary text-white rounded-lg"
+            >
+              <Save size={18} /> {isArabic ? "حفظ التغييرات" : "Save Changes"}
+            </button>
+          </div>
         </div>
       </div>
 

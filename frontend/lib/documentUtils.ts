@@ -1,13 +1,23 @@
 import { renderPdf } from "@/services/pdf.service";
 import { companyService, Company } from "@/services/company.service";
 
-async function getDefaultLogo(): Promise<string | undefined> {
-  try {
-    const company: Company = await companyService.get();
-    return company.smallLogo || company.logo || undefined;
-  } catch {
-    return undefined;
+let cachedCompany: Company | null = null;
+
+async function getCompany(): Promise<Company> {
+  if (!cachedCompany) {
+    try { cachedCompany = await companyService.get(); } catch { /* ignore */ }
   }
+  return cachedCompany!;
+}
+
+export async function getDefaultLogo(): Promise<string | undefined> {
+  const company = await getCompany();
+  return company?.smallLogo || company?.logo || undefined;
+}
+
+export async function getCompanyName(): Promise<string> {
+  const company = await getCompany();
+  return company?.arabicName || company?.name || "Al-Wataniya";
 }
 
 export function exportToCsv(
@@ -31,15 +41,19 @@ export async function printHtml(
   title: string,
   bodyHtml: string,
   extraStyles: string = "",
-  options: { logoUrl?: string } = {}
+  options: { logoUrl?: string; subtitle?: string; documentNumber?: string; signatures?: { label: string; name?: string; date?: string; imageUrl?: string }[] } = {}
 ) {
   const content = `${extraStyles ? `<style>${extraStyles}</style>` : ""}${bodyHtml}`;
   const logoUrl = options.logoUrl || (await getDefaultLogo());
+  const companyName = await getCompanyName();
   await renderPdf(
     {
       title,
-      generatedBy: "System",
+      arabicTitle: options.subtitle || "",
+      generatedBy: companyName,
+      documentNumber: options.documentNumber,
       sections: [{ title: "", content, breakInside: true }],
+      ...(options.signatures ? { signatures: options.signatures } : {}),
       ...(logoUrl ? { logoUrl } : {}),
     },
     `${title}.pdf`

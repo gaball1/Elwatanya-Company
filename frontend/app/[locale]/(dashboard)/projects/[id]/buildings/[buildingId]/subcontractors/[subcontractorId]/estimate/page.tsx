@@ -16,7 +16,9 @@ import type { FinalBoqItem } from "@/types/boq";
 import { finalBoqService } from "@/services/finalBoq.service";
 import { contractorBoqService } from "@/services/contractorBoq.service";
 import { subcontractorService } from "@/services/subcontractor.service";
+import { companyService } from "@/services/company.service";
 import { Can } from "@/components/Can";
+import DataLoader from "@/components/shared/DataLoader";
 
 export default function ContractorEstimatePage() {
   const params = useParams();
@@ -199,9 +201,7 @@ export default function ContractorEstimatePage() {
   if (!mounted || loading) {
     return (
       <div className="min-h-screen bg-gray-light -m-6 flex items-center justify-center">
-        <div className="animate-pulse text-text-muted">
-          {isArabic ? "جاري التحميل..." : "Loading..."}
-        </div>
+        <DataLoader />
       </div>
     );
   }
@@ -222,18 +222,10 @@ export default function ContractorEstimatePage() {
     return item.description;
   };
 
-  const handlePrint = () => {
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = "image/*";
-
-    input.onchange = (e) => {
-      const file = (e.target as HTMLInputElement).files?.[0];
-      if (!file) return;
-
-      const reader = new FileReader();
-      reader.onload = () => {
-        const logo = reader.result as string;
+  const handlePrint = async (logoUrl?: string) => {
+    const companyData = await companyService.get().catch(() => null);
+    const companyName = isArabic ? (companyData?.arabicName || companyData?.name || "") : (companyData?.name || companyData?.arabicName || "");
+    const logo = logoUrl || "";
 
         const headerHtml = `
 <div style="
@@ -293,7 +285,7 @@ font-weight:bold;
 color:#1e3a5f;
 margin-bottom:5px;
 ">
-${isArabic ? "الوطنية للمقاولات والتوريدات" : "Al Wataniya Contracting"}
+${companyName}
 </div>
 
 <div style="
@@ -687,12 +679,6 @@ img{
 </style>
 `
         );
-      };
-
-      reader.readAsDataURL(file);
-    };
-
-    input.click();
   };
 
   return (
@@ -727,7 +713,7 @@ img{
             ])
           );
         }}
-        onPrint={handlePrint}
+        onPrint={(logoUrl) => handlePrint(logoUrl)}
       />
 
       <div className="px-6 pb-6" suppressHydrationWarning>

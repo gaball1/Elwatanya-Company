@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Delete, Param, Query, BadRequestException } from '@nestjs/common';
+import { Controller, Post, Get, Delete, Param, Query, BadRequestException, ParseUUIDPipe } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { RecycleBinService } from './recycle-bin.service';
 import { RequirePermission } from '../../common/decorators/permissions.decorator';
@@ -17,10 +17,17 @@ export class RecycleBinController {
     return this.service.listDeleted(entity);
   }
 
+  @Get('stats')
+  @ApiOperation({ summary: 'Get database statistics for all entities' })
+  @RequirePermission('recycle-bin.view')
+  async stats() {
+    return this.service.getStats();
+  }
+
   @Post(':entity/:id/restore')
   @ApiOperation({ summary: 'Restore a soft-deleted item' })
   @RequirePermission('recycle-bin.restore')
-  async restore(@Param('entity') entity: string, @Param('id') id: string) {
+  async restore(@Param('entity') entity: string, @Param('id', ParseUUIDPipe) id: string) {
     try {
       return await this.service.restore(entity, id);
     } catch (e: any) {
@@ -31,7 +38,7 @@ export class RecycleBinController {
   @Delete(':entity/:id')
   @ApiOperation({ summary: 'Permanently delete an item' })
   @RequirePermission('recycle-bin.delete')
-  async permanentDelete(@Param('entity') entity: string, @Param('id') id: string) {
+  async permanentDelete(@Param('entity') entity: string, @Param('id', ParseUUIDPipe) id: string) {
     try {
       return await this.service.permanentDelete(entity, id);
     } catch (e: any) {

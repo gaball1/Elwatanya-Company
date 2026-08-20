@@ -1,8 +1,8 @@
 /* eslint-disable */
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { useParams, usePathname } from "next/navigation";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { useParams, usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import {
@@ -11,9 +11,10 @@ import {
   ChevronLeft, ChevronDown, PanelLeftClose, PanelLeft,
   FileText, Banknote, BarChart3, Settings,
   LogOut, Shield, CheckCircle, Bot, Pen, Activity, ClipboardCheck,
-  ArrowRightLeft
+  ArrowRightLeft, Database, History, Server, Rocket
 } from "lucide-react";
 import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
+import { useAuth } from "@/hooks/useAuth";
 
 interface MenuItem {
   label: string;
@@ -29,12 +30,15 @@ interface SidebarProps {
   collapsed: boolean;
   onToggle: () => void;
   userPermissions: string[];
+  userRoleNames?: string[];
   userEmployeeId?: string | null;
 }
 
-export default function Sidebar({ isArabic, collapsed, onToggle, userPermissions, userEmployeeId }: SidebarProps) {
+export default function Sidebar({ isArabic, collapsed, onToggle, userPermissions, userRoleNames = [], userEmployeeId }: SidebarProps) {
   const params = useParams();
   const pathname = usePathname();
+  const router = useRouter();
+  const { logout } = useAuth();
   const locale = (params.locale as string) ?? "ar";
   const [mounted, setMounted] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
@@ -56,6 +60,7 @@ export default function Sidebar({ isArabic, collapsed, onToggle, userPermissions
 
   const hasPermission = (perms?: string[]) => {
     if (!perms || perms.length === 0) return true;
+    if (userRoleNames.includes("SUPER_ADMIN")) return true;
     return perms.some((p) => userPermissions.includes(p));
   };
 
@@ -69,7 +74,7 @@ export default function Sidebar({ isArabic, collapsed, onToggle, userPermissions
 
   const isActive = (href: string) => pathname === href || pathname?.startsWith(href + "/");
 
-  const menuGroups: { key: string; label: string; items: MenuItem[] }[] = [
+  const menuGroups = useMemo<{ key: string; label: string; items: MenuItem[] }[]>(() => [
     {
       key: "main",
       label: isArabic ? "الرئيسية" : "Main",
@@ -87,6 +92,10 @@ export default function Sidebar({ isArabic, collapsed, onToggle, userPermissions
         { label: isArabic ? "المساعد الذكي" : "AI Agent", icon: <Bot size={20} />, href: `/${locale}/admin/ai-agent`, permissions: ["admin"] },
         { label: isArabic ? "التوقيعات" : "Signatures", icon: <Pen size={20} />, href: `/${locale}/admin/signatures`, permissions: ["profile.update"] },
         { label: isArabic ? "إعدادات الشركة" : "Company Settings", icon: <Settings size={20} />, href: `/${locale}/admin/settings`, permissions: ["company.read"] },
+        { label: isArabic ? "إدارة النظام" : "System Management", icon: <Database size={20} />, href: `/${locale}/admin/system`, permissions: ["recycle-bin.view"] },
+        { label: isArabic ? "سجل العمليات" : "Audit Log", icon: <History size={20} />, href: `/${locale}/admin/audit`, permissions: ["audit.view"] },
+        { label: isArabic ? "مراقبة النظام" : "System Monitor", icon: <Server size={20} />, href: `/${locale}/admin/monitor`, permissions: ["monitor:view"] },
+        { label: isArabic ? "المعالج الأولي" : "Setup Wizard", icon: <Rocket size={20} />, href: `/${locale}/admin/setup`, permissions: ["settings.write"] },
       ],
     },
     {
@@ -107,6 +116,7 @@ export default function Sidebar({ isArabic, collapsed, onToggle, userPermissions
         { label: isArabic ? "الموظفين" : "Employees", icon: <Briefcase size={20} />, href: `/${locale}/employees`, permissions: ["employees.read"] },
         { label: isArabic ? "الأقسام" : "Departments", icon: <Building2 size={20} />, href: `/${locale}/departments`, permissions: ["departments.read"] },
         { label: isArabic ? "الحضور والانصراف" : "Attendance", icon: <Calendar size={20} />, href: `/${locale}/attendance`, permissions: ["attendance.read"], employeeSelfService: true },
+        { label: isArabic ? "سجل الحضور" : "Attendance History", icon: <ClipboardCheck size={20} />, href: `/${locale}/attendance/history`, permissions: ["attendance.update"] },
         { label: isArabic ? "طلبات الحضور" : "Attendance Requests", icon: <ClipboardCheck size={20} />, href: `/${locale}/attendance/overrides`, permissions: ["attendance.update"] },
         { label: isArabic ? "الإجازات" : "Holidays", icon: <SunSnow size={20} />, href: `/${locale}/holidays`, permissions: ["holidays.read"] },
         { label: isArabic ? "المقاولين" : "Subcontractors", icon: <Users size={20} />, href: `/${locale}/subcontractors`, permissions: ["subcontractors.read"] },
@@ -129,6 +139,7 @@ export default function Sidebar({ isArabic, collapsed, onToggle, userPermissions
       label: isArabic ? "المالية" : "Financial",
       items: [
         { label: isArabic ? "الموافقات" : "Approvals", icon: <CheckCircle size={20} />, href: `/${locale}/approvals`, permissions: ["approvals.read"] },
+        { label: isArabic ? "لوحة المحاسبة" : "Accounting Dashboard", icon: <BarChart3 size={20} />, href: `/${locale}/accounting`, permissions: ["settings.read"] },
         { label: isArabic ? "كشوف المقاولين" : "Contractor Statements", icon: <FileText size={20} />, href: `/${locale}/statements`, permissions: ["subcontractor-statements.read"] },
         { label: isArabic ? "كشوف العملاء" : "Client Statements", icon: <BarChart3 size={20} />, href: `/${locale}/client-statements`, permissions: ["client-statements.read"] },
       ],
@@ -140,7 +151,7 @@ export default function Sidebar({ isArabic, collapsed, onToggle, userPermissions
         { label: isArabic ? "الإشعارات" : "Notifications", icon: <Bell size={20} />, href: `/${locale}/notifications` },
       ],
     },
-  ];
+  ], [isArabic, locale]);
 
   return (
     <aside
@@ -160,6 +171,7 @@ export default function Sidebar({ isArabic, collapsed, onToggle, userPermissions
 
       {/* Toggle button */}
       <button
+        suppressHydrationWarning
         onClick={onToggle}
         className="absolute -left-3 top-[52px] w-6 h-6 bg-surface border border-border rounded-full flex items-center justify-center shadow-sm hover:bg-surface-secondary transition-colors z-10"
         aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
@@ -174,6 +186,7 @@ export default function Sidebar({ isArabic, collapsed, onToggle, userPermissions
           <div key={group.key}>
             {!collapsed && (
               <button
+                suppressHydrationWarning
                 onClick={() => toggleGroup(group.key)}
                 className="flex items-center justify-between w-full px-3 py-2 text-xs font-semibold text-text-muted uppercase tracking-wider hover:text-text-secondary transition-colors"
               >
@@ -202,10 +215,10 @@ export default function Sidebar({ isArabic, collapsed, onToggle, userPermissions
                         <Link
                           href={item.href}
                           className={cn(
-                            "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 group",
+                            "relative flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 group",
                             collapsed ? "justify-center mx-0" : "mx-1",
                             isActive(item.href)
-                              ? "bg-gold/10 text-gold"
+                              ? "bg-gold/10 text-gold shadow-[inset_0_0_20px_rgba(201,160,61,0.06)]"
                               : "text-text-secondary hover:bg-surface-secondary hover:text-text-primary"
                           )}
                           title={collapsed ? item.label : undefined}
@@ -215,10 +228,7 @@ export default function Sidebar({ isArabic, collapsed, onToggle, userPermissions
                           {isActive(item.href) && (
                             <motion.span
                               layoutId="activeTab"
-                              className={cn(
-                                "absolute right-0 w-1 h-6 bg-gold rounded-full",
-                                collapsed ? "hidden" : ""
-                              )}
+                              className="absolute right-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-gold rounded-full shadow-[0_0_8px_rgba(201,160,61,0.4)]"
                             />
                           )}
                         </Link>
@@ -240,17 +250,20 @@ export default function Sidebar({ isArabic, collapsed, onToggle, userPermissions
 
       {/* Bottom */}
       <div className="border-t border-border p-3 shrink-0" dir={isArabic ? "rtl" : "ltr"}>
-        <Link
-          href={`/${locale}`}
+        <button
+          onClick={() => {
+            logout();
+            router.replace(`/${locale}`);
+          }}
           className={cn(
-            "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-text-muted hover:text-danger hover:bg-surface-secondary transition-colors",
+            "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-text-muted hover:text-danger hover:bg-surface-secondary transition-colors w-full",
             collapsed ? "justify-center" : ""
           )}
           title={collapsed ? (isArabic ? "خروج" : "Logout") : undefined}
         >
           <LogOut size={18} />
           {!collapsed && <span>{isArabic ? "تسجيل الخروج" : "Logout"}</span>}
-        </Link>
+        </button>
       </div>
     </aside>
   );

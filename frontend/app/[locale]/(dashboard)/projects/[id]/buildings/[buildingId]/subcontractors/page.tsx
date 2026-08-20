@@ -11,6 +11,8 @@ import {
 } from "@/services/building-subcontractor.service";
 import { subcontractorService, type Subcontractor } from "@/services/subcontractor.service";
 import { useToast } from "@/components/ui/Toast";
+import DataLoader from "@/components/shared/DataLoader";
+import ExportButtons from "@/components/shared/ExportButtons";
 
 export default function BuildingSubcontractorsPage() {
   const params = useParams();
@@ -87,20 +89,42 @@ export default function BuildingSubcontractorsPage() {
         <h2 className="text-lg font-bold text-primary">
           {isArabic ? "مقاولو المبنى" : "Building Subcontractors"}
         </h2>
-        <button
-          onClick={() => setShowModal(true)}
-          className="flex items-center gap-1 px-3 py-1.5 bg-gold text-white rounded-lg text-sm hover:bg-gold/80 transition"
-        >
-          <Plus size={16} />
-          {isArabic ? "تعيين مقاول" : "Assign Subcontractor"}
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <ExportButtons
+            data={assignments.map((a) => ({
+              name: a.subcontractor.name,
+              workType: a.workType || a.subcontractor.workType || "",
+              phone: a.subcontractor.phone,
+              agreedPrice: a.agreedPrice,
+            }))}
+            columns={[
+              { key: "name", labelAr: "اسم المقاول", labelEn: "Subcontractor Name" },
+              { key: "workType", labelAr: "نوع العمل", labelEn: "Work Type" },
+              { key: "phone", labelAr: "الهاتف", labelEn: "Phone" },
+              {
+                key: "agreedPrice",
+                labelAr: "السعر المتفق عليه",
+                labelEn: "Agreed Price",
+                format: (v: any) => v ? Number(v).toLocaleString() : "—",
+              },
+            ]}
+            titleAr="مقاولي المبنى"
+            titleEn="Building Subcontractors"
+            filename="building_subcontractors"
+            locale={locale}
+          />
+          <button
+            onClick={() => setShowModal(true)}
+            className="flex items-center gap-1 px-3 py-1.5 bg-gold text-white rounded-lg text-sm hover:bg-gold/80 transition"
+          >
+            <Plus size={16} />
+            {isArabic ? "تعيين مقاول" : "Assign Subcontractor"}
+          </button>
+        </div>
       </div>
 
       {loading ? (
-        <Card className="p-8 text-center">
-          <Users size={48} className="mx-auto text-text-muted mb-3" />
-          <p className="text-text-secondary">{isArabic ? "جاري التحميل..." : "Loading..."}</p>
-        </Card>
+        <DataLoader />
       ) : assignments.length === 0 ? (
         <Card className="p-8 text-center">
           <Users size={48} className="mx-auto text-text-muted mb-3" />

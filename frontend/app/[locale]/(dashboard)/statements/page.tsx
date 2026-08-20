@@ -19,6 +19,7 @@ import {
 import { subcontractorStatementService, type SubcontractorStatement } from "@/services/subcontractor-statement.service";
 import { useToast } from "@/components/ui/Toast";
 import BackButton from "@/components/shared/BackButton";
+import DataLoader from "@/components/shared/DataLoader";
 import UploadFromDeviceButton, {
   type UploadedFileInfo,
 } from "@/components/shared/UploadFromDeviceButton";
@@ -166,6 +167,10 @@ export default function StatementsPage() {
       "success"
     );
   };
+
+  if (loading) {
+    return <DataLoader />;
+  }
 
   return (
     <div className="min-h-screen bg-gray-light">

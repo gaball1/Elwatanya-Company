@@ -2,12 +2,14 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { Card } from "@/components/ui";
 import { Plus, Trash2, Save } from "lucide-react";
 import { subcontractorStatementService } from "@/services/subcontractor-statement.service";
+import { settingsService } from "@/services/settings.service";
 import BackButton from "@/components/shared/BackButton";
+import DataLoader from "@/components/shared/DataLoader";
 
 interface Item {
   id: string;
@@ -40,6 +42,8 @@ export default function EditStatementPage() {
 
   const [existingStatement, setExistingStatement] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const defaultInsurancePercentRef = useRef(5);
+  const loadedInsuranceRef = useRef<number | null>(null);
 
   useEffect(() => {
     subcontractorStatementService.get(statementId).then((data) => {
@@ -47,6 +51,18 @@ export default function EditStatementPage() {
       setLoading(false);
     }).catch(() => setLoading(false));
   }, [statementId]);
+
+  useEffect(() => {
+    settingsService
+      .getFinance()
+      .then((settings) => {
+        defaultInsurancePercentRef.current = settings.defaultInsurancePercent;
+        if (loadedInsuranceRef.current == null) {
+          setInsurancePercent(settings.defaultInsurancePercent);
+        }
+      })
+      .catch(console.error);
+  }, []);
 
   // Basic Info
   const [statementNumber, setStatementNumber] = useState("");
@@ -56,7 +72,6 @@ export default function EditStatementPage() {
   const [insurancePercent, setInsurancePercent] = useState(5);
   const [subcontractorName, setSubcontractorName] = useState("");
   const [workType, setWorkType] = useState("");
-
   // Items
   const [items, setItems] = useState<Item[]>([]);
   const [deductions, setDeductions] = useState<Deduction[]>([]);
@@ -76,7 +91,10 @@ export default function EditStatementPage() {
       setStatementDate(existingStatement.date ?? "");
       setBlockNumber(existingStatement.blockNumber ?? "");
       setFormNumber(existingStatement.formNumber ?? "");
-      setInsurancePercent(existingStatement.insurancePercent || 5);
+      loadedInsuranceRef.current = existingStatement.insurancePercent != null
+        ? existingStatement.insurancePercent
+        : defaultInsurancePercentRef.current;
+      setInsurancePercent(loadedInsuranceRef.current ?? defaultInsurancePercentRef.current);
       setSubcontractorName(existingStatement.subcontractorName ?? "");
       setWorkType(existingStatement.workType ?? "");
       setItems(existingStatement.items?.map((item: any, idx: number) => ({
@@ -103,11 +121,7 @@ export default function EditStatementPage() {
   }, [existingStatement]);
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-text-secondary">...</p>
-      </div>
-    );
+    return <DataLoader />;
   }
 
   if (!existingStatement) {

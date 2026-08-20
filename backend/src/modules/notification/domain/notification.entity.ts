@@ -54,8 +54,8 @@ export class Notification extends AggregateRoot {
   get isDeleted(): boolean { return this.props.deletedAt !== null; }
 
   /** Whether this notification is visible to a user holding the given roles/permissions (or as a plain broadcast). */
-  public isVisibleTo(roles: string[] = [], permissions: string[] = []): boolean {
-    if (this.userId) return true; // personal notifications are always visible to their owner
+  public isVisibleTo(roles: string[] = [], permissions: string[] = [], requestUserId?: string | null): boolean {
+    if (this.userId) return this.userId === requestUserId;
     const roleMatch = this.props.targetRoles.some((r) => roles.includes(r));
     const permissionMatch = this.props.targetPermissions.some((p) => permissions.includes(p));
     if (this.props.targetRoles.length > 0 || this.props.targetPermissions.length > 0) {

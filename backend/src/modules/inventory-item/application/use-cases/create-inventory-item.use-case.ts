@@ -5,14 +5,19 @@ import { InventoryItem } from '../../domain/inventory-item.entity';
 import { toResult } from './list-inventory-items.use-case';
 import { PrismaService } from '@/prisma/prisma.service';
 import { normalizeKey } from '@/shared/utils/string-normalizer';
+import { OwnershipActor, OwnershipService } from '@/common/services/ownership.service';
 
 export class CreateInventoryItemUseCase {
   constructor(
     private readonly items: IInventoryItemRepository,
     private readonly prisma: PrismaService,
+    private readonly ownership: OwnershipService,
   ) {}
 
-  async execute(input: CreateInventoryItemInput): Promise<Result<InventoryItemResult>> {
+  async execute(input: CreateInventoryItemInput, user: OwnershipActor | undefined, userId?: string): Promise<Result<InventoryItemResult>> {
+    if (input.projectId) await this.ownership.verifyProjectAccess(user, input.projectId);
+    const createdBy = userId ?? 'system';
+
     try {
       // Category must be valid (existing + active) whenever provided.
       if (input.categoryId) {

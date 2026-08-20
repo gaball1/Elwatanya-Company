@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 import { useState, useEffect, useCallback } from "react";
 import { Card } from "@/components/ui";
 import { Can } from '@/components/Can';
+import DataLoader from "@/components/shared/DataLoader";
 import {
   Wallet,
   Plus,
@@ -114,7 +115,7 @@ export default function TreasuryPage() {
   };
 
   if (loading) {
-    return <div className="text-center py-20 text-text-muted">{isArabic ? "جاري التحميل..." : "Loading..."}</div>;
+    return <DataLoader />;
   }
 
   return (

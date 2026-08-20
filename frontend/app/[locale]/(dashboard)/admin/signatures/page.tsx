@@ -7,6 +7,7 @@ import { Card, Button, Input } from "@/components/ui";
 import { useToast } from "@/components/ui/Toast";
 import { PageHeader } from "@/components/ui";
 import SignaturePad from "@/components/signature/SignaturePad";
+import DataLoader from "@/components/shared/DataLoader";
 import { profileService } from "@/services/profile.service";
 import { Pen, Upload, Trash2, Check, Image } from "lucide-react";
 
@@ -78,14 +79,7 @@ export default function SignaturesPage() {
   };
 
   if (loading) {
-    return (
-      <div className="space-y-6 animate-fade-in">
-        <div className="h-8 w-48 bg-surface rounded animate-pulse" />
-        <Card className="p-6">
-          <div className="h-40 bg-surface rounded animate-pulse" />
-        </Card>
-      </div>
-    );
+    return <DataLoader />;
   }
 
   return (

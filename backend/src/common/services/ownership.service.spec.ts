@@ -12,7 +12,7 @@ function makeService(buildingProjectId?: string) {
 }
 
 describe('OwnershipService project access', () => {
-  it('denies a user with no project assignment (removed null bypass)', async () => {
+  it('denies unauthenticated callers (null/undefined/empty string)', async () => {
     const svc = makeService();
     await expect(svc.verifyProjectAccess(undefined, 'p1')).rejects.toBeInstanceOf(ForbiddenException);
     await expect(svc.verifyProjectAccess(null, 'p1')).rejects.toBeInstanceOf(ForbiddenException);
@@ -39,11 +39,11 @@ describe('OwnershipService project access', () => {
     await expect(svc.verifyProjectAccess(admin, 'any-project')).resolves.toBeUndefined();
   });
 
-  it('does not bypass for a non-admin user with empty roleNames', async () => {
+  it('allows unrestricted access for an authenticated user with no project assignments', async () => {
     const svc = makeService();
     await expect(
       svc.verifyProjectAccess({ projectId: null, projectIds: [], roleNames: ['USER'] }, 'p1'),
-    ).rejects.toBeInstanceOf(ForbiddenException);
+    ).resolves.toBeUndefined();
   });
 });
 

@@ -65,13 +65,15 @@ import { NotificationEngineModule } from "./modules/notification-engine/notifica
 import { SearchEngineModule } from "./modules/search-engine/search-engine.module";
 import { MonitorModule } from "./modules/monitor/monitor.module";
 import { ImportExportModule } from "./modules/import-export/import-export.module";
+import { AccountingModule } from "./modules/accounting/accounting.module";
 import { PdfEngineModule } from "./modules/pdf-engine/pdf-engine.module";
 import { ConstructionBiModule } from "./modules/construction-bi/construction-bi.module";
 import { ConstructionAnalyticsModule } from "./modules/construction-analytics/construction-analytics.module";
 import { SignatureWorkflowModule } from "./modules/signature-workflow/signature-workflow.module";
 import { ReportingEngineModule } from "./modules/reporting-engine/reporting-engine.module";
+import { ChangeOrderModule } from "./modules/change-order/change-order.module";
+import { EntityNoteModule } from "./modules/entity-note/entity-note.module";
 import { GlobalExceptionFilter } from "./common/filters/global-exception.filter";
-import { LoggingInterceptor } from "./common/interceptors/logging.interceptor";
 import { TransformInterceptor } from "./common/interceptors/transform.interceptor";
 import { AuditInterceptor } from "./common/interceptors/audit.interceptor";
 import { JwtAuthGuard } from "./common/guards/jwt-auth.guard";
@@ -155,11 +157,14 @@ import { LoggerModule } from "nestjs-pino";
     SearchEngineModule,
     MonitorModule,
     ImportExportModule,
+    AccountingModule,
     PdfEngineModule,
     ConstructionBiModule,
     ConstructionAnalyticsModule,
     SignatureWorkflowModule,
     ReportingEngineModule,
+    ChangeOrderModule,
+    EntityNoteModule,
   ],
   providers: [
     FinancialService,
@@ -172,10 +177,7 @@ import { LoggerModule } from "nestjs-pino";
       provide: APP_INTERCEPTOR,
       useClass: TransformInterceptor,
     },
-    {
-      provide: APP_INTERCEPTOR,
-      useClass: LoggingInterceptor,
-    },
+
     {
       provide: APP_INTERCEPTOR,
       useClass: AuditInterceptor,

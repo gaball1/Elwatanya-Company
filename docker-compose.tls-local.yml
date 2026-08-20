@@ -1,0 +1,50 @@
+# =============================================================================
+# El Wataniya ERP - LOCAL TLS verification stack
+# Frontend (built image) + nginx TLS reverse proxy in front of a host-run
+# backend on host.docker.internal:3001. Used to exercise the production TLS
+# chain end-to-end over https://localhost before touching a real domain.
+#
+#   docker compose -f docker-compose.tls.yml build   (only needed for frontend)
+#   docker compose -f docker-compose.tls.yml up -d
+# =============================================================================
+services:
+  frontend:
+    image: elwataniya-frontend:latest
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      HOSTNAME: "0.0.0.0"
+    networks:
+      - tls-test
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    depends_on:
+      - frontend
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/nginx/nginx.conf:/etc/nginx/templates/nginx.conf.template:ro
+      - ./deploy/nginx/certs:/etc/nginx/certs:ro
+      - ./deploy/nginx/www:/var/www/certbot:ro
+    environment:
+      NGINX_ENVSUBST_OUTPUT_DIR: /etc/nginx
+      NGINX_ENVSUBST_FILTER: "^(DOMAIN|FRONTEND_UPSTREAM|BACKEND_UPSTREAM)$$"
+      DOMAIN: localhost
+      FRONTEND_UPSTREAM: frontend:3000
+      BACKEND_UPSTREAM: host.docker.internal:3001
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    networks:
+      - tls-test
+
+networks:
+  tls-test:
+    driver: bridge

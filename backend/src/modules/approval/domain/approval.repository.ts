@@ -12,6 +12,7 @@ export interface ApprovalListItem extends Approval {
 export interface IApprovalRepository {
   findMany(params: { status?: string; entityType?: string; requestedBy?: string; skip?: number; take?: number }): Promise<ApprovalListItem[]>;
   findById(id: string): Promise<Approval | null>;
+  findByIdWithNames(id: string): Promise<ApprovalListItem | null>;
   findByEntity(entityType: string, entityId: string): Promise<Approval | null>;
   create(data: { entityType: string; entityId: string; requestedBy: string; comment?: string; status?: string }): Promise<Approval>;
   reset(data: { id: string; requestedBy: string; comment?: string; status?: string }): Promise<Approval>;

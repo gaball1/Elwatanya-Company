@@ -366,9 +366,9 @@ npm run dev:frontend
 open http://localhost:3001/api/docs
 ```
 
-### Default Admin Credentials (seed)
+### Seed Admin Credentials (seed)
 - Email: `admin@elwataniya.com`
-- Password: `Admin@123`
+- Password: provided via `ADMIN_PASSWORD` env, or a randomly generated password printed by the seed script. No default password is ever created.
 
 ---
 

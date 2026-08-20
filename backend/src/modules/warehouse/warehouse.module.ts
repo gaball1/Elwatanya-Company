@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '@/prisma/prisma.module';
 import { EventBusImpl } from '@/modules/domain-events/event-bus.impl';
+import { PrismaService } from '@/prisma/prisma.service';
+import { OwnershipService } from '@/common/services/ownership.service';
 import { WAREHOUSE_REPOSITORY } from './domain/warehouse.repository';
 import { IWarehouseRepository } from './domain/warehouse.repository';
 import { PrismaWarehouseRepository } from './infrastructure/prisma-warehouse.repository';
@@ -9,33 +11,37 @@ import { CreateWarehouseUseCase } from './application/use-cases/create-warehouse
 import { UpdateWarehouseUseCase } from './application/use-cases/update-warehouse.use-case';
 import { DeleteWarehouseUseCase } from './application/use-cases/delete-warehouse.use-case';
 import { ProjectWarehouseSubscriber } from './application/project-warehouse.subscriber';
-import { PrismaService } from '@/prisma/prisma.service';
 import { WarehouseController } from './warehouse.controller';
 
 @Module({
   imports: [PrismaModule],
   controllers: [WarehouseController],
   providers: [
+    {
+      provide: OwnershipService,
+      useFactory: (prisma: PrismaService) => new OwnershipService(prisma),
+      inject: [PrismaService],
+    },
     { provide: WAREHOUSE_REPOSITORY, useClass: PrismaWarehouseRepository },
     {
       provide: ListWarehousesUseCase,
-      useFactory: (repo: IWarehouseRepository) => new ListWarehousesUseCase(repo),
-      inject: [WAREHOUSE_REPOSITORY],
+      useFactory: (repo: IWarehouseRepository, ownership: OwnershipService) => new ListWarehousesUseCase(repo, ownership),
+      inject: [WAREHOUSE_REPOSITORY, OwnershipService],
     },
     {
       provide: CreateWarehouseUseCase,
-      useFactory: (repo: IWarehouseRepository) => new CreateWarehouseUseCase(repo),
-      inject: [WAREHOUSE_REPOSITORY],
+      useFactory: (repo: IWarehouseRepository, ownership: OwnershipService) => new CreateWarehouseUseCase(repo, ownership),
+      inject: [WAREHOUSE_REPOSITORY, OwnershipService],
     },
     {
       provide: UpdateWarehouseUseCase,
-      useFactory: (repo: IWarehouseRepository) => new UpdateWarehouseUseCase(repo),
-      inject: [WAREHOUSE_REPOSITORY],
+      useFactory: (repo: IWarehouseRepository, ownership: OwnershipService) => new UpdateWarehouseUseCase(repo, ownership),
+      inject: [WAREHOUSE_REPOSITORY, OwnershipService],
     },
     {
       provide: DeleteWarehouseUseCase,
-      useFactory: (repo: IWarehouseRepository) => new DeleteWarehouseUseCase(repo),
-      inject: [WAREHOUSE_REPOSITORY],
+      useFactory: (repo: IWarehouseRepository, ownership: OwnershipService) => new DeleteWarehouseUseCase(repo, ownership),
+      inject: [WAREHOUSE_REPOSITORY, OwnershipService],
     },
     {
       provide: ProjectWarehouseSubscriber,

@@ -75,6 +75,11 @@ export interface AnalyzeFinalBoqItemInput {
   components: { name: string; unit: string; unitPrice: number }[];
 }
 
+export interface UnanalyzeFinalBoqItemInput {
+  buildingId: string;
+  itemCode: string;
+}
+
 export interface AddFinalBoqComponentInput {
   buildingId: string;
   itemCode: string;

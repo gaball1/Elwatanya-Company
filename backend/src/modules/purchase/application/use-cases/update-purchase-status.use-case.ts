@@ -7,6 +7,7 @@ import { FinancialService } from '@/common/services/financial.service';
 import { PrismaService } from '@/prisma/prisma.service';
 import { NotificationService } from '@/common/services/notification.service';
 import { PurchaseStockService } from '../purchase-stock.service';
+import { OwnershipActor, OwnershipService } from '@/common/services/ownership.service';
 
 export type PurchaseStatusAction = 'approved' | 'received' | 'cancelled';
 
@@ -17,11 +18,14 @@ export class UpdatePurchaseStatusUseCase {
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationService,
     private readonly stockService: PurchaseStockService,
+    private readonly ownership: OwnershipService,
   ) {}
 
-  async execute(id: string, status: PurchaseStatusAction, warehouseId?: string): Promise<Result<PurchaseResult>> {
+  async execute(id: string, status: PurchaseStatusAction, warehouseId: string | undefined, user: OwnershipActor | undefined): Promise<Result<PurchaseResult>> {
     const purchase = await this.purchaseRepo.findById(new UniqueEntityId(id));
     if (!purchase) return Result.fail(new Error('Purchase not found'));
+
+    await this.ownership.verifyProjectAccess(user, purchase.projectId);
 
     if (status === 'received' && !warehouseId) {
       return Result.fail(new Error('Destination warehouse is required when receiving a purchase'));

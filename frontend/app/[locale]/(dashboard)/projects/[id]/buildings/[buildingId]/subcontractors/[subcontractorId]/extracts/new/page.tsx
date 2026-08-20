@@ -2,9 +2,9 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Card } from "@/components/ui";
-import { Save, Plus, Trash2 } from "lucide-react";
+import { Save, Plus, Trash2, Upload } from "lucide-react";
 import BackButton from "@/components/shared/BackButton";
 import ExtractDeductionsTable from "@/components/boq/ExtractDeductionsTable";
 import ExtractSummaryCards from "@/components/boq/ExtractSummaryCards";
@@ -12,8 +12,10 @@ import ExtractWorkItemsTable from "@/components/boq/ExtractWorkItemsTable";
 import OtherAmountsEditor from "@/components/boq/OtherAmountsEditor";
 import DeleteConfirmModal from "@/components/boq/DeleteConfirmModal";
 import { calcExtractItem, fromBoqExtractItem } from "@/lib/extractCalculations";
+import { parseExtractExcelFile } from "@/lib/boqExcel";
 import { extractService, type Extract, type OtherAmountItem } from "@/services/extract.service";
 import { contractorBoqService, type ContractorBoqItem } from "@/services/contractorBoq.service";
+import { settingsService } from "@/services/settings.service";
 import type { ExtractItem } from "@/types/boq";
 import type { ExtractDeduction } from "@/types/finance";
 import {
@@ -34,9 +36,16 @@ export default function NewContractorExtractPage() {
 
   const [status, setStatus] = useState<"running" | "final">("running");
   const [runningNumber, setRunningNumber] = useState(1);
-  const [insurancePercent, setInsurancePercent] = useState(5);
+    const [insurancePercent, setInsurancePercent] = useState(5);
   const [otherAmountItems, setOtherAmountItems] = useState<OtherAmountItem[]>([]);
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
+
+  useEffect(() => {
+    settingsService
+      .getFinance()
+      .then((settings) => setInsurancePercent(settings.defaultInsurancePercent))
+      .catch(console.error);
+  }, []);
   const [manualDeductions, setManualDeductions] = useState<ExtractDeduction[]>(
     []
   );
@@ -46,6 +55,8 @@ export default function NewContractorExtractPage() {
   const [rows, setRows] = useState<ExtractItem[]>([]);
   const [boqItems, setBoqItems] = useState<ContractorBoqItem[]>([]);
   const [extracts, setExtracts] = useState<Extract[]>([]);
+  const importExcelRef = useRef<HTMLInputElement>(null);
+  const [importing, setImporting] = useState(false);
 
   const {
     previousPaid,
@@ -244,6 +255,67 @@ export default function NewContractorExtractPage() {
     return errors;
   }, [rows, boqItems, date, deductions, insurancePercent, isArabic]);
 
+  const handleImportExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImporting(true);
+    try {
+      const imported = await parseExtractExcelFile(file);
+      if (imported.length === 0) {
+        showToast(
+          isArabic ? "لا توجد بيانات صالحة في الملف" : "No valid rows in file",
+          "error"
+        );
+        return;
+      }
+      let updated = 0;
+      setRows((prev) => {
+        const next = [...prev];
+        for (const row of imported) {
+          const existingIdx = row.itemCode
+            ? next.findIndex((r) => r.itemCode === row.itemCode)
+            : -1;
+          if (existingIdx >= 0) {
+            next[existingIdx] = calcExtractItem({
+              ...next[existingIdx],
+              previous: row.previous,
+              current: row.current,
+            });
+            updated += 1;
+          } else {
+            const boq = boqItems.find((b) => b.itemCode === row.itemCode);
+            next.push(
+              calcExtractItem({
+                itemCode: row.itemCode ?? "",
+                description: row.description,
+                unit: row.unit,
+                contractQuantity: boq?.assignedQuantity ?? row.previous + row.current,
+                previous: row.previous,
+                current: row.current,
+                executionPercent: 100,
+                unitPrice: boq?.unitPrice ?? 0,
+                contractorBoqItemId: boq?.id,
+              })
+            );
+          }
+        }
+        return next;
+      });
+      showToast(
+        isArabic
+          ? `تم استيراد ${imported.length} بند من Excel (تحديث ${updated})`
+          : `Imported ${imported.length} items from Excel (${updated} updated)`,
+        "success"
+      );
+    } catch (err) {
+      console.error(err);
+      showToast(isArabic ? "فشل استيراد ملف Excel" : "Excel import failed", "error");
+    } finally {
+      setImporting(false);
+      if (importExcelRef.current) importExcelRef.current.value = "";
+    }
+  };
+
   const handleSave = async () => {
     if (!validateRunningNumber(runningNumber)) return;
 
@@ -313,6 +385,27 @@ export default function NewContractorExtractPage() {
         <h3 className="font-bold text-primary text-lg">
           {isArabic ? "مستخلص جديد" : "New Extract"}
         </h3>
+        <input
+          ref={importExcelRef}
+          type="file"
+          accept=".xlsx,.xls"
+          className="hidden"
+          onChange={handleImportExcel}
+        />
+        <button
+          onClick={() => importExcelRef.current?.click()}
+          disabled={importing || metaLoading}
+          className="flex items-center gap-1 px-4 py-2 border border-primary text-primary rounded-lg text-sm disabled:opacity-50 hover:bg-primary/5"
+        >
+          <Upload size={14} />
+          {importing
+            ? isArabic
+              ? "جاري الاستيراد..."
+              : "Importing..."
+            : isArabic
+            ? "استيراد Excel"
+            : "Import Excel"}
+        </button>
         <button
           onClick={handleSave}
           disabled={saving || metaLoading}

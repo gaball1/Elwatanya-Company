@@ -4,6 +4,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { Download, Save, Upload } from "lucide-react";
 import BackButton from "@/components/shared/BackButton";
+import DataLoader from "@/components/shared/DataLoader";
 import ExtractDeductionsTable from "@/components/boq/ExtractDeductionsTable";
 import ExtractSummaryCards from "@/components/boq/ExtractSummaryCards";
 import ExtractWorkItemsTable from "@/components/boq/ExtractWorkItemsTable";
@@ -13,6 +14,7 @@ import { calcExtractItem, toBoqExtractItem, fromBoqExtractItem } from "@/lib/ext
 import { exportExtractToExcel, parseExtractExcelFile } from "@/lib/boqExcel";
 import { extractService, type OtherAmountItem } from "@/services/extract.service";
 import { contractorBoqService, type ContractorBoqItem } from "@/services/contractorBoq.service";
+import { settingsService } from "@/services/settings.service";
 import type { ContractorExtract, ExtractItem } from "@/types/boq";
 import type { ExtractDeduction } from "@/types/finance";
 import { useExtractCalculations } from "@/hooks/useExtractFinance";
@@ -33,8 +35,7 @@ export default function EditContractorExtractPage() {
   const [initial, setInitial] = useState<ContractorExtract | null>(null);
   const [date, setDate] = useState("");
   const [insurancePercent, setInsurancePercent] = useState(5);
-  const [rows, setRows] = useState<ExtractItem[]>([]);
-  const [manualDeductions, setManualDeductions] = useState<ExtractDeduction[]>([]);
+  const [rows, setRows] = useState<ExtractItem[]>([]);  const [manualDeductions, setManualDeductions] = useState<ExtractDeduction[]>([]);
   const [previousPaid, setPreviousPaid] = useState(0);
   const [otherAmountItems, setOtherAmountItems] = useState<OtherAmountItem[]>([]);
   const [boqItems, setBoqItems] = useState<ContractorBoqItem[]>([]);
@@ -42,6 +43,20 @@ export default function EditContractorExtractPage() {
   const [saving, setSaving] = useState(false);
   const [importing, setImporting] = useState(false);
   const importExcelRef = useRef<HTMLInputElement>(null);
+  const defaultInsurancePercentRef = useRef(5);
+  const loadedInsuranceRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    settingsService
+      .getFinance()
+      .then((settings) => {
+        defaultInsurancePercentRef.current = settings.defaultInsurancePercent;
+        if (loadedInsuranceRef.current == null) {
+          setInsurancePercent(settings.defaultInsurancePercent);
+        }
+      })
+      .catch(console.error);
+  }, []);
 
   useEffect(() => {
     Promise.all([
@@ -50,7 +65,10 @@ export default function EditContractorExtractPage() {
     ]).then(([ex, boq]) => {
       setInitial(ex as unknown as ContractorExtract);
       setDate(ex.date);
-      setInsurancePercent(ex.insurancePercent);
+      loadedInsuranceRef.current = ex.insurancePercent != null
+        ? ex.insurancePercent
+        : defaultInsurancePercentRef.current;
+      setInsurancePercent(loadedInsuranceRef.current);
       setRows(ex.items.map((i) => toBoqExtractItem(i)));
       setManualDeductions(
         ex.deductions.filter((d) => d.type === "manual") as ExtractDeduction[]
@@ -80,11 +98,7 @@ export default function EditContractorExtractPage() {
     );
 
   if (!initial) {
-    return (
-      <div className="p-8 text-center text-text-secondary">
-        {isArabic ? "جاري التحميل..." : "Loading..."}
-      </div>
-    );
+    return <DataLoader />;
   }
 
   const handleImportExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {

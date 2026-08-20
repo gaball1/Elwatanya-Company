@@ -15,7 +15,7 @@ export class DeleteNotificationUseCase {
     const notification = await this.notifications.findById(new UniqueEntityId(id));
     if (!notification) return Result.fail(new Error('Notification not found'));
     if (!isAdmin) {
-      if (!notification.isVisibleTo(roleNames, permissionNames)) {
+      if (!notification.isVisibleTo(roleNames, permissionNames, userId)) {
         return Result.fail(new Error('Notification not found'));
       }
     }

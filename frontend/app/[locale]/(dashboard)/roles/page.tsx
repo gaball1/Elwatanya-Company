@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { useState, useMemo, useCallback, useEffect } from "react";
 import { Card } from "@/components/ui";
 import { Can } from '@/components/Can';
+import DataLoader from "@/components/shared/DataLoader";
 import {
   Shield,
   Plus,
@@ -147,6 +148,36 @@ const PERMISSION_LABELS: Record<string, { labelAr: string; labelEn: string }> = 
   "approvals.create": { labelAr: "إنشاء طلب موافقة", labelEn: "Create Approval Request" },
   "approvals.approve": { labelAr: "الموافقة على الطلبات", labelEn: "Approve Requests" },
   "approvals.reject": { labelAr: "رفض الطلبات", labelEn: "Reject Requests" },
+  "company.read": { labelAr: "عرض بيانات الشركة", labelEn: "Read Company" },
+  "company.write": { labelAr: "تعديل بيانات الشركة", labelEn: "Write Company" },
+  "settings.read": { labelAr: "عرض الإعدادات", labelEn: "Read Settings" },
+  "settings.write": { labelAr: "تعديل الإعدادات", labelEn: "Write Settings" },
+  "files.read": { labelAr: "عرض الملفات", labelEn: "Read Files" },
+  "files.upload": { labelAr: "رفع الملفات", labelEn: "Upload Files" },
+  "files.delete": { labelAr: "حذف الملفات", labelEn: "Delete Files" },
+  "timeline.read": { labelAr: "عرض الجدول الزمني", labelEn: "Read Timeline" },
+  "search:query": { labelAr: "البحث", labelEn: "Search Query" },
+  "search:reindex": { labelAr: "إعادة فهرسة البحث", labelEn: "Reindex Search" },
+  "monitor:view": { labelAr: "عرض لوحة المراقبة", labelEn: "View Monitor" },
+  "import-export:import": { labelAr: "استيراد البيانات", labelEn: "Import Data" },
+  "import-export:export": { labelAr: "تصدير البيانات", labelEn: "Export Data" },
+  "import-export:view": { labelAr: "عرض الاستيراد والتصدير", labelEn: "View Import/Export" },
+  "reports.read": { labelAr: "عرض التقارير", labelEn: "Read Reports" },
+  "reports.generate": { labelAr: "إنشاء التقارير", labelEn: "Generate Reports" },
+};
+
+const ROLE_LABELS: Record<string, { nameAr: string; descAr: string }> = {
+  "SUPER_ADMIN": { nameAr: "مدير النظام العام", descAr: "صلاحية كاملة على النظام" },
+  "PROJECT_MANAGER": { nameAr: "مدير المشروع", descAr: "إدارة المشاريع المُسندة فقط" },
+  "SITE_ENGINEER": { nameAr: "مهندس الموقع", descAr: "إدارة المشاريع المُسندة فقط" },
+  "TECHNICAL_OFFICE": { nameAr: "المكتب الفني", descAr: "إدارة المشاريع وموازنة الأشغال" },
+  "HR": { nameAr: "الموارد البشرية", descAr: "إدارة الموظفين والحضور" },
+  "ACCOUNTANT": { nameAr: "المحاسب", descAr: "الخزينة والمدفوعات" },
+  "STORE_KEEPER": { nameAr: "أمين المخزن", descAr: "المستودعات والمخزون" },
+  "PROCUREMENT": { nameAr: "المشتريات", descAr: "الموردين وأوامر الشراء" },
+  "ATTENDANCE_OFFICER": { nameAr: "مسؤول الحضور", descAr: "إدارة الحضور والانصراف" },
+  "CLIENT": { nameAr: "العميل", descAr: "الكشوفات والمشاريع الخاصة" },
+  "CONTRACTOR": { nameAr: "مقاول باطن", descAr: "الموازنة والمستخلصات والمدفوعات" },
 };
 
 export default function RolesPage() {
@@ -267,6 +298,15 @@ export default function RolesPage() {
     return isArabic ? found.labelAr : found.labelEn;
   };
 
+  const getRoleDisplay = (role: Role) => {
+    const translation = ROLE_LABELS[role.name];
+    if (!translation) return { name: role.name, description: role.description };
+    return {
+      name: isArabic ? translation.nameAr : role.name,
+      description: isArabic ? translation.descAr : role.description,
+    };
+  };
+
   return (
     <div className="p-4 sm:p-6 space-y-6">
       {ToastComponent}
@@ -301,25 +341,23 @@ export default function RolesPage() {
 
       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
         {loading ? (
-          <div className="col-span-full text-center py-10 text-text-muted">
-            {isArabic ? "جاري التحميل..." : "Loading..."}
-          </div>
+          <DataLoader />
         ) : filteredRoles.length === 0 ? (
           <div className="col-span-full text-center py-10 text-text-muted">
             <Shield size={48} className="mx-auto mb-4 opacity-50" />
             <p>{isArabic ? "لا توجد صلاحيات" : "No roles found"}</p>
           </div>
         ) : filteredRoles.map((role) => (
-          <Card key={role.id} className="p-5">
-            <div className="flex items-start justify-between mb-3">
+          <Card key={role.id} className="p-6 border border-border/60 shadow-sm hover:shadow-md transition-shadow">
+            <div className="flex items-start justify-between mb-4">
               <div className="flex items-center gap-3">
-                <div className="p-2.5 rounded-lg bg-primary/10">
-                  <Shield size={20} className="text-primary" />
+                <div className="p-3 rounded-xl bg-primary/10">
+                  <Shield size={22} className="text-primary" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-bold text-text-primary">{role.name}</h3>
+                  <h3 className="text-xl font-extrabold text-text-primary leading-tight">{getRoleDisplay(role).name}</h3>
                   {role.description && (
-                    <p className="text-xs text-text-muted">{role.description}</p>
+                    <p className="text-sm text-text-muted mt-0.5 font-medium">{getRoleDisplay(role).description}</p>
                   )}
                 </div>
               </div>
@@ -336,14 +374,14 @@ export default function RolesPage() {
                 </Can>
               </div>
             </div>
-            <div className="flex flex-wrap gap-1.5 mt-3">
+            <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-border/40">
               {(role.permissions || []).slice(0, 6).map((p) => (
-                <span key={p.id} className="px-2 py-0.5 rounded text-xs bg-gold/10 text-gold">
+                <span key={p.id} className="px-2.5 py-1 rounded-md text-sm font-semibold bg-gold/10 text-gold">
                   {getPermissionLabel(p.name)}
                 </span>
               ))}
               {(role.permissions || []).length > 6 && (
-                <span className="px-2 py-0.5 rounded text-xs bg-surface-tertiary text-text-muted">
+                <span className="px-2.5 py-1 rounded-md text-sm font-semibold bg-surface-tertiary text-text-muted">
                   +{role.permissions.length - 6}
                 </span>
               )}

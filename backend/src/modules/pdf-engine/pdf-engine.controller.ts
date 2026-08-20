@@ -22,8 +22,12 @@ export class PdfEngineController {
   @RequirePermission(Permissions.Files.Read)
   async render(@Body() body: RenderPdfDto, @Res() res: Response) {
     // SSRF guard: reject any internal/private URL embedded in the document
-    // (logo, signatures, watermark) before it reaches the headless renderer.
-    const urlsToCheck: string[] = [body.logoUrl ?? '', ...(body.signatures ?? []).map((s) => s.imageUrl ?? '')];
+    // (logo, watermark, signatures) before it reaches the headless renderer.
+    const urlsToCheck: string[] = [
+      body.logoUrl ?? '',
+      body.watermark ?? '',
+      ...(body.signatures ?? []).map((s) => s.imageUrl ?? ''),
+    ];
     for (const url of urlsToCheck) {
       if (/^https?:\/\//.test(url)) {
         await assertSafeUrl(url);

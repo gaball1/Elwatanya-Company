@@ -3,6 +3,7 @@ import { PrismaModule } from '@/prisma/prisma.module';
 import { NotificationService } from '@/common/services/notification.service';
 import { PrismaService } from '@/prisma/prisma.service';
 import { EventBusImpl } from '@/modules/domain-events/event-bus.impl';
+import { OwnershipService } from '@/common/services/ownership.service';
 import { FUND_TRANSACTION_REPOSITORY } from './domain/fund-transaction.repository';
 import { IFundTransactionRepository } from './domain/fund-transaction.repository';
 import { PrismaFundTransactionRepository } from './infrastructure/prisma-fund-transaction.repository';
@@ -16,6 +17,11 @@ import { FundTransactionController } from './fund-transaction.controller';
   imports: [PrismaModule],
   controllers: [FundTransactionController],
   providers: [
+    {
+      provide: OwnershipService,
+      useFactory: (prisma: PrismaService) => new OwnershipService(prisma),
+      inject: [PrismaService],
+    },
     { provide: FUND_TRANSACTION_REPOSITORY, useClass: PrismaFundTransactionRepository },
     {
       provide: ListFundTransactionsUseCase,
@@ -24,21 +30,21 @@ import { FundTransactionController } from './fund-transaction.controller';
     },
     {
       provide: CreateFundTransactionUseCase,
-      useFactory: (repo: IFundTransactionRepository, notifications: NotificationService, prisma: PrismaService, eventBus: EventBusImpl) =>
-        new CreateFundTransactionUseCase(repo, notifications, prisma, eventBus),
-      inject: [FUND_TRANSACTION_REPOSITORY, NotificationService, PrismaService, EventBusImpl],
+      useFactory: (repo: IFundTransactionRepository, notifications: NotificationService, prisma: PrismaService, eventBus: EventBusImpl, ownership: OwnershipService) =>
+        new CreateFundTransactionUseCase(repo, notifications, prisma, eventBus, ownership),
+      inject: [FUND_TRANSACTION_REPOSITORY, NotificationService, PrismaService, EventBusImpl, OwnershipService],
     },
     {
       provide: UpdateFundTransactionUseCase,
-      useFactory: (repo: IFundTransactionRepository, prisma: PrismaService) =>
-        new UpdateFundTransactionUseCase(repo, prisma),
-      inject: [FUND_TRANSACTION_REPOSITORY, PrismaService],
+      useFactory: (repo: IFundTransactionRepository, prisma: PrismaService, ownership: OwnershipService) =>
+        new UpdateFundTransactionUseCase(repo, prisma, ownership),
+      inject: [FUND_TRANSACTION_REPOSITORY, PrismaService, OwnershipService],
     },
     {
       provide: DeleteFundTransactionUseCase,
-      useFactory: (repo: IFundTransactionRepository, prisma: PrismaService) =>
-        new DeleteFundTransactionUseCase(repo, prisma),
-      inject: [FUND_TRANSACTION_REPOSITORY, PrismaService],
+      useFactory: (repo: IFundTransactionRepository, prisma: PrismaService, ownership: OwnershipService) =>
+        new DeleteFundTransactionUseCase(repo, prisma, ownership),
+      inject: [FUND_TRANSACTION_REPOSITORY, PrismaService, OwnershipService],
     },
   ],
   exports: [FUND_TRANSACTION_REPOSITORY],

@@ -6,6 +6,8 @@ import { useParams } from "next/navigation";
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { Card } from "@/components/ui";
 import { Can } from '@/components/Can';
+import DataLoader from "@/components/shared/DataLoader";
+import PrintPdfButton from "@/components/shared/PrintPdfButton";
 import {
   Plus,
   Edit2,
@@ -14,7 +16,6 @@ import {
   Search,
   Filter,
   Download,
-  Printer,
   DollarSign,
   Building2,
 } from "lucide-react";
@@ -196,11 +197,11 @@ export default function MiscellaneousPage() {
     showToast(isArabic ? "تم التصدير" : "Exported", "success");
   };
 
-  const handlePrint = () => {
+  const handlePrint = useCallback((logoUrl?: string) => {
     const headers = [isArabic ? "المشروع" : "Project", isArabic ? "الوصف" : "Description", isArabic ? "المبلغ" : "Amount", isArabic ? "التصنيف" : "Category", isArabic ? "التاريخ" : "Date"];
     const rows = filteredRecords.map((r) => [getProjectName(r.projectId), r.description, r.amount.toString(), categoryOptions.find((c) => c.value === r.category)?.label || r.category, r.date]);
-    printAsPDF(rows, headers, isArabic ? "مصروفات متنوعة" : "Miscellaneous Report", isArabic);
-  };
+    printAsPDF(rows, headers, isArabic ? "مصروفات متنوعة" : "Miscellaneous Report", isArabic, { logoUrl });
+  }, [filteredRecords, isArabic]);
 
   const totalAmount = filteredRecords.reduce((s, r) => s + r.amount, 0);
 
@@ -213,7 +214,7 @@ export default function MiscellaneousPage() {
           <p className="text-sm text-text-muted mt-1">{isArabic ? "إدارة المصروفات المتنوعة للمشاريع" : "Manage miscellaneous project expenses"}</p>
         </div>
         <div className="flex gap-2">
-          <button onClick={handlePrint} className="flex items-center gap-2 px-4 py-2 border border-info text-info rounded-lg hover:bg-info hover:text-white transition"><Printer size={18} /> PDF</button>
+          <PrintPdfButton label={isArabic ? "طباعة PDF" : "Print PDF"} onPrint={handlePrint} />
           <button onClick={exportCsv} className="flex items-center gap-2 px-4 py-2 border border-success text-success rounded-lg hover:bg-success hover:text-white transition"><Download size={18} /> CSV</button>
           <Can permission="miscellaneous.create">
             <button onClick={openAddModal} className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition"><Plus size={18} /> {isArabic ? "إضافة" : "Add"}</button>
@@ -244,7 +245,7 @@ export default function MiscellaneousPage() {
       </Card>
 
       {loading ? (
-        <div className="text-center py-20 text-text-muted">{isArabic ? "جاري التحميل..." : "Loading..."}</div>
+        <DataLoader />
       ) : filteredRecords.length === 0 ? (
         <Card className="p-12 text-center">
           <DollarSign size={48} className="mx-auto text-text-muted mb-4 opacity-50" />

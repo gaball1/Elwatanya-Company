@@ -21,10 +21,11 @@ import {
   Filter,
   Download,
   ArrowUpDown,
-  Printer,
 } from "lucide-react";
+import PrintPdfButton from "@/components/shared/PrintPdfButton";
 import { employeeService, type Employee, type CreateEmployeeData } from "@/services/employee.service";
 import { printAsPDF } from "@/lib/printUtils";
+import DataLoader from "@/components/shared/DataLoader";
 
 export default function EmployeesPage() {
   const params = useParams();
@@ -186,7 +187,7 @@ export default function EmployeesPage() {
     }
   }, [deletingId, isArabic, fetchEmployees]);
 
-  const handlePrintPDF = useCallback(() => {
+  const handlePrintPDF = useCallback((logoUrl?: string) => {
     const headers = [
       isArabic ? "الاسم" : "Name",
       isArabic ? "الكود" : "Code",
@@ -209,26 +210,27 @@ export default function EmployeesPage() {
       rows,
       headers,
       isArabic ? "تقرير الموظفين" : "Employees Report",
-      isArabic
+      isArabic,
+      { logoUrl }
     );
   }, [filteredAndSortedEmployees, isArabic]);
 
   const exportToExcel = useCallback(() => {
     const headers = [
-      "الاسم",
-      "الكود",
-      "البريد الإلكتروني",
-      "الهاتف",
-      "الحالة",
-      "تاريخ التعيين",
-      "المرتب",
+      isArabic ? "الاسم" : "Name",
+      isArabic ? "الكود" : "Code",
+      isArabic ? "البريد الإلكتروني" : "Email",
+      isArabic ? "الهاتف" : "Phone",
+      isArabic ? "الحالة" : "Status",
+      isArabic ? "تاريخ التعيين" : "Hire Date",
+      isArabic ? "المرتب" : "Salary",
     ];
     const rows = filteredAndSortedEmployees.map((emp) => [
       emp.fullName,
       emp.code,
       emp.email,
       emp.phone,
-      emp.status === "active" ? "نشط" : "غير نشط",
+      emp.status === "active" ? (isArabic ? "نشط" : "Active") : (isArabic ? "غير نشط" : "Inactive"),
       emp.hireDate ?? "",
       emp.salary || 0,
     ]);
@@ -277,12 +279,7 @@ export default function EmployeesPage() {
             </p>
           </div>
           <div className="flex gap-2">
-            <button
-              onClick={handlePrintPDF}
-              className="flex items-center gap-2 px-4 py-2 border border-info text-info rounded-lg hover:bg-info hover:text-white transition"
-            >
-              <Printer size={18} /> {isArabic ? "طباعة PDF" : "Print PDF"}
-            </button>
+            <PrintPdfButton label={isArabic ? "طباعة PDF" : "Print PDF"} onPrint={handlePrintPDF} />
             <button
               onClick={exportToExcel}
               className="flex items-center gap-2 px-4 py-2 border border-success-dark text-success-dark rounded-lg hover:bg-success-dark hover:text-white transition"
@@ -380,12 +377,7 @@ export default function EmployeesPage() {
 
       <div className="p-6 pt-0">
         {loading ? (
-          <Card className="p-12 text-center">
-            <Users size={64} className="mx-auto text-text-muted mb-4" />
-            <p className="text-text-secondary">
-              {isArabic ? "جاري تحميل البيانات..." : "Loading data..."}
-            </p>
-          </Card>
+          <DataLoader />
         ) : filteredAndSortedEmployees.length === 0 ? (
           <Card className="p-12 text-center">
             <Users size={64} className="mx-auto text-text-muted mb-4" />

@@ -21,7 +21,11 @@ export class UpdateCategoryUseCase {
 
     if (updateResult.isFailure) return Result.fail(updateResult.error as Error);
 
-    await this.categories.save(category);
+    try {
+      await this.categories.save(category);
+    } catch (err) {
+      return Result.fail(err instanceof Error ? err : new Error(String(err)));
+    }
     return Result.ok(toResult(category));
   }
 }

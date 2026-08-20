@@ -3,6 +3,7 @@ import {
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   HttpCode,
   HttpStatus,
   NotFoundException,
@@ -133,6 +134,8 @@ export class DistributionController {
         case FinalBoqErrorCode.ITEM_NOT_FOUND:
         case FinalBoqErrorCode.COMPONENT_NOT_FOUND:
           return new NotFoundException(error.message);
+        case FinalBoqErrorCode.DISTRIBUTION_IN_USE:
+          return new ForbiddenException(error.message);
         default:
           return new BadRequestException(error.message);
       }

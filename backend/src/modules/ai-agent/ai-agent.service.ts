@@ -232,9 +232,9 @@ export class AiAgentService {
 
       return this.buildResponse(result.success, message, intent.intent, conversationId, result.data, null);
     } catch (error: any) {
-      this.logger.error(`Tool error: ${error.message}`);
+      this.logger.error(`Tool error: ${error.message}`, error);
       this.analytics.trackError();
-      return this.buildResponse(false, `I ran into a problem: ${error.message}`, intent.intent, conversationId, null, null);
+      return this.buildResponse(false, 'I ran into a technical issue. Please try again.', intent.intent, conversationId, null, null);
     }
   }
 
@@ -436,7 +436,7 @@ export class AiAgentService {
           this.analytics.trackWorkflowEvent(workflow.name, 'failed');
           this.context.set(conversationId, '_workflow_failed_step', step.name);
           this.context.set(conversationId, '_workflow_failed_error', stepResult.error || 'Unknown error');
-          return this.buildResponse(false, `Workflow paused at "${step.description}": ${stepResult.error}`, intentName, conversationId, { completedSteps: results }, {
+          return this.buildResponse(false, `Workflow paused at "${step.description}". Please try again.`, intentName, conversationId, { completedSteps: results }, {
             workflowState: 'paused',
             workflowName: workflow.name,
             failedStep: step.name,
@@ -469,7 +469,7 @@ export class AiAgentService {
         this.analytics.trackError();
         this.context.set(conversationId, '_workflow_failed_step', step.name);
         this.context.set(conversationId, '_workflow_failed_error', error.message);
-        return this.buildResponse(false, `Workflow error at "${step.description}": ${error.message}`, intentName, conversationId, { completedSteps: results }, {
+        return this.buildResponse(false, `Workflow error at "${step.description}". Please try again.`, intentName, conversationId, { completedSteps: results }, {
           workflowState: 'failed',
           workflowName: workflow.name,
           failedStep: step.name,

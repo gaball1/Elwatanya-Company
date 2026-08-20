@@ -1,11 +1,40 @@
 /* eslint-disable */
 "use client";
 
-import { useState, useRef, useCallback } from "react";
-import { Printer, Upload, Image as ImageIcon } from "lucide-react";
+import { useState, useRef, useCallback, useEffect } from "react";
+import { Printer, Upload, Image as ImageIcon, Clock, Trash2 } from "lucide-react";
 import Dialog from "@/components/ui/Dialog";
 import Button from "@/components/ui/Button";
-import { companyService, Company } from "@/services/company.service";
+import { useCompany } from "@/contexts/CompanyContext";
+
+const RECENT_LOGOS_KEY = "elwataniya_recent_logos";
+const MAX_RECENT = 5;
+
+function loadRecentLogos(): { label: string; value: string }[] {
+  try {
+    const raw = localStorage.getItem(RECENT_LOGOS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (item: any) => item && typeof item.value === "string" && item.value.length > 0
+    );
+  } catch {
+    return [];
+  }
+}
+
+function saveRecentLogo(url: string) {
+  if (!url || url.startsWith("data:")) return;
+  try {
+    const recent = loadRecentLogos().filter((r) => r.value !== url);
+    recent.unshift({ label: url.split("/").pop() || "Logo", value: url });
+    if (recent.length > MAX_RECENT) recent.length = MAX_RECENT;
+    localStorage.setItem(RECENT_LOGOS_KEY, JSON.stringify(recent));
+  } catch {
+    // ignore quota errors
+  }
+}
 
 export interface PrintPdfButtonProps {
   label?: string;
@@ -15,11 +44,6 @@ export interface PrintPdfButtonProps {
   disabled?: boolean;
 }
 
-/**
- * Print button that opens a professional logo-selection dialog before
- * generating the PDF. The selected logo (or the configured company branding
- * logo) is passed to the PDF engine so the generated document actually uses it.
- */
 export default function PrintPdfButton({
   label,
   className,
@@ -27,27 +51,26 @@ export default function PrintPdfButton({
   onPrint,
   disabled,
 }: PrintPdfButtonProps) {
+  const { company } = useCompany();
   const [open, setOpen] = useState(false);
-  const [company, setCompany] = useState<Company | null>(null);
   const [selected, setSelected] = useState<string>("");
   const [customPreview, setCustomPreview] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>("");
+  const [recentLogos, setRecentLogos] = useState<{ label: string; value: string }[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const openDialog = useCallback(async () => {
+  const openDialog = useCallback(() => {
     setError("");
-    setSelected("");
+    setSelected(company?.smallLogo || company?.logo || "");
     setCustomPreview(null);
-    try {
-      const c = await companyService.get();
-      setCompany(c);
-      setSelected(c.smallLogo || c.logo || "");
-    } catch {
-      setCompany(null);
-    }
+    setRecentLogos(loadRecentLogos());
     setOpen(true);
-  }, []);
+  }, [company]);
+
+  useEffect(() => {
+    setRecentLogos(loadRecentLogos());
+  }, [open]);
 
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -70,6 +93,7 @@ export default function PrintPdfButton({
     try {
       const logoUrl = customPreview || selected || undefined;
       await onPrint(logoUrl);
+      if (logoUrl) saveRecentLogo(logoUrl);
       setOpen(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : "PDF generation failed.");
@@ -78,7 +102,18 @@ export default function PrintPdfButton({
     }
   };
 
-  const logoOptions = [
+  const removeRecent = (value: string) => {
+    const updated = recentLogos.filter((r) => r.value !== value);
+    setRecentLogos(updated);
+    try {
+      localStorage.setItem(RECENT_LOGOS_KEY, JSON.stringify(updated));
+    } catch {}
+    if (selected === value) {
+      setSelected(company?.smallLogo || company?.logo || "");
+    }
+  };
+
+  const companyOptions = [
     ...(company?.smallLogo ? [{ label: "الشعار المصغر / Small Logo", value: company.smallLogo }] : []),
     ...(company?.logo ? [{ label: "الشعار الرئيسي / Main Logo", value: company.logo }] : []),
   ];
@@ -101,14 +136,14 @@ export default function PrintPdfButton({
       <Dialog open={open} onClose={() => setOpen(false)} title="Print PDF - Logo Selection" size="lg">
         <div className="space-y-4">
           <p className="text-sm text-text-muted">
-            Select the logo to use on this document, or upload a different one for this print.
+            اختر الشعار المستند أو ارفع شعار جديد
           </p>
 
-          {logoOptions.length > 0 && (
+          {companyOptions.length > 0 && (
             <div className="space-y-2">
-              <label className="text-xs font-semibold text-text-primary">Existing company logos</label>
+              <label className="text-xs font-semibold text-text-primary">شعارات الشركة</label>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {logoOptions.map((opt) => (
+                {companyOptions.map((opt) => (
                   <button
                     key={opt.value}
                     onClick={() => { setSelected(opt.value); setCustomPreview(null); }}
@@ -128,8 +163,43 @@ export default function PrintPdfButton({
             </div>
           )}
 
+          {recentLogos.length > 0 && (
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-text-primary flex items-center gap-1.5">
+                <Clock size={12} />
+                شعارات مستخدمة سابقاً
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {recentLogos.map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => { setSelected(opt.value); setCustomPreview(null); }}
+                    className={`group relative flex items-center gap-3 p-3 rounded-xl border-2 transition-colors ${
+                      !customPreview && selected === opt.value
+                        ? "border-primary bg-primary/5"
+                        : "border-border hover:border-primary/40 hover:bg-surface-secondary"
+                    }`}
+                  >
+                    <div className="w-12 h-12 rounded-lg border border-border bg-surface-secondary flex items-center justify-center overflow-hidden">
+                      <img src={opt.value} alt="" className="max-w-full max-h-full object-contain" />
+                    </div>
+                    <span className="text-xs text-text-secondary truncate flex-1 text-left">{opt.label}</span>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); removeRecent(opt.value); }}
+                      className="absolute top-1 left-1 p-1 rounded-md opacity-0 group-hover:opacity-100 hover:bg-danger/10 transition-opacity"
+                      title="إزالة"
+                    >
+                      <Trash2 size={12} className="text-danger" />
+                    </button>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="space-y-2">
-            <label className="text-xs font-semibold text-text-primary">Upload a different logo</label>
+            <label className="text-xs font-semibold text-text-primary">رفع شعار جديد</label>
             <div className="flex items-center gap-3">
               <div className="w-16 h-16 rounded-xl border-2 border-dashed border-border bg-surface-secondary flex items-center justify-center overflow-hidden">
                 {activePreview ? (
@@ -146,7 +216,7 @@ export default function PrintPdfButton({
                 className="hidden"
               />
               <Button variant="outline" size="sm" onClick={() => inputRef.current?.click()} icon={<Upload size={14} />}>
-                Choose image
+                اختر صورة
               </Button>
             </div>
           </div>
@@ -154,8 +224,8 @@ export default function PrintPdfButton({
           {error && <p className="text-sm text-danger">{error}</p>}
 
           <div className="flex justify-end gap-2 pt-2 border-t border-border">
-            <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button variant="primary" onClick={confirm} loading={loading}>Generate PDF</Button>
+            <Button variant="outline" onClick={() => setOpen(false)}>إلغاء</Button>
+            <Button variant="primary" onClick={confirm} loading={loading}>إنشاء PDF</Button>
           </div>
         </div>
       </Dialog>

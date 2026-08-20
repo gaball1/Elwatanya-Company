@@ -24,12 +24,13 @@ const Select = forwardRef<HTMLSelectElement, SelectProps>(
           ref={ref}
           id={id}
           className={cn(
-            "w-full rounded-lg border border-border bg-surface px-4 py-2.5 text-sm text-text-primary",
-            "focus:border-gold focus:outline-none focus:ring-2 focus:ring-gold/20",
+            "w-full rounded-xl border bg-surface px-4 py-2.5 text-sm text-text-primary",
+            "border-border hover:border-border-dark",
+            "focus:border-gold focus:outline-none focus:ring-2 focus:ring-gold/15 focus:shadow-[0_0_0_3px_rgba(201,160,61,0.08)]",
             "disabled:opacity-50 disabled:cursor-not-allowed",
-            "transition-all duration-150 appearance-none",
+            "transition-all duration-200 ease-out appearance-none",
             "bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%2220%22%20height%3D%2220%22%20viewBox%3D%220%200%2020%2020%22%3E%3Cpath%20fill%3D%22%2394a3b8%22%20d%3D%22M5.5%207.5L10%2012l4.5-4.5%22/%3E%3C/svg%3E')] bg-[length:20px] bg-[right_8px_center] bg-no-repeat pr-10",
-            error && "border-danger focus:border-danger focus:ring-danger/20",
+            error && "border-danger focus:border-danger focus:ring-danger/15 focus:shadow-[0_0_0_3px_rgba(220,38,38,0.08)]",
             className
           )}
           {...props}

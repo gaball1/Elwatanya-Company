@@ -9,25 +9,54 @@ export class PrismaCategoryRepository implements ICategoryRepository {
   constructor(private readonly prisma: PrismaService) {}
 
   async save(category: Category): Promise<void> {
-    const data = {
-      code: category.code,
-      name: category.name,
-      description: category.description,
-      parentId: category.parentId || null,
-      status: category.status,
-      deletedAt: category.deletedAt,
-      updatedAt: new Date(),
-    };
-
-    await this.prisma.category.upsert({
-      where: { id: category.id.toValue() },
-      create: {
-        id: category.id.toValue(),
-        ...data,
-        createdAt: category.createdAt,
-      },
-      update: data,
+    const id = category.id.toValue();
+    const existing = await this.prisma.category.findFirst({
+      where: { id },
+      select: { id: true },
     });
+
+    if (existing) {
+      const duplicate = await this.prisma.category.findFirst({
+        where: { code: category.code, deletedAt: null, NOT: { id } },
+        select: { id: true },
+      });
+      if (duplicate) {
+        throw new Error(`A category with code "${category.code}" already exists`);
+      }
+      await this.prisma.category.update({
+        where: { id },
+        data: {
+          code: category.code,
+          name: category.name,
+          description: category.description,
+          parentId: category.parentId || null,
+          status: category.status,
+          deletedAt: category.deletedAt,
+          updatedAt: new Date(),
+        },
+      });
+    } else {
+      const duplicate = await this.prisma.category.findFirst({
+        where: { code: category.code, deletedAt: null },
+        select: { id: true },
+      });
+      if (duplicate) {
+        throw new Error(`A category with code "${category.code}" already exists`);
+      }
+      await this.prisma.category.create({
+        data: {
+          id,
+          code: category.code,
+          name: category.name,
+          description: category.description,
+          parentId: category.parentId || null,
+          status: category.status,
+          deletedAt: category.deletedAt,
+          createdAt: category.createdAt,
+          updatedAt: new Date(),
+        },
+      });
+    }
   }
 
   async findById(id: UniqueEntityId): Promise<Category | null> {

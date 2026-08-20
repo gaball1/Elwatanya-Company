@@ -5,11 +5,13 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useState, useRef, useEffect } from "react";
 import { Card } from "@/components/ui";
-import { Plus, Edit2, Trash2, X, Printer, Send, Download } from "lucide-react";
+import { Plus, Edit2, Trash2, X, Send, Download } from "lucide-react";
 import { analyticalBoqService } from "@/services/analyticalBoq.service";
 import BackButton from "@/components/shared/BackButton";
+import DataLoader from "@/components/shared/DataLoader";
 import { useToast } from "@/components/ui/Toast";
 import { printHtmlDocument } from "@/lib/printUtils";
+import PrintPdfButton from "@/components/shared/PrintPdfButton";
 
 // تعريف نوع البند
 interface EstimateItem {
@@ -91,9 +93,7 @@ export default function CompanyEstimateDetailsPage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-light flex items-center justify-center">
-        <div className="animate-pulse text-text-muted">
-          {isArabic ? "جاري التحميل..." : "Loading..."}
-        </div>
+        <DataLoader />
       </div>
     );
   }
@@ -119,7 +119,7 @@ export default function CompanyEstimateDetailsPage() {
   }
 
   // ✅ طباعة PDF
-  const handlePrint = () => {
+  const handlePrint = (logoUrl?: string) => {
     const itemsHtml = items
       .map(
         (item, idx) => `
@@ -223,11 +223,6 @@ export default function CompanyEstimateDetailsPage() {
       </table>
 
       <div style="text-align:center;margin-top:30px;padding-top:15px;border-top:1px solid #eee;font-size:10px;color:#999">
-        ${
-          isArabic
-            ? "تم إنشاء هذا التقرير بواسطة الشركة - الوطنية للتنمية العمرانية"
-            : "Generated automatically - Al-Wataniya Urban Development"
-        }
       </div>
     </div>
   </body>
@@ -237,7 +232,8 @@ export default function CompanyEstimateDetailsPage() {
     printHtmlDocument(
       isArabic ? "عرض سعر شركة" : "Company Estimate",
       htmlContent,
-      `${estimate.number}.pdf`
+      `${estimate.number}.pdf`,
+      { logoUrl }
     );
   };
 
@@ -385,12 +381,10 @@ export default function CompanyEstimateDetailsPage() {
             >
               <Download size={18} /> {isArabic ? "تصدير Excel" : "Export Excel"}
             </button>
-            <button
-              onClick={handlePrint}
-              className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition text-sm font-medium"
-            >
-              <Printer size={18} /> {isArabic ? "طباعة PDF" : "Print PDF"}
-            </button>
+            <PrintPdfButton
+              label={isArabic ? "طباعة PDF" : "Print PDF"}
+              onPrint={handlePrint}
+            />
           </div>
         </div>
       </div>

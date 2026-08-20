@@ -5,7 +5,6 @@ import { useParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Plus,
-  Printer,
   Edit2,
   Trash2,
   X,
@@ -15,9 +14,11 @@ import {
 } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
 import { printHtml } from "@/lib/documentUtils";
+import PrintPdfButton from "@/components/shared/PrintPdfButton";
 import { subcontractorContractService, type SubcontractorContract } from "@/services/subcontractor-contract.service";
 import { contractorBoqService, type ContractorBoqItem } from "@/services/contractorBoq.service";
 import { subcontractorService } from "@/services/subcontractor.service";
+import DataLoader from "@/components/shared/DataLoader";
 import { buildingService } from "@/services/building.service";
 import { projectService } from "@/services/project.service";
 import { companyService, type Company } from "@/services/company.service";
@@ -206,7 +207,7 @@ export default function SubcontractorContractPage() {
     }
   };
 
-  const handlePrint = () => {
+  const handlePrint = (logoUrl?: string) => {
     if (!selected) return;
 
     const companyName = company?.arabicName || company?.name || "الوطنية للمقاولات والتوريدات";
@@ -415,16 +416,15 @@ td{
 img{
     max-width:100%;
 }
-`
+`,
+      { logoUrl }
     );
   };
 
   if (!mounted || loading) {
     return (
       <div className="min-h-screen bg-gray-light -m-6 flex items-center justify-center">
-        <div className="animate-pulse text-text-muted">
-          {isArabic ? "جاري التحميل..." : "Loading..."}
-        </div>
+        <DataLoader />
       </div>
     );
   }
@@ -505,13 +505,11 @@ img{
                         {isArabic ? "تعديل" : "Edit"}
                       </button>
                     </Can>
-                    <button
-                      onClick={handlePrint}
-                      className="inline-flex items-center gap-1.5 px-3 py-2 text-sm bg-gold text-white rounded-xl hover:opacity-90"
-                    >
-                      <Printer size={16} />
-                      {isArabic ? "طباعة" : "Print"}
-                    </button>
+                    <PrintPdfButton
+                      label={isArabic ? "طباعة" : "Print"}
+                      size="sm"
+                      onPrint={handlePrint}
+                    />
                     <Can permission="subcontractors.delete">
                       <button
                         onClick={() => removeContract(selected)}

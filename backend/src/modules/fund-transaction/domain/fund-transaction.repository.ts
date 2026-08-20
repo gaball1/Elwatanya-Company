@@ -7,5 +7,5 @@ export const FUND_TRANSACTION_REPOSITORY = Symbol('FUND_TRANSACTION_REPOSITORY')
 export interface IFundTransactionRepository {
   save(transaction: FundTransaction, tx?: Prisma.TransactionClient): Promise<void>;
   findById(id: UniqueEntityId): Promise<FundTransaction | null>;
-  findAll(): Promise<FundTransaction[]>;
+  findAll(projectIds?: string[]): Promise<FundTransaction[]>;
 }

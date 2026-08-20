@@ -36,6 +36,11 @@ export class CsvFormatProvider implements IReportFormatProvider {
   }
 
   private escapeField(value: string): string {
+    // CSV formula injection guard: prefix '=' '+', '-', '@', '\t', '\r' with '
+    // so spreadsheet apps treat them as text instead of formulas.
+    if (/^[=+\-@\t\r]/.test(value)) {
+      value = `'${value}`;
+    }
     if (value.includes(',') || value.includes('"') || value.includes('\n')) {
       return `"${value.replace(/"/g, '""')}"`;
     }

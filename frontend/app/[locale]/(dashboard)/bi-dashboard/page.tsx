@@ -5,6 +5,7 @@ import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import { Card, Button, Badge, Dialog, Select } from "@/components/ui";
 import { useToast } from "@/components/ui/Toast";
+import DataLoader from "@/components/shared/DataLoader";
 import { biService, type KpiResult, type ProjectDashboard } from "@/services/bi.service";
 import { projectService } from "@/services/project.service";
 import {
@@ -30,6 +31,21 @@ const statusColors: Record<string, string> = {
   good: "border-l-success bg-success/5",
   warning: "border-l-warning bg-warning/5",
   danger: "border-l-danger bg-danger/5",
+};
+
+const statusLabels: Record<string, { ar: string; en: string }> = {
+  good: { ar: "جيد", en: "Good" },
+  warning: { ar: "تحذير", en: "Warning" },
+  danger: { ar: "خطر", en: "Critical" },
+};
+
+const categoryLabels: Record<string, { ar: string; en: string }> = {
+  earned_value: { ar: "القيمة المكتسبة", en: "Earned Value" },
+  financial: { ar: "المالية", en: "Financial" },
+  performance: { ar: "الأداء", en: "Performance" },
+  risk: { ar: "المخاطر", en: "Risk" },
+  boq: { ar: "جدول الكميات", en: "BOQ" },
+  resources: { ar: "الموارد", en: "Resources" },
 };
 
 const barColors: Record<string, string> = {
@@ -95,7 +111,7 @@ export default function BiDashboardPage() {
       <div className="flex items-start justify-between mb-2">
         <div className="flex items-center gap-2">
           {statusIcons[kpi.status] || <Info className="w-5 h-5" />}
-          <h3 className="font-medium text-text-primary text-sm">{kpi.name}</h3>
+          <h3 className="font-medium text-text-primary text-sm">{isArabic ? (kpi.nameArabic || kpi.name) : kpi.name}</h3>
         </div>
         {trendIcons[kpi.trend]}
       </div>
@@ -170,11 +186,7 @@ export default function BiDashboardPage() {
       )}
 
       {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {[1, 2, 3, 4, 5, 6].map((i) => (
-            <Card key={i} className="p-4"><div className="h-24 bg-surface rounded animate-pulse" /></Card>
-          ))}
-        </div>
+        <DataLoader />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {dashboard?.kpis?.map((kpi, i) => kpiCard(kpi, i))}
@@ -192,7 +204,7 @@ export default function BiDashboardPage() {
       <Dialog
         open={!!selectedKpi}
         onClose={() => setSelectedKpi(null)}
-        title={selectedKpi?.name || ""}
+        title={isArabic ? (selectedKpi?.nameArabic || selectedKpi?.name || "") : (selectedKpi?.name || "")}
         size="sm"
       >
         {selectedKpi && (
@@ -221,7 +233,7 @@ export default function BiDashboardPage() {
             <div className="flex items-center justify-between p-3 bg-surface rounded-lg">
               <span className="text-sm text-text-secondary">{isArabic ? "الحالة" : "Status"}</span>
               <Badge variant={selectedKpi.status === "good" ? "success" : selectedKpi.status === "warning" ? "warning" : "danger"}>
-                {selectedKpi.status}
+                {isArabic ? (statusLabels[selectedKpi.status]?.ar || selectedKpi.status) : (statusLabels[selectedKpi.status]?.en || selectedKpi.status)}
               </Badge>
             </div>
           </div>

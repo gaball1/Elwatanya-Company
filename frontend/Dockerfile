@@ -15,11 +15,15 @@ RUN npm ci --include-workspace-root --no-audit --no-fund
 FROM node:22-bookworm-slim AS builder
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
-# The Next.js rewrites proxy API calls to the backend. The value is read at
-# build time from next.config.ts, so pass it as a build arg when the backend
-# host differs (e.g. http://backend:3001/api/v1 inside the compose network).
+# NEXT_PUBLIC_API_URL is baked into the BROWSER bundle: it must be the public
+# HTTPS origin the browser can reach through the TLS reverse proxy
+# (e.g. https://erp.example.com/api/v1). Do NOT use a docker-internal hostname.
+# BACKEND_API_URL is server-only (used by Next.js rewrites) and should target
+# the internal backend (e.g. http://backend:3001/api/v1 inside the compose net).
 ARG NEXT_PUBLIC_API_URL=http://localhost:3001/api/v1
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ARG BACKEND_API_URL=http://localhost:3001/api/v1
+ENV BACKEND_API_URL=$BACKEND_API_URL
 COPY package.json package-lock.json ./
 COPY backend/package.json ./backend/
 COPY frontend/package.json ./frontend/
@@ -36,12 +40,15 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV HOSTNAME=0.0.0.0
 ENV PORT=3000
 
+# The standalone output preserves monorepo paths: server.js lives at
+# ./frontend/server.js, so static assets and public must land under
+# ./frontend/.next and ./frontend/public for the standalone server to find them.
 COPY --from=builder /app/frontend/.next/standalone ./
-COPY --from=builder /app/frontend/.next/static ./.next/static
-COPY --from=builder /app/frontend/public ./public
+COPY --from=builder /app/frontend/.next/static ./frontend/.next/static
+COPY --from=builder /app/frontend/public ./frontend/public
 
 RUN chown -R node:node /app
 USER node
 EXPOSE 3000
 
-CMD ["node", "server.js"]
+CMD ["node", "frontend/server.js"]

@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '@/prisma/prisma.module';
+import { PrismaService } from '@/prisma/prisma.service';
+import { OwnershipService } from '@/common/services/ownership.service';
 import { CLIENT_STATEMENT_REPOSITORY } from './domain/client-statement.repository';
 import { IClientStatementRepository } from './domain/client-statement.repository';
 import { PrismaClientStatementRepository } from './infrastructure/prisma-client-statement.repository';
@@ -13,11 +15,16 @@ import { ClientStatementController } from './client-statement.controller';
   imports: [PrismaModule],
   controllers: [ClientStatementController],
   providers: [
+    {
+      provide: OwnershipService,
+      useFactory: (prisma: PrismaService) => new OwnershipService(prisma),
+      inject: [PrismaService],
+    },
     { provide: CLIENT_STATEMENT_REPOSITORY, useClass: PrismaClientStatementRepository },
-    { provide: ListClientStatementsUseCase, useFactory: (r: IClientStatementRepository) => new ListClientStatementsUseCase(r), inject: [CLIENT_STATEMENT_REPOSITORY] },
-    { provide: CreateClientStatementUseCase, useFactory: (r: IClientStatementRepository) => new CreateClientStatementUseCase(r), inject: [CLIENT_STATEMENT_REPOSITORY] },
-    { provide: UpdateClientStatementUseCase, useFactory: (r: IClientStatementRepository) => new UpdateClientStatementUseCase(r), inject: [CLIENT_STATEMENT_REPOSITORY] },
-    { provide: DeleteClientStatementUseCase, useFactory: (r: IClientStatementRepository) => new DeleteClientStatementUseCase(r), inject: [CLIENT_STATEMENT_REPOSITORY] },
+    { provide: ListClientStatementsUseCase, useFactory: (r: IClientStatementRepository, ownership: OwnershipService) => new ListClientStatementsUseCase(r, ownership), inject: [CLIENT_STATEMENT_REPOSITORY, OwnershipService] },
+    { provide: CreateClientStatementUseCase, useFactory: (r: IClientStatementRepository, ownership: OwnershipService) => new CreateClientStatementUseCase(r, ownership), inject: [CLIENT_STATEMENT_REPOSITORY, OwnershipService] },
+    { provide: UpdateClientStatementUseCase, useFactory: (r: IClientStatementRepository, ownership: OwnershipService) => new UpdateClientStatementUseCase(r, ownership), inject: [CLIENT_STATEMENT_REPOSITORY, OwnershipService] },
+    { provide: DeleteClientStatementUseCase, useFactory: (r: IClientStatementRepository, ownership: OwnershipService) => new DeleteClientStatementUseCase(r, ownership), inject: [CLIENT_STATEMENT_REPOSITORY, OwnershipService] },
   ],
   exports: [CLIENT_STATEMENT_REPOSITORY],
 })

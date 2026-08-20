@@ -39,10 +39,18 @@ function buildUrl(path: string): string {
 }
 
 function parseErrorMessage(data: unknown, status: number): string {
-  if (typeof data === "object" && data !== null && "message" in data) {
-    const message = (data as { message?: string | string[] }).message;
-    if (Array.isArray(message)) return message.join(", ");
-    if (typeof message === "string" && message.length > 0) return message;
+  if (typeof data === "object" && data !== null) {
+    const obj = data as Record<string, unknown>;
+    const parts: string[] = [];
+    if ("message" in obj) {
+      const message = obj.message;
+      if (Array.isArray(message)) parts.push(message.join(", "));
+      else if (typeof message === "string" && message.length > 0) parts.push(message);
+    }
+    if ("errors" in obj && Array.isArray(obj.errors) && obj.errors.length > 0) {
+      parts.push(obj.errors.filter((e: unknown) => typeof e === "string").join("; "));
+    }
+    if (parts.length > 0) return parts.join(" — ");
   }
   return `Request failed with status ${status}`;
 }
@@ -95,6 +103,7 @@ async function executeRequest(
   try {
     const fetchResult = await safeFetch(url, {
       ...rest,
+      credentials: "include",
       headers: requestHeaders,
       body: isFormData
         ? (body as FormData)

@@ -1,5 +1,6 @@
 import { PrismaClient, UserRole } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
+import { randomBytes } from 'crypto';
 
 const prisma = new PrismaClient();
 
@@ -147,11 +148,21 @@ const ALL_PERMISSIONS = [
 ];
 
 async function main() {
-  const passwordHash = await bcrypt.hash('Admin@123', 10);
+  // The seeded admin must never ship with a known/default password. In
+  // production the operator must provide ADMIN_PASSWORD explicitly; otherwise a
+  // strong random password is generated and printed once.
+  if (process.env.NODE_ENV === 'production' && !process.env.ADMIN_PASSWORD) {
+    throw new Error(
+      'ADMIN_PASSWORD must be set when seeding in production. Refusing to create a default admin.',
+    );
+  }
+
+  const adminPassword = process.env.ADMIN_PASSWORD ?? randomBytes(18).toString('base64url');
+  const passwordHash = await bcrypt.hash(adminPassword, 12);
 
   const adminUser = await prisma.user.upsert({
     where: { email: 'admin@elwataniya.com' },
-    update: {},
+    update: process.env.ADMIN_PASSWORD ? { passwordHash } : {},
     create: {
       email: 'admin@elwataniya.com',
       passwordHash,
@@ -160,6 +171,12 @@ async function main() {
       status: 'ACTIVE',
     },
   });
+
+  if (!process.env.ADMIN_PASSWORD) {
+    console.log(
+      `[seed] Admin account 'admin@elwataniya.com' has a generated password: ${adminPassword}. Change it after first login.`,
+    );
+  }
 
   const permissionRecords = await Promise.all(
     ALL_PERMISSIONS.map((perm) =>
@@ -270,6 +287,7 @@ async function main() {
       'profile.read', 'profile.update', 'profile.change-password',
     ],
     ACCOUNTANT: [
+      'projects.read', 'buildings.read',
       'extracts.read', 'extracts.write',
       'payments.read', 'payments.write',
       'project-funds.read', 'project-funds.create', 'project-funds.update',
@@ -279,6 +297,7 @@ async function main() {
       'suppliers.read',
       'purchases.read',
       'project-boards.read',
+      'settings.read',
       'files.read', 'files.upload', 'files.delete',
       'approvals.read', 'approvals.create', 'approvals.approve', 'approvals.reject',
       'reports.read', 'reports.generate',
@@ -363,7 +382,7 @@ async function main() {
   }
 
   console.log(`Seed completed:`);
-  console.log(`  - Admin user: admin@elwataniya.com / Admin@123`);
+  console.log(`  - Admin user: admin@elwataniya.com (password via ADMIN_PASSWORD env or generated, see above)`);
   console.log(`  - ${ALL_PERMISSIONS.length} permissions created/updated`);
   console.log(`  - SUPER_ADMIN role created with all permissions`);
   console.log(`  - ${standardRoles.length} standard roles created with permissions`);

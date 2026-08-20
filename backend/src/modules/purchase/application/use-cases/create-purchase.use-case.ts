@@ -7,6 +7,7 @@ import { PrismaService } from '@/prisma/prisma.service';
 import { Prisma } from '@prisma/client';
 import { EventBusImpl } from '@/modules/domain-events/event-bus.impl';
 import { PurchaseCreatedEvent } from '@/modules/domain-events/events';
+import { OwnershipActor, OwnershipService } from '@/common/services/ownership.service';
 
 export class CreatePurchaseUseCase {
   constructor(
@@ -14,9 +15,14 @@ export class CreatePurchaseUseCase {
     private readonly financialService: FinancialService,
     private readonly prisma: PrismaService,
     private readonly eventBus: EventBusImpl,
+    private readonly ownership: OwnershipService,
   ) {}
 
-  async execute(input: CreatePurchaseInput): Promise<Result<PurchaseResult>> {
+  async execute(input: CreatePurchaseInput, user: OwnershipActor | undefined, userId?: string): Promise<Result<PurchaseResult>> {
+    await this.ownership.verifyProjectAccess(user, input.projectId);
+    if (input.buildingId) await this.ownership.verifyBuildingAccess(user, input.buildingId);
+
+    const createdBy = userId ?? 'system';
     const result = Purchase.create({
       projectId: input.projectId,
       buildingId: input.buildingId,
@@ -29,7 +35,7 @@ export class CreatePurchaseUseCase {
       notes: input.notes,
       invoiceFile: input.invoiceFile,
       supplierName: input.supplierName,
-      createdBy: input.createdBy,
+      createdBy,
       categoryId: input.categoryId,
       inventoryItemId: input.inventoryItemId,
     });
@@ -60,7 +66,7 @@ export class CreatePurchaseUseCase {
           category: 'purchase',
           referenceId: purchase.id.toValue(),
           description: `مشتريات: ${input.itemName} (كمية: ${input.quantity})`,
-          createdBy: input.createdBy ?? 'system',
+          createdBy,
           date: input.date,
         }, tx);
       });
@@ -78,7 +84,7 @@ export class CreatePurchaseUseCase {
           supplierName: input.supplierName ?? '',
           amount: purchase.total,
           status: purchase.status,
-          createdBy: input.createdBy,
+          createdBy,
         },
       ),
     );

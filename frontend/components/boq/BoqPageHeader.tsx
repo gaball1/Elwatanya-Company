@@ -1,14 +1,15 @@
 "use client";
 
-import { Download, Printer } from "lucide-react";
+import { Download } from "lucide-react";
 import BackButton from "@/components/shared/BackButton";
+import PrintPdfButton from "@/components/shared/PrintPdfButton";
 
 interface BoqPageHeaderProps {
   title: string;
   subtitle?: string;
   fallbackHref: string;
   isArabic: boolean;
-  onPrint: () => void;
+  onPrint: (logoUrl?: string) => Promise<void> | void;
   onExport: () => void;
 }
 
@@ -38,13 +39,10 @@ export default function BoqPageHeader({
             <Download size={18} />
             {isArabic ? "تصدير Excel" : "Export Excel"}
           </button>
-          <button
-            onClick={onPrint}
-            className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition text-sm"
-          >
-            <Printer size={18} />
-            {isArabic ? "طباعة PDF" : "Print PDF"}
-          </button>
+          <PrintPdfButton
+            label={isArabic ? "طباعة PDF" : "Print PDF"}
+            onPrint={onPrint}
+          />
         </div>
       </div>
     </div>

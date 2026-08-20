@@ -3,6 +3,7 @@ import { PrismaService } from '@/prisma/prisma.service';
 import { PdfDocument, PdfSignature } from '../domain/pdf-document.entity';
 import { PdfRendererService } from './pdf-renderer.service';
 import { isUnsafeUrl } from '@/common/utils/ssrf-guard.util';
+import { sanitizeHtmlFragment } from '@/common/utils/html-sanitize.util';
 
 export interface PdfResult {
   filename: string;
@@ -139,7 +140,7 @@ export class PdfEngineService {
       : '';
 
     const titleText = isRtl ? (doc.arabicTitle || doc.title) : doc.title;
-    const subTitle = isRtl ? (doc.title !== doc.arabicTitle ? doc.title : '') : (doc.arabicTitle || '');
+    const subTitle = doc.subtitle || (isRtl ? (doc.title !== doc.arabicTitle ? doc.title : '') : (doc.arabicTitle || ''));
     const dateText = doc.generatedAt.toLocaleDateString(isRtl ? 'ar-EG' : 'en-CA');
     const docMeta = [
       doc.documentNumber ? { k: isRtl ? 'رقم المستند' : 'Document No.', v: doc.documentNumber } : null,
@@ -170,22 +171,23 @@ export class PdfEngineService {
     display: flex;
     align-items: flex-start;
     gap: 16px;
-    padding: 6px 0 12px;
-    border-bottom: 2px solid ${brand.primaryColor};
+    padding: 8px 0 14px;
+    border-bottom: 3px solid ${brand.primaryColor};
     margin-bottom: 18px;
     direction: ltr;
   }
   .header-logo { flex: 0 0 auto; direction: ltr; }
-  .header-logo img { max-height: 56px; max-width: 160px; object-fit: contain; }
+  .header-logo img { max-height: 60px; max-width: 180px; object-fit: contain; }
   .header-company {
     flex: 1 1 auto;
     text-align: ${isRtl ? 'right' : 'left'};
     direction: ${isRtl ? 'rtl' : 'ltr'};
   }
   .header-company h1 {
-    font-size: 18px;
+    font-size: 20px;
     margin: 0 0 4px;
     color: ${brand.primaryColor};
+    font-weight: 800;
   }
   .header-company .company-meta { font-size: 10px; color: #64748b; line-height: 1.5; }
   .doc-title {
@@ -242,18 +244,20 @@ export class PdfEngineService {
   th {
     background: ${brand.primaryColor};
     color: #ffffff;
-    padding: 8px 8px;
+    padding: 8px 10px;
     text-align: ${isRtl ? 'right' : 'left'};
-    font-weight: 600;
+    font-weight: 700;
     border: 1px solid ${brand.primaryColor};
     vertical-align: middle;
+    letter-spacing: 0.2px;
   }
   td {
-    padding: 7px 8px;
-    border: 1px solid #e2e8f0;
+    padding: 7px 10px;
+    border: 1px solid #d1d5db;
     vertical-align: top;
   }
   tbody tr:nth-child(even) { background: #f8fafc; }
+  tbody tr:nth-child(odd) { background: #ffffff; }
   tbody tr:hover { background: #eef2f7; }
   .num, td.num { text-align: right; direction: ltr; font-variant-numeric: tabular-nums; }
   .total-row td { background: ${brand.secondaryColor}; color: #ffffff; font-weight: 700; border-color: ${brand.secondaryColor}; }
@@ -348,9 +352,12 @@ ${signaturesSection}
   }
 
   private buildSection(section: any): string {
+    // section.content is untrusted HTML (from user-authored statements); it is
+    // sanitized here before the headless renderer parses it (SSRF/XSS guard).
+    const safeContent = sanitizeHtmlFragment(String(section.content ?? ''));
     return `<div class="section${section.breakInside ? ' section-break' : ''}">
       ${section.title ? `<div class="section-title">${this.escapeHtml(section.title)}</div>` : ''}
-      <div class="section-content"${section.columns ? ` style="column-count:${section.columns}"` : ''}>${section.content}</div>
+      <div class="section-content"${section.columns ? ` style="column-count:${section.columns}"` : ''}>${safeContent}</div>
     </div>`;
   }
 

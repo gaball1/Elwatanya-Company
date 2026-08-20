@@ -19,7 +19,11 @@ export class CreateCategoryUseCase {
     if (result.isFailure) return Result.fail(result.error as Error);
 
     const category = result.getValue();
-    await this.categories.save(category);
+    try {
+      await this.categories.save(category);
+    } catch (err) {
+      return Result.fail(err instanceof Error ? err : new Error(String(err)));
+    }
     return Result.ok(toResult(category));
   }
 }

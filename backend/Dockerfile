@@ -24,34 +24,40 @@ ENV NODE_ENV=production
 COPY package.json package-lock.json ./
 COPY backend/package.json ./backend/
 COPY --from=deps /app/node_modules ./node_modules
+# backend/node_modules holds the workspace-nested typescript@5.9.3 (the root
+# pins typescript@6, which hoists to /app/node_modules and would otherwise be
+# resolved by @nestjs/cli, breaking `nest build` with TS5107/TS5101).
+COPY --from=deps /app/backend/node_modules ./backend/node_modules
 COPY backend ./backend
 WORKDIR /app/backend
 RUN npx prisma generate
 RUN npm run build
 
 # ---- runtime: minimal, runs migrations then serves --------------------------
-FROM node:22-bookworm-slim AS runtime
+# Official Playwright image: Chromium (matching playwright@^1.62.1) and its
+# system deps are pre-baked at /ms-playwright, so no per-build browser
+# download/apt step is needed. --no-sandbox flags are already set in
+# PdfRendererService, so no sandbox setup is required.
+FROM mcr.microsoft.com/playwright:v1.62.1-noble-amd64 AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3001
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
 COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/backend/dist ./dist
-COPY --from=builder /app/backend/prisma ./prisma
-
-# Download Chromium + its full system dependency set (Playwright PDF engine).
-# `install --with-deps` pulls every required apt package automatically; we run
-# as root here and drop privileges afterwards. --no-sandbox flags are already
-# set in PdfRendererService, so no sandbox setup is needed.
-ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
-RUN npx playwright install --with-deps chromium \
-    && rm -rf /var/lib/apt/lists/*
+# Mirror the builder layout (backend workspace root): the backend's own
+# node_modules may hold workspace-nested packages (e.g. uuid), and dist/prisma
+# must sit under /app/backend so module resolution from the compiled output
+# finds them exactly as it did during `nest build`.
+COPY --from=builder /app/backend/node_modules ./backend/node_modules
+COPY --from=builder /app/backend/dist ./backend/dist
+COPY --from=builder /app/backend/prisma ./backend/prisma
 
 # Prisma needs a writable cache dir and the app writes uploads.
-RUN mkdir -p /app/uploads /app/generated-pdfs /app/.prisma /ms-playwright \
-    && chown -R node:node /app /ms-playwright
-USER node
+RUN mkdir -p /app/uploads /app/generated-pdfs /app/.prisma \
+    && chown -R ubuntu:ubuntu /app
+USER ubuntu
 EXPOSE 3001
 
 # Run DB migrations (deploy, non-interactive) before starting the app.
-CMD ["sh", "-c", "npx prisma migrate deploy --schema=./prisma/schema.prisma && node dist/main.js"]
+CMD ["sh", "-c", "npx prisma migrate deploy --schema=./backend/prisma/schema.prisma && node backend/dist/src/main.js"]

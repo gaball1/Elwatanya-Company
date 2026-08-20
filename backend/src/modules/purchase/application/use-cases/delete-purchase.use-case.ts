@@ -3,17 +3,21 @@ import { UniqueEntityId } from '@/shared/kernel/unique-entity-id.vo';
 import { IPurchaseRepository } from '../../domain/purchase.repository';
 import { FinancialService } from '@/common/services/financial.service';
 import { PrismaService } from '@/prisma/prisma.service';
+import { OwnershipActor, OwnershipService } from '@/common/services/ownership.service';
 
 export class DeletePurchaseUseCase {
   constructor(
     private readonly purchaseRepo: IPurchaseRepository,
     private readonly financialService: FinancialService,
     private readonly prisma: PrismaService,
+    private readonly ownership: OwnershipService,
   ) {}
 
-  async execute(id: string): Promise<Result<void>> {
+  async execute(id: string, user: OwnershipActor | undefined): Promise<Result<void>> {
     const purchase = await this.purchaseRepo.findById(new UniqueEntityId(id));
     if (!purchase) return Result.fail(new Error('Purchase not found'));
+
+    await this.ownership.verifyProjectAccess(user, purchase.projectId);
 
     if (purchase.status === 'approved' || purchase.status === 'received') {
       return Result.fail(new Error('Cannot delete an approved/received purchase. Cancel it instead'));

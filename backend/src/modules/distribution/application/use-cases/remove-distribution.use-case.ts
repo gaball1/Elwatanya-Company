@@ -18,6 +18,7 @@ import {
 import { IContractorBoqRepository } from '@/modules/contractor-boq/domain/contractor-boq.repository';
 import { OwnershipActor, OwnershipService } from '@/common/services/ownership.service';
 import { AuditService } from '@/modules/audit/audit.service';
+import { PrismaService } from '@/prisma/prisma.service';
 
 export interface RemoveDistributionInput {
   buildingId: string;
@@ -30,6 +31,8 @@ export interface RemoveDistributionInput {
  * Removes a contractor's allocation for a final item (or one of its components).
  * The freed quantity returns to the item/component remaining quantity and the
  * final BOQ status is re-derived from the live allocations.
+ *
+ * Blocks removal when StatementItem rows reference the allocation (extract integrity).
  */
 export class RemoveDistributionUseCase {
   constructor(
@@ -38,6 +41,7 @@ export class RemoveDistributionUseCase {
     private readonly buildings: IBuildingRepository,
     private readonly ownership: OwnershipService,
     private readonly audit: AuditService,
+    private readonly prisma: PrismaService,
   ) {}
 
   async execute(input: RemoveDistributionInput, user?: OwnershipActor, userId?: string): Promise<Result<FinalBoqItemResult>> {
@@ -72,8 +76,32 @@ export class RemoveDistributionUseCase {
       new UniqueEntityId(input.contractorId),
     );
     if (boq) {
-      boq.removeItem(input.itemCode, input.componentId);
-      await this.contractorBoq.save(boq);
+      const allocationItem = boq.items.find(
+        (i) =>
+          i.itemCode === input.itemCode &&
+          (i.componentId?.toValue() ?? undefined) === input.componentId,
+      );
+
+      if (allocationItem) {
+        const statementItemCount = await this.prisma.statementItem.count({
+          where: {
+            contractorBoqItemId: allocationItem.id.toValue(),
+            deletedAt: null,
+          },
+        });
+
+        if (statementItemCount > 0) {
+          return Result.fail(
+            new FinalBoqApplicationError(
+              FinalBoqErrorCode.DISTRIBUTION_IN_USE,
+              `لا يمكن إزالة التوزيع — البند ${input.itemCode} مستخدم في ${statementItemCount} سطر/سطور استخراج. يرجى حذف الاستخراجات المرتبطة أولاً`,
+            ),
+          );
+        }
+
+        boq.removeItem(input.itemCode, input.componentId);
+        await this.contractorBoq.save(boq);
+      }
     }
 
     if (userId) {

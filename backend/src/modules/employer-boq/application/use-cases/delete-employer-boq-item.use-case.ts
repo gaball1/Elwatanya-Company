@@ -8,6 +8,8 @@ import {
   EmployerBoqErrorCode,
 } from '../errors/employer-boq-application.error';
 import { RemoveAnalyticalBoqItemUseCase } from '@/modules/analytical-boq/application/use-cases/remove-analytical-boq-item.use-case';
+import { isFinalItemCommittedForItem } from '@/modules/analytical-boq/application/use-cases/analytical-boq.guards';
+import { IFinalBoqRepository } from '@/modules/final-boq/domain/final-boq.repository';
 import { OwnershipActor, OwnershipService } from '@/common/services/ownership.service';
 import { AuditService } from '@/modules/audit/audit.service';
 import { NotificationService } from '@/common/services/notification.service';
@@ -16,6 +18,7 @@ export class DeleteEmployerBoqItemUseCase {
   constructor(
     private readonly employerBoq: IEmployerBoqRepository,
     private readonly buildings: IBuildingRepository,
+    private readonly finalBoq: IFinalBoqRepository,
     private readonly removeAnalytical: RemoveAnalyticalBoqItemUseCase,
     private readonly ownership: OwnershipService,
     private readonly audit: AuditService,
@@ -43,16 +46,23 @@ export class DeleteEmployerBoqItemUseCase {
       );
     }
 
+    if (await isFinalItemCommittedForItem(this.finalBoq, buildingEntityId, normalizedCode)) {
+      return Result.fail(
+        new EmployerBoqApplicationError(
+          EmployerBoqErrorCode.ITEM_IS_COMMITTED,
+          `لا يمكن حذف البند ${normalizedCode} بعد تحليله أو توزيعه — يرجى إلغاء التوزيع والتحليل أولاً`,
+        ),
+      );
+    }
+
     const before = { itemCode: existing.itemCode, description: existing.description, unit: existing.unit, quantity: existing.quantity, unitPrice: existing.unitPrice };
     await this.employerBoq.deleteByItemCode(buildingEntityId, normalizedCode);
 
-    // Cascade delete from Analytical (which also syncs Final BOQ). Tolerate absence in analytical.
     const cascade = await this.removeAnalytical.execute(buildingId, normalizedCode, user, userId);
     if (cascade.isFailure) {
-      // Analytical item may not exist yet — the employer item is already removed.
       const error = cascade.error as Error | undefined;
       if (error && 'code' in error && (error as { code: string }).code === 'ITEM_NOT_FOUND') {
-        // ignore
+        // Analytical item may not exist yet — the employer item is already removed.
       }
     }
 

@@ -70,11 +70,12 @@ export class SetAnalyticalBoqItemsUseCase {
     }
 
     const existingItems = await this.analyticalBoq.findByBuildingId(buildingId);
+    const cachedAggregate = await this.finalBoq.findByBuildingId(buildingId);
     for (const existing of existingItems) {
       const incoming = domainItems.find((d) => d.itemCode === existing.itemCode);
       if (
         (incoming === undefined || incoming.quantity < existing.quantity) &&
-        (await isFinalItemCommittedForItem(this.finalBoq, buildingId, existing.itemCode))
+        (await isFinalItemCommittedForItem(this.finalBoq, buildingId, existing.itemCode, cachedAggregate))
       ) {
         return Result.fail(
           new AnalyticalBoqApplicationError(

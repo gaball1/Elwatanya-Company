@@ -3,7 +3,10 @@ import * as path from 'path';
 
 const BASE = process.env.API_BASE || 'http://localhost:3001/api/v1';
 const EMAIL = process.env.ADMIN_EMAIL || 'admin@elwataniya.com';
-const PASSWORD = process.env.ADMIN_PASSWORD || 'Admin@123';
+if (!process.env.ADMIN_PASSWORD) {
+  throw new Error('ADMIN_PASSWORD is required. Refusing to use a default password.');
+}
+const PASSWORD = process.env.ADMIN_PASSWORD;
 const assetsDir = path.resolve(__dirname, 'assets');
 
 let token = '';

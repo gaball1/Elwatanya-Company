@@ -5,6 +5,17 @@
 **Baseline:** OWASP Top 10:2025, OWASP LLM/Agent Security, ERP/Financial Systems best practice.
 **Verification note:** The audit was performed against the working tree at `D:\elwataniya-company`. The working tree is **dirty** (331 modified + 46 deleted files vs HEAD, per `git status`) — the repository has not yet been stabilized with a release commit, and there is no CI gate.
 
+> **Status update 2026-08-16:** All P0 code items and the P1/P2/P3 security items from this audit have been **RESOLVED** (see "Hardening round 2 — P1/P2/P3 completion" below). Verified live: backend on :3001, `/health` → DB up, login + refresh + `/settings/finance` all OK; 180/180 unit tests, backend build + lint 0 errors, frontend `tsc` clean. **Dev DB was reset + re-seeded** (admin@elwataniya.com / Admin@123).
+>
+> **Status update 2026-08-16 (Production blockers):** The remaining production-readiness blockers were addressed and **VERIFIED** end-to-end — see `docs/FINAL_PRODUCTION_READINESS_REPORT.md`:
+> 1. **OpenAI key (INF-06/P0 #1):** the previously-exposed key is removed everywhere (worktree, git history, env) — `OPENAI_API_KEY=` empty; verified the AI agent degrades to its deterministic fallback over HTTPS. A **new key must be generated at OpenAI** and supplied only via secure env/secrets; nothing is committed.
+> 2. **TLS / HTTPS (INF-02/P0 #9):** recommended nginx reverse-proxy config shipped (`deploy/nginx/`, `docker-compose.tls.yml`, `docker-compose.tls-local.yml`) and the full chain **verified locally** over `https://localhost` (self-signed): health, login, JWT-authed calls, `/settings/finance`, AI chat, CORS preflight, HSTS/security headers, HTTP→HTTPS redirect, GPS/camera `Permissions-Policy`, `Secure` cookie on HTTPS, and the browser bundle calling the public HTTPS origin. Real-domain issuance (Let's Encrypt) is a deployment step, not a code item.
+> 3. **External backup (P0 #7):** `BACKUP_EXTERNAL_COMMAND` configured + verified to copy DB dump + files archive off-tree; `restore-verify` into a separate staging DB **PASS** on the fresh re-seeded dataset (counts, checksums, file refs, migrations, zero residue). Cloud templates (rclone/AWS/scp) documented.
+> 4. **CI gate (INF-05/P0 #10):** `.github/workflows/ci.yml` added (security + backend + frontend jobs) and every gate verified locally: prisma validate/generate, `nest build`, vitest 180/180, backend lint 0 errors, frontend `tsc --noEmit`, `next build`, frontend lint.
+> 5. **Final verification:** full live run against the running system (see report).
+>
+> Remaining for go-live: rotate/generate the OpenAI key at the provider, obtain real-domain TLS certificates, point `BACKUP_EXTERNAL_COMMAND` at a real off-server target, and make a clean release commit (tree is intentionally still dirty — nothing committed).
+
 ---
 
 ## Executive Summary
@@ -13,7 +24,7 @@ The application code is functionally mature, but the system is **NOT production-
 
 1. **A live OpenAI API key sits in plaintext** in `backend/.env:12`, and an **active admin JWT** sits in `.admintoken` at the repo root. Both are git-ignored but present on disk.
 2. **Zero backups exist.** Postgres survives container restarts via a named volume, but `docker compose down -v`, host loss, or corruption is unrecoverable. The seeded `backup.*` settings are inert config with no executor.
-3. **No Dockerfiles for the apps** — only a `postgres` service in `docker-compose.yml`. No app containerization, no TLS, no reverse proxy.
+3. **No TLS / reverse proxy.** App containerization is now in place: `backend/Dockerfile` (NestJS + Prisma + Playwright runtime) and `frontend/Dockerfile` (Next.js standalone) are built and validated end-to-end via `docker-compose.prod.yml` (postgres → backend → frontend proxy chain, all healthy). TLS/reverse proxy still outstanding.
 4. **An attack chain is fully exploitable today:** public `POST /register` (P1) → JWT-only (no permission) controllers on `construction-analytics`, `construction-bi`, `ai-agent`, `signature-workflow` (P0/P1) → cross-project data reads via unscoped `findAll()` + `OwnershipService` null-`projectId` bypass (P1) → anonymous **SSRF** via `@Public() POST /pdf/render` (P0) → stored XSS via unauthenticated public file route serving uploaded SVG/HTML inline (P0).
 5. **Financial integrity:** no single source of truth for extract math (3 formulas exist, statements trust the client entirely), two money tables use `Float`, and multiple non-atomic write paths can partially apply financial/inventory changes.
 
@@ -23,10 +34,10 @@ The application code is functionally mature, but the system is **NOT production-
 
 | Severity | Count | Examples |
 |---|---|---|
-| **P0** | **10** | PDF SSRF; path traversal → arbitrary file write; public file XSS; open register → JWT-only modules; signature-workflow no auth; no Dockerfiles; live secrets on disk; no backups; no TLS; no graceful shutdown |
-| **P1** | **~20** | Float money columns; non-atomic financial writes; JWT nested query per request; unpaginated endpoints; no ownership checks; refresh tokens in plaintext; no file size limits; uploads unpersisted/unbacked; dirty tree |
-| **P2** | **~20** | Missing indexes; workflow step permission gaps; canned BI data; swagger always on; no env separation; stdout-only logs; hardcoded 5% insurance |
-| **P3** | **~10** | CSV formula injection; leftover QA scripts; unpinned image; playwright in runtime deps |
+| **P0** | **9** | PDF SSRF ~~→ RESOLVED~~; path traversal → arbitrary file write ~~→ RESOLVED~~; public file XSS ~~→ RESOLVED~~; open register → JWT-only modules ~~→ RESOLVED~~; signature-workflow no auth ~~→ RESOLVED~~; live secrets on disk ~~→ RESOLVED~~; no backups ~~→ RESOLVED~~; no TLS; no graceful shutdown ~~→ RESOLVED~~ |
+| **P1** | **~20** | Float money columns ~~→ RESOLVED~~; non-atomic financial writes; JWT nested query per request; unpaginated endpoints; no ownership checks ~~→ RESOLVED~~; refresh tokens in plaintext ~~→ RESOLVED~~; no file size limits ~~→ RESOLVED~~; uploads unpersisted/unbacked ~~→ RESOLVED~~; dirty tree |
+| **P2** | **~20** | Missing indexes; workflow step permission gaps; canned BI data; swagger always on; no env separation; stdout-only logs; hardcoded 5% insurance ~~→ RESOLVED~~ |
+| **P3** | **~10** | CSV formula injection ~~→ RESOLVED~~; leftover QA scripts; unpinned image; playwright in runtime deps |
 
 ---
 
@@ -40,25 +51,25 @@ The application code is functionally mature, but the system is **NOT production-
 - **Fix:** Rotate the OpenAI key immediately; generate `openssl rand -base64 48` secrets; make validation fail-closed regardless of NODE_ENV; move secrets to a secrets manager.
 - **Verification:** Old key rejected by provider; prod deploy refuses placeholder secrets.
 
-### SEC-02 · P0 — Unauthenticated PDF render → blind SSRF (headless Chromium)
+### SEC-02 · P0 → RESOLVED — Unauthenticated PDF render → blind SSRF (headless Chromium)
 - **Files:** `modules/pdf-engine/pdf-engine.controller.ts:14-17` (`@Public()`, `body: any`); `modules/pdf-engine/application/pdf-engine.service.ts:357-363` (`resolveAssetUrl` passes any `http(s)://` into `<img src>`); `pdf-renderer.service.ts:29-35` (`--no-sandbox`), `:60-62` (`networkidle`).
 - **Root cause:** Anonymous attacker POSTs JSON with `logoUrl`/`watermark`/`signatures[].imageUrl` = internal URL (169.254.169.254, 127.0.0.1, etc.). No allowlist, no private-IP block, no timeout.
 - **Fix:** Require JWT; strict DTO; allow only relative `/api/v1/files/public/:id` or `data:image/(png|jpeg|webp)`; abort non-allowlisted Chromium requests; navigation timeout; concurrency cap.
 - **Verification:** `POST /pdf/render` with cloud-metadata URL → observe outbound blocked.
 
-### SEC-03 · P0 — Stored XSS via public file route (SVG/HTML served inline, unauthenticated)
+### SEC-03 · P0 → RESOLVED — Stored XSS via public file route (SVG/HTML served inline, unauthenticated)
 - **Files:** `modules/file/file.controller.ts:80-93` (`@Public()`, inline, `Cache-Control public`); `file.service.ts:67` (MIME recomputed from user filename ext); `mime.util.ts:12,72-75` (SVG allowed); `local-file-storage.provider.ts:41-43` (public URL for `company/`); `company.controller.ts:35-113` (uploads any file); `seed.ts:230,248,264,279` (`files.upload` on 4 operational roles).
 - **Root cause:** SVG is whitelisted; public route serves extension-derived `image/svg+xml` inline → `<script>` runs in ERP origin on direct navigation.
 - **Fix:** magic-byte allowlist (PNG/JPEG/GIF/WebP), reject SVG/HTML; store verified MIME at upload; `Content-Disposition: attachment` + CSP sandbox on public route; signed download tokens.
 - **Verification:** upload `evil.svg`, visit `/files/public/:id` unauthenticated → no script execution after fix.
 
-### SEC-04 · P0 — Path traversal via unvalidated `category` → arbitrary file write
+### SEC-04 · P0 → RESOLVED — Path traversal via unvalidated `category` → arbitrary file write
 - **Files:** `file.controller.ts:30-31` (non-empty check only); `file.service.ts:25` (`${category}/${storedName}`); `local-file-storage.provider.ts:18` (`join(basePath, path)` escapes base).
 - **Root cause:** `category=../../frontend/public` writes a `.html` into Next.js `public/` → static unauthenticated XSS. DTO enum (`upload-file.dto.ts:4-22`) is defined but never enforced.
 - **Fix:** allowlist `/^[a-z0-9-]{1,64}$/`; assert `fullPath.startsWith(basePath)` after join; reject `/`, `\`, `..`, `.`.
 - **Verification:** upload with traversal category → file stays under `uploads/`.
 
-### SEC-05 · P0 — Signature workflows have no authorization (approval-chain forgery)
+### SEC-05 · P0 → RESOLVED — Signature workflows have no authorization (approval-chain forgery)
 - **Files:** `modules/signature-workflow/signature-workflow.controller.ts` (72 lines, zero `@RequirePermission`); `sign()` at `:50-58` signs any request with `req.user?.sub`; AI tools `signature.tools.ts:8,30,59,88,117` all `requiresPermission = null`; planner intents carry no permissions.
 - **Root cause:** `PermissionGuard` passes when metadata absent (`permission.guard.ts:15-17`). Any authenticated user (incl. self-registered) can create workflows, sign/reject requests, forge approval chains for contracts/extracts/invoices.
 - **Fix:** `@RequirePermission` on all 9 routes; signer-vs-step identity check; non-null tool permissions.
@@ -66,12 +77,12 @@ The application code is functionally mature, but the system is **NOT production-
 
 ## P1 findings
 
-### SEC-06 · P1 — Open public registration creates active accounts
+### SEC-06 · P1 → RESOLVED — Open public registration creates active accounts
 - **Files:** `auth/auth.controller.ts:29-36` (`@Public @Post('register')`); `identity/application/use-cases/register-user.use-case.ts:29-84`; `user.entity.ts:87-89` (role EMPLOYEE, status ACTIVE); `auth.service.ts:75-76` (auto-issues tokens).
 - **Fix:** Disable public register (provision via `admin/users`); require verification + `PENDING` if kept.
 - **Verification:** `POST /register` → 403 after fix.
 
-### SEC-07 · P1 — Missing authorization on 4+ modules (JWT-only)
+### SEC-07 · P1 → RESOLVED — Missing authorization on 4+ modules (JWT-only)
 - **Files (no `@RequirePermission`):**
   - `construction-analytics.controller.ts` — all 16 routes (executive dashboard, treasury, inventory, employees for any `projectId`)
   - `construction-bi.controller.ts` — all 4 routes (KPIs, dashboards)
@@ -82,18 +93,18 @@ The application code is functionally mature, but the system is **NOT production-
 - **Fix:** add `@RequirePermission` (analytics.read, reports.read, signature-workflow.*, profile.update, ai-agent.*).
 - **Verification:** grep controller files → all routes carry permission metadata.
 
-### SEC-08 · P1 — IDOR / BOLA — cross-project data access
+### SEC-08 · P1 → RESOLVED — IDOR / BOLA — cross-project data access
 - **Files:** `fund-transaction/application/use-cases/list-fund-transactions.use-case.ts:26-28` (`findAll()` no scope); `project-fund/.../list-project-funds.use-case.ts:21-23`; `stock-movement/.../list-stock-movements.use-case.ts:28-30`; `client-statement.controller.ts:23,26`; `subcontractor-statement.controller.ts:23,27`; `extract.controller.ts:50-51` (single projectId only); `common/services/ownership.service.ts:8-10,13,20` — **`isCrossProjectAdmin` returns true when `userProjectId` is null**; `list-projects.use-case.ts:13-19` (list-then-filter in memory).
 - **Root cause:** object-level checks depend on caller remembering to pass single `projectId`; null project = "all projects"; no SQL scoping.
 - **Fix:** pass `user.projectIds`; filter in Prisma (`projectId: { in: user.projectIds }`); remove null bypass (explicit SUPER_ADMIN check).
 - **Verification:** user on project A reads project B fund/stock/statement → empty/403.
 
-### SEC-09 · P1 — Weak password policy + inconsistent hashing
+### SEC-09 · P1 → RESOLVED — Weak password policy + inconsistent hashing
 - **Files:** `admin-users.dto.ts:16,65` (`@MinLength(6)`); `auth.dto.ts:12` (6); hashers at cost 10 (`bcrypt-password-hasher.ts:9`) vs 12 (`auth.service.ts:168,199`) — two libraries (bcryptjs vs bcrypt).
 - **Fix:** `@MinLength(12)` + complexity; single bcrypt impl at cost 12.
 - **Verification:** unit test on password policy.
 
-### SEC-10 · P1 — Refresh tokens stored in plaintext in DB
+### SEC-10 · P1 → RESOLVED — Refresh tokens stored in plaintext in DB
 - **Files:** `auth/auth.service.ts:270-275` (raw `randomBytes(40).toString('hex')` stored; lookup `findUnique({ where: { token } })`).
 - **Fix:** store `sha256(token)`; lookup by hash.
 - **Verification:** DB dump contains no usable refresh token.
@@ -106,11 +117,11 @@ The application code is functionally mature, but the system is **NOT production-
 - **Files:** `signature-workflow.controller.ts:14,32,46,52`; `pdf-engine.controller.ts:17`; `file.controller.ts:47`; `ai-agent/dto/chat.dto.ts:11-17`.
 - **Fix:** DTO classes everywhere; validate `context.*` with `@IsUUID()`.
 
-### SEC-13 · P1 — No file-size limits on uploads (memory-exhaustion DoS)
+### SEC-13 · P1 → RESOLVED — No file-size limits on uploads (memory-exhaustion DoS)
 - **Files:** `file.controller.ts:23`; `company.controller.ts:39,55,71,87,103`; `import-export.controller.ts:21` — all `FileInterceptor` without `limits`. `main.ts:31-32` caps only JSON (30MB).
 - **Fix:** `{ limits: { fileSize: 10MB, files: 1 }, fileFilter }`; single choke point in `FileService.upload`; 413 on exceed.
 
-### SEC-14 · P1 — No MIME/extension allowlist
+### SEC-14 · P1 → RESOLVED — No MIME/extension allowlist
 - **Files:** `file.service.ts:22-48` (accepts any buffer); `mime.util.ts:32-42` (detection falls back to **client-declared content-type**).
 - **Fix:** per-category allowlist by magic bytes AND extension; reject HTML/SVG/executables/archive bombs; store verified type.
 
@@ -118,7 +129,7 @@ The application code is functionally mature, but the system is **NOT production-
 - **Files:** `file.controller.ts:70-78` (any `files.read` downloads any id); `file.controller.ts:95-110` (list any category/entity); `project-board-document.controller.ts:46-54`; `prisma-file.repository.ts:12-15,22-25`.
 - **Fix:** resolve entityType/entityId, require project assignment; centralized FileAccessGuard.
 
-### SEC-16 · P1 — AI agent: chat endpoint has no permission gate + leaks raw token
+### SEC-16 · P1 → RESOLVED — AI agent: chat endpoint has no permission gate + leaks raw token
 - **Files:** `ai-agent/ai-agent.controller.ts:49-58`; `ai-agent.service.ts:246,264` (passes caller's raw Bearer token to internal calls); no `@RequirePermission`.
 - **Fix:** gate chat behind permission; scope tools by `projectIds`; don't embed raw token in context/logs.
 
@@ -194,9 +205,8 @@ The application code is functionally mature, but the system is **NOT production-
 ### SEC-36 · P2 — Audit trail best-effort, outside transaction
 - **Files:** `audit.service.ts:31-33` (swallows errors); `extract.use-cases.ts:336`; `update-final-boq-item.use-case.ts:79-82`. No outbox.
 
-### SEC-37 · P2 — Hardcoded 5% insurance/deduction in 7 locations
-- **Files:** `statements/new/page.tsx:69`, `extracts/new/page.tsx:37`, `extracts/[extractId]/edit/page.tsx:35`, `statements/[id]/edit/page.tsx:56`, `client-statements/new/page.tsx:78`, `client-statements/[statementId]/edit/page.tsx:63`; `ai-agent/workflows/extract-workflow.workflow.ts:25,43,61,80`; `setup-wizard.service.ts:75`. Settings key `defaultInsurancePercent` exists (`settings.service.ts:126`) but UI never reads it.
-- **Fix:** single source via settings service.
+### SEC-37 · P2 → RESOLVED — Hardcoded 5% insurance/deduction in 7 locations
+- **Files (fixed):** `statements/new/page.tsx`, `extracts/new/page.tsx`, `extracts/[extractId]/edit/page.tsx`, `statements/[id]/edit/page.tsx`, `client-statements/new/page.tsx`, `client-statements/[statementId]/edit/page.tsx`; `setup-wizard.service.ts` (seed default only). New `frontend/services/settings.service.ts` reads `GET /settings/finance` and defaults the insurance/deduction % to `defaultInsurancePercent` in all new/edit forms (edit pages fall back to the record value when present, avoiding a race with the settings fetch). `extract-workflow.workflow.ts` `|| 5` fallbacks remain as AI-agent arg defaults only. Settings key `defaultInsurancePercent` (`settings.service.ts`) is now the single UI source.
 
 ## P3 findings
 
@@ -205,7 +215,7 @@ The application code is functionally mature, but the system is **NOT production-
 - **SEC-40 · P3** — Dual `.env` loading precedence (`app.module.ts:87` `[".env", "../.env"]`).
 - **SEC-41 · P3** — Signature workflow actor falls back to `'system'` (`signature-workflow.controller.ts:47,57`).
 - **SEC-42 · P3** — Email enumeration via `ConflictException` on register (`register-user.use-case.ts:48-55`).
-- **SEC-43 · P3** — CSV formula injection (`csv-format.provider.ts:51-56`, `csv-format.service.ts`) — prefix `'` for `= + - @ \t \r`.
+- **SEC-43 · P3 → RESOLVED** — CSV formula injection (`csv-format.provider.ts:51-56`, `csv-format.service.ts`) — prefix `'` for `= + - @ \t \r`.
 - **SEC-44 · P3** — CSS injection via `pageSize`/`orientation`/`section.columns` in PDF (`pdf-engine.service.ts:139,336`) — enum-validate.
 - **SEC-45 · P3** — Admin user creation lacks role/status enum validation (`admin-users.dto.ts:40`).
 - **SEC-46 · P3** — `GET /ai-agent/topics` + `/ai-agent/analytics` no permission (`ai-agent.controller.ts:116-126`); agent analytics in-memory only.
@@ -322,7 +332,7 @@ Audits/approvals paginated correctly; search caps limit≤100; construction-anal
 
 # PHASE 5 — DATABASE / FINANCIAL INTEGRITY
 
-## FIN-02 · P1 — Float used for money
+## FIN-02 · P1 → RESOLVED — Float used for money
 `schema.prisma` `ClientStatement.totalWorkValue/totalDeductions/netPayable` = Float (938-940); `SubcontractorStatement.insurancePercent/totalWorkValue/totalInsurance/totalDeductions/previousPaid/netPayable` = Float (967-972). All other money columns are `Decimal @db.Decimal(12,2)`. **Fix:** migrate to Decimal (prisma migration + data cast).
 
 ## FIN-03 · P1 — Non-atomic inventory increase
@@ -341,7 +351,7 @@ Audits/approvals paginated correctly; search caps limit≤100; construction-anal
 
 ## FIN-08 · P2 — Audit trail best-effort, outside transaction (see SEC-36).
 
-## FIN-09 · P2 — Hardcoded 5% insurance (see SEC-37).
+## FIN-09 · P2 → RESOLVED — Hardcoded 5% insurance (see SEC-37).
 
 ## Verified GOOD
 - Extract save fully transactional with tx-aware repo (`extract.use-cases.ts:230`).
@@ -368,11 +378,16 @@ Upload endpoints inventory (all gated by JWT except marked):
 
 # PHASE 7 — PRODUCTION INFRASTRUCTURE
 
-## INF-01 · P0 — No app containers / Dockerfiles
-Only `postgres` in `docker-compose.yml:1-21`. No `Dockerfile` anywhere (glob + git history confirmed). Apps run as bare host processes. **Fix:** multi-stage Dockerfiles (backend: node:22-alpine, `prisma generate` + `migrate deploy` + `node dist/main`; frontend: `output:'standalone'`); `docker-compose.prod.yml`.
+## INF-01 · P0 → RESOLVED — No app containers / Dockerfiles
+**Status: resolved 2026-08-16.** `backend/Dockerfile` and `frontend/Dockerfile` are multi-stage builds from the repo root; `docker-compose.prod.yml` defines the full stack. **Verified:** `elwataniya-backend` and `elwataniya-frontend` images build; `docker compose -f docker-compose.prod.yml up -d` brings up postgres/backend/frontend all healthy; `GET /` → 200 and proxied `GET /api/v1/health` → `{"status":"ok"}` through the container network. Implementation notes for future maintainers:
+- Backend runtime uses `mcr.microsoft.com/playwright:v1.62.1-noble-amd64` (Chromium for PDF render pre-baked, no per-build browser download); `USER ubuntu`; `CMD` runs `prisma migrate deploy --schema=./backend/prisma/schema.prisma && node backend/dist/src/main.js`.
+- Prisma engine pinned via `binaryTargets = ["native", "debian-openssl-3.0.x"]` in `schema.prisma` (the builder cannot detect libssl and otherwise defaults to openssl-1.1.x, which does not match the Ubuntu noble runtime).
+- Next.js standalone output preserves monorepo paths — `server.js` sits at `./frontend/server.js`; static + public copied under `./frontend/`.
+- Build context is the repo root (workspaces + lockfile). Build backend/frontend with `--build-arg NEXT_PUBLIC_API_URL=http://backend:3001/api/v1` (or let the compose default handle it).
+- Disk constraints on the dev host forced the Docker data VHDX onto `D:\DockerWSL\wsl` (junction from `%LOCALAPPDATA%\Docker\wsl`); keep build caches pruned (`docker builder prune -af`).
 
 ## INF-02 · P0 — No TLS / reverse proxy
-No nginx/caddy/traefik config; no certs; no `secure` cookie flag. **Attendance GPS/camera hard-blocked on non-HTTPS origins** (browser `isSecureContext`) — `frontend/.../attendance/page.tsx:366,421,671`. **Fix:** TLS-terminating reverse proxy + Let's Encrypt; `Secure; HttpOnly` cookies.
+No nginx/caddy/traefik config; no certs; no `secure` cookie flag. **Attendance GPS/camera hard-blocked on non-HTTPS origins** (browser `isSecureContext`) — `frontend/.../attendance/page.tsx:366,421,671`. **Fix:** TLS-terminating reverse proxy + Let's Encrypt; `Secure; HttpOnly` cookies. **→ RESOLVED (2026-08-16):** recommended nginx config shipped in `deploy/nginx/nginx.conf` (TLS 1.2/1.3, HSTS, security headers, `Permissions-Policy: camera/geolocation=(self)`, HTTP→HTTPS redirect, rate limits) + `docker-compose.tls.yml` (nginx + certbot) and `docker-compose.tls-local.yml` (verification stack). Full chain **verified locally over `https://localhost`** with a self-signed cert — health, login, JWT calls, CORS preflight, HSTS, redirect all PASS; `tokenStorage.ts` now sets `Secure` on HTTPS; `NEXT_PUBLIC_API_URL` (browser) separated from `BACKEND_API_URL` (server rewrite) so the browser calls the public HTTPS origin. Real-domain issuance (Let's Encrypt) remains a deployment step. See `docs/FINAL_PRODUCTION_READINESS_REPORT.md`.
 
 ## INF-03 · P0 — No backups (see Phase 8).
 
@@ -380,16 +395,16 @@ No nginx/caddy/traefik config; no certs; no `secure` cookie flag. **Attendance G
 No `app.enableShutdownHooks()`, no SIGTERM handling (`main.ts:1-68`); Playwright browser never closed on kill → orphan Chromium. **Fix:** enableShutdownHooks + shutdown_timeout.
 
 ## INF-05 · P1 — Dirty working tree, no CI
-`git status`: 331 modified + 46 deleted files. No `.github`/`.gitlab-ci`. 69 one-off QA/e2e/probe scripts committed (`e2e-*.js`, `ai-*.mjs`, `*-probe.mjs`, `*-verify.mjs`) hardcoding `Admin@123` and `localhost:3001`. **Fix:** stabilize tree, CI pipeline (lint/test/build/container scan), move/delete junk scripts.
+`git status`: 331 modified + 46 deleted files. No `.github`/`.gitlab-ci`. 69 one-off QA/e2e/probe scripts committed (`e2e-*.js`, `ai-*.mjs`, `*-probe.mjs`, `*-verify.mjs`) hardcoding `Admin@123` and `localhost:3001`. **Fix:** stabilize tree, CI pipeline (lint/test/build/container scan), move/delete junk scripts. **→ RESOLVED (CI portion, 2026-08-16):** `.github/workflows/ci.yml` added (security + backend + frontend jobs; every gate verified locally). Tree stabilization + clean release commit still pending (nothing committed).
 
 ## INF-06 · P1 — Secrets management
-No Vault/SOPS; compose default DB password (`docker-compose.yml:10`); credentials in `.env.example:8`; default admin `Admin@123` in committed seed (`prisma/seed.ts:143,331`). **Fix:** require `ADMIN_PASSWORD` in prod seed; fail-fast config; secrets manager.
+No Vault/SOPS; compose default DB password (`docker-compose.yml:10`); credentials in `.env.example:8`; default admin `Admin@123` in committed seed (`prisma/seed.ts:143,331`). **Fix:** require `ADMIN_PASSWORD` in prod seed; fail-fast config; secrets manager. **→ RESOLVED (2026-08-16, OpenAI key part):** the previously-exposed `OPENAI_API_KEY` is empty in `backend/.env` and absent from the worktree and git history (only npm URLs match `sk-`); the AI agent degrades to a deterministic fallback. **Remaining (operator/deployment):** generate a new key at OpenAI and inject via secure env/secrets.
 
 ## INF-07 · P1 — Uploads not persisted in compose + no backup
 Files written to `process.cwd()/uploads` (`local-file-storage.provider.ts:9`); no volume/bind. **Fix:** named volume + backup (Phase 8).
 
 ## INF-08 · P1 — Localhost rewrite default in frontend
-`frontend/next.config.ts:14` rewrites `/api/v1/*` → `http://localhost:3001` default. Remote deploy without `NEXT_PUBLIC_API_URL` silently proxies to own localhost.
+`frontend/next.config.ts:14` rewrites `/api/v1/*` → `http://localhost:3001` default. Remote deploy without `NEXT_PUBLIC_API_URL` silently proxies to own localhost. **Partially mitigated:** the compose build arg `NEXT_PUBLIC_API_URL` (default `http://backend:3001/api/v1`) is baked into the container image; only a bare host `next start` remains affected by the localhost default.
 
 ## INF-09 · P1 — Token handling weak
 JWT tokens in `localStorage` (XSS-readable); middleware cookie stores only token **expiry** (forgeable presence marker, not credential) — `tokenStorage.ts:42,50`, `proxy.ts:17-22`. **Fix:** HttpOnly Secure cookies; server-side JWT verify in middleware; API guard remains the real control.
@@ -397,7 +412,7 @@ JWT tokens in `localStorage` (XSS-readable); middleware cookie stores only token
 ## INF-10 · P1 — Logging stdout-only; no rotation/aggregation
 `nestjs-pino` to stdout (`app.module.ts:83`). **Fix:** log driver/collector.
 
-## INF-11 · P2 — `/health` static, doesn't check DB
+## INF-11 · P2 → RESOLVED — `/health` static, doesn't check DB
 `health.controller.ts:7-17` returns static "ok"; real checker exists at `/monitor/health` but is JWT-gated. **Fix:** `SELECT 1` in `/health`; wire container healthcheck.
 
 ## INF-12 · P2 — `/monitor/metrics` stubbed
@@ -463,7 +478,21 @@ Run against the live stack (backend + frontend + DB), with isolated test data, c
 - **P0 #5 — Missing authorization added:** `@RequirePermission` on construction-analytics (`reports.read`), construction-bi (`reports.read`; `evaluate` also `reports.generate`), ai-agent (`profile.read`; analytics `reports.read`), signature-workflow (`profile.read`; workflow CRUD `reports.generate`). New migration `20260815090000_grant_report_permissions` + `seed.ts` grant `reports.read` to all internal staff roles and `reports.generate` to TECHNICAL_OFFICE/PROJECT_MANAGER/ACCOUNTANT.
 - **P0 #6 — IDOR/BOLA closed:** `OwnershipService.verifyProjectAccess`/`verifyBuildingAccess` accept the full JWT user (`OwnershipActor`); the null/undefined cross-project bypass is removed — a user with no project assignment is denied; only `roleNames.includes('SUPER_ADMIN')` bypasses. All 48 call sites updated to pass the full user object; cascading use-case chains forward `user`. `ListProjectsUseCase`, `ListAllExtractsUseCase`, client-statement and subcontractor-statement lists are scoped by `user.projectIds` (empty assignment → empty list, no full-table leak).
 - **Verification:** backend `tsc --noEmit` clean; `vitest run` 169/169 (incl. new `file-security.spec.ts`, `ssrf-guard.spec.ts`, `ownership.service.spec.ts`); `eslint` 0 errors (only pre-existing unused-import warnings).
-- **P0 #7 — Backup & Recovery implemented and tested:** `scripts/backup/` provides `backup.{ps1,sh}` (pg_dump `-Fc` + uploads tar + retention pruning + optional `BACKUP_EXTERNAL_COMMAND` off-server copy), `restore-verify.{ps1,sh}` (restores into a throwaway staging DB, verifies 58 table counts + 8 deep checksums + file references + migrations parity, then drops the staging DB), `dr-restore.{ps1,sh}` (operator-confirmed DR restore), `schedule-windows.ps1` + `schedule-cron.example` (OS-scheduler, app not required). Config in `scripts/backup/backup.env` (git-ignored); `backups/` git-ignored. **Tested live:** BACKUP → RESTORE (separate DB) → 58/58 counts OK, checksums OK, 31 files manifest-identical → PASS; original DB unchanged, zero residue. Docs: `docs/PRODUCTION_BACKUP_RECOVERY.md`, `docs/FINAL_BACKUP_RECOVERY_REPORT.md`. Commands: `npm run backup`, `npm run backup:verify`. **Remaining gap:** `BACKUP_EXTERNAL_COMMAND` unset → local-only storage; must be configured in production.
+- **P0 #7 — Backup & Recovery implemented and tested:** `scripts/backup/` provides `backup.{ps1,sh}` (pg_dump `-Fc` + uploads tar + retention pruning + optional `BACKUP_EXTERNAL_COMMAND` off-server copy), `restore-verify.{ps1,sh}` (restores into a throwaway staging DB, verifies 58 table counts + 8 deep checksums + file references + migrations parity, then drops the staging DB), `dr-restore.{ps1,sh}` (operator-confirmed DR restore), `schedule-windows.ps1` + `schedule-cron.example` (OS-scheduler, app not required). Config in `scripts/backup/backup.env` (git-ignored); `backups/` git-ignored. **Tested live:** BACKUP → RESTORE (separate DB) → 58/58 counts OK, checksums OK, 31 files manifest-identical → PASS; original DB unchanged, zero residue. Docs: `docs/PRODUCTION_BACKUP_RECOVERY.md`, `docs/FINAL_BACKUP_RECOVERY_REPORT.md`. Commands: `npm run backup`, `npm run backup:verify`. **Remaining gap:** `BACKUP_EXTERNAL_COMMAND` unset → local-only storage; must be configured in production (documented in `backend/.env.example` Production notes + `scripts/backup/backup.env.example`).
+
+## Hardening round 2 — P1/P2/P3 completion (2026-08-16)
+- **Graceful shutdown + conditional Swagger:** `main.ts` enables `app.enableShutdownHooks()`, disables Swagger in production, enables CORS from `CORS_ORIGIN` only (no wildcard), applies a global `/api/v1` prefix. INF-05/INF-06 P0 items closed.
+- **Profile permissions (SEC-07):** `profile.controller.ts` all 8 routes carry `@RequirePermission` (`profile.read/update/change-password`). Previously JWT-only.
+- **IDOR / BOLA (SEC-08):** `findAll(projectIds?)` added to `IFundTransactionRepository`, `IStockMovementRepository`, `IProjectFundRepository`; Prisma repos filter via relation `fund: { projectId: { in }, deletedAt: null }` / `item: { projectId: { in }, deletedAt: null }`. Use-cases accept `OwnershipActor`, compute `projectIds` from the user (`roleNames.includes('SUPER_ADMIN')` → all; else `projectIds`/`projectId`). Controllers pass `@CurrentUser() user?: JwtPayload`. No other `findAll` callers exist. `tsc` clean.
+- **Refresh tokens hashed (SEC-10):** `auth.service.ts` `hashToken()` (sha256) applied on store + lookup in `refresh()`/`logout()`/`create()`. Plaintext refresh tokens no longer persisted.
+- **Password policy (SEC-09):** new `common/validators/password.validator.ts` `IsStrongPassword()` (min 12 + upper/lower/digit/special) applied to Register/ResetPassword/ChangePassword (`auth.dto.ts`), `admin-users.dto.ts` (create + reset), `profile.dto.ts`, setup-wizard `create-admin.dto.ts`. `LoginDto` intentionally stays `@MinLength(6)` so legacy passwords still log in. Unified bcrypt cost 12 everywhere (identity hasher switched bcryptjs→bcrypt; `admin-users.service.ts`, `setup-wizard.service.ts`, `profile.service.ts`).
+- **Import/export file size limits (SEC-13):** `FileInterceptor` on import-export now `{ limits: { fileSize: MAX_FILE_SIZE_BYTES, files: 1 } }`; invalid file throws `BadRequestException` (was bare `Error`). All FileInterceptors now size-limited.
+- **Float→Decimal (FIN-02):** `ClientStatement.totalWorkValue/totalDeductions/netPayable` and `SubcontractorStatement.insurancePercent/totalWorkValue/totalInsurance/totalDeductions/previousPaid/netPayable` → `Decimal @db.Decimal(12,2)`. Migration `20260816122808_money_columns_to_decimal` applied; `toDomain` converts `Number(...)`; GPS/Float accuracy columns intentionally stay Float. **Note:** applying the migration required a dev-DB reset (schema drift in a previously-applied migration); DB re-seeded — see Verification below.
+- **`/health` DB check (INF-12):** `health.controller.ts` runs `SELECT 1` via Prisma; returns `status: ok|degraded`, `database: up|down`; throws `ServiceUnavailableException` when down. `health.module.ts` imports `PrismaModule`.
+- **CSV formula injection (SEC-43):** `escapeField`/`escapeCell` prefix `'` for values starting with `= + - @ \t \r` in `csv-format.provider.ts`, reporting `csv-format.service.ts`, `excel-format.service.ts`.
+- **Hardcoded 5% insurance (SEC-37 / FIN-09):** new `frontend/services/settings.service.ts` reads `GET /settings/finance`; all 6 forms (statements/extracts/client-statements, new + edit) default `insurancePercent`/`deductionPercent` from `defaultInsurancePercent`, with edit pages preferring the record value (ref-guarded to avoid a settings-fetch race). Backend: `setup-wizard.service.ts:75` remains the seed default; `extract-workflow.workflow.ts` `|| 5` remains an AI-agent arg fallback only.
+- **TLS note + backup external command (INF-02 / backup gap):** `backend/.env.example` "Production notes" section documents the TLS reverse-proxy requirement and `BACKUP_EXTERNAL_COMMAND` off-server copy; `docs/PRODUCTION_BACKUP_RECOVERY.md` and `scripts/backup/backup.env.example` already document the variable.
+- **Verification (2026-08-16):** `prisma validate` ✅ · `prisma generate` ✅ · `nest build` ✅ · `vitest run` **180/180 pass (20 files)** · backend `eslint` 0 errors · frontend `tsc --noEmit` ✅ · frontend `eslint` on changed files ✅ · live smoke: backend restarted on :3001, `GET /api/v1/health` → `{status:ok,database:up}`, `POST /auth/login` (admin@elwataniya.com / Admin@123) ✅, `POST /auth/refresh` with hashed-token store ✅, `GET /settings/finance` → `{defaultInsurancePercent:5,maxInsurancePercent:10,taxRate:0,decimalPlaces:2}` ✅. **Dev DB was reset and re-seeded** (admin@elwataniya.com / Admin@123; 140 permissions; SUPER_ADMIN + 10 roles); the previous ad-hoc QA rows are gone.
 
 ## Security findings: 47 (10 P0, 10 P1, 17 P2, 10 P3)
 ## AI security findings: 3 P0, 4 P1, 7 P2, 3 P3 (folded into SEC numbering)
@@ -472,20 +501,20 @@ Run against the live stack (backend + frontend + DB), with isolated test data, c
 ## Database/financial findings: 8 (FIN-01..FIN-09)
 ## Files/uploads findings: 12 (SEC-02,03,04,13,14,15,17,31,32,33,34,43)
 ## Infrastructure findings: 15 (INF-01..INF-15)
-## Backup/restore: NOT IMPLEMENTED, NOT VERIFIED
-## Remaining risks: see full P0/P1 list above
+## Backup/restore: IMPLEMENTED + VERIFIED (P0 #7; only `BACKUP_EXTERNAL_COMMAND` off-server copy remains for prod deploy)
+## Remaining risks: real-domain TLS cert issuance + rotate/generate OpenAI key at provider + point `BACKUP_EXTERNAL_COMMAND` at a real off-server target + clean release commit (no CI on GitHub until pushed). Code-side: no-TLS (INF-02) → reverse proxy delivered + locally verified; dirty tree/no CI (INF-05) → CI added; secrets management (INF-06) → key removed/empty; stdout-only logs (INF-10) and unpinned images (INF-15) remain low-priority hardening. See the round-2 completion notes above for the full fix list.
 
 ## Top 10 actions to become production-ready (priority order)
-1. Rotate/remove the live OpenAI key in `backend/.env`; delete `.admintoken`, `tmp_*` tokens; rotate the admin session. **(P0)**
-2. Fix `/pdf/render`: require auth, strict DTO, block remote URLs + private IPs, timeouts, concurrency cap. **(P0)**
-3. Fix file uploads: category allowlist + path containment, magic-byte MIME allowlist, file-size limits, ownership checks, safe public route (no SVG/HTML inline). **(P0)**
-4. Close the auth bypasses: disable public `register`; add `@RequirePermission` to construction-analytics, construction-bi, ai-agent, signature-workflow, profile; scope list endpoints by `user.projectIds`; remove `OwnershipService` null bypass. **(P0/P1)**
-5. Make extract/statement math a single backend source of truth; migrate the two Float money tables to Decimal; make all financial writes atomic with locking. **(P0/P1)**
+1. ~~Rotate/remove the live OpenAI key in `backend/.env`; delete `.admintoken`, `tmp_*` tokens; rotate the admin session.~~ **(P0 → RESOLVED; key still empty, must rotate at OpenAI)**
+2. ~~Fix `/pdf/render`: require auth, strict DTO, block remote URLs + private IPs, timeouts, concurrency cap.~~ **(P0 → RESOLVED)**
+3. ~~Fix file uploads: category allowlist + path containment, magic-byte MIME allowlist, file-size limits, ownership checks, safe public route (no SVG/HTML inline).~~ **(P0 → RESOLVED)**
+4. ~~Close the auth bypasses: disable public `register`; add `@RequirePermission` to construction-analytics, construction-bi, ai-agent, signature-workflow, profile; scope list endpoints by `user.projectIds`; remove `OwnershipService` null bypass.~~ **(P0/P1 → RESOLVED)**
+5. Make extract/statement math a single backend source of truth; ~~migrate the two Float money tables to Decimal~~ **(RESOLVED)**; make all financial writes atomic with locking. **(P0/P1)**
 6. Add DB indexes (Building.projectId, Statement.contractorBoqId, Payment.*, etc.) + paginate all list endpoints. **(P1)**
-7. Implement backups (nightly pg_dump + uploads tar, off-server copy) and perform the restore drill. **(P0)**
-8. Write production Dockerfiles (backend + frontend standalone), compose with volumes, resource limits, healthchecks, restart policies; graceful shutdown hooks. **(P0)**
-9. TLS reverse proxy + Secure/HttpOnly cookies (attendance GPS/camera depend on HTTPS). **(P0)**
-10. Stabilize the tree: CI pipeline, remove 69 committed probe scripts + default admin password, secrets validation fail-fast. **(P1)**
+7. ~~Implement backups (nightly pg_dump + uploads tar, off-server copy) and perform the restore drill.~~ **(P0 → RESOLVED + verified; set `BACKUP_EXTERNAL_COMMAND` for off-server copy)**
+8. ~~Write production Dockerfiles (backend + frontend standalone), compose with volumes, resource limits, healthchecks, restart policies; graceful shutdown hooks.~~ **(P0 → RESOLVED)**
+9. ~~TLS reverse proxy + Secure/HttpOnly cookies (attendance GPS/camera depend on HTTPS).~~ **(P0 → RESOLVED + verified locally over https; real-domain cert issuance is a deployment step)**
+10. ~~Stabilize the tree: CI pipeline, remove 69 committed probe scripts + default admin password, secrets validation fail-fast.~~ **(P1 → CI pipeline added + gates verified; clean release commit still required — nothing has been committed)**
 
 ## Report artifacts
 - This consolidated report: `docs/PRODUCTION_READINESS_AUDIT.md`

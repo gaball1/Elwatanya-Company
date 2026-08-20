@@ -6,11 +6,11 @@ import { useState, useMemo, useCallback, useEffect } from "react";
 import { Card, Badge, Pagination, Dialog } from "@/components/ui";
 import { useToast } from "@/components/ui/Toast";
 import { usePagination } from "@/hooks/usePagination";
+import PrintPdfButton from "@/components/shared/PrintPdfButton";
 import {
   Search,
   X,
   Download,
-  Printer,
   Users,
   Clock,
   CheckCircle2,
@@ -28,6 +28,7 @@ import { attendanceService, type Attendance } from "@/services/attendance.servic
 import { employeeService, type Employee } from "@/services/employee.service";
 import { projectService, type Project } from "@/services/project.service";
 import { buildingService, type Building } from "@/services/building.service";
+import DataLoader from "@/components/shared/DataLoader";
 import { printAsPDF } from "@/lib/printUtils";
 import { useHasPermission } from "@/hooks/usePermissions";
 import { useAuth } from "@/hooks/useAuth";
@@ -461,7 +462,7 @@ export default function AttendanceHistoryPage() {
     showToast(isArabic ? "تم تصدير البيانات" : "Data exported", "success");
   }, [filteredRecords, getEmployeeName, isArabic]);
 
-  const exportPDF = useCallback(() => {
+  const exportPDF = useCallback((logoUrl?: string) => {
     const headers = [
       isArabic ? "الموظف" : "Employee",
       isArabic ? "التاريخ" : "Date",
@@ -482,18 +483,15 @@ export default function AttendanceHistoryPage() {
       rows,
       headers,
       isArabic ? "سجل الحضور والانصراف" : "Attendance History Report",
-      isArabic
+      isArabic,
+      { logoUrl }
     );
   }, [filteredRecords, getEmployeeName, isArabic]);
 
   const hasActiveFilters = filterEmployee || filterProject || filterBuilding || filterDateFrom || filterDateTo || filterStatus;
 
   if (authLoading) {
-    return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto" />
-      </div>
-    );
+    return <DataLoader fullPage />;
   }
 
   if (!canManage) {
@@ -515,11 +513,7 @@ export default function AttendanceHistoryPage() {
   }
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto" />
-      </div>
-    );
+    return <DataLoader fullPage />;
   }
 
   return (
@@ -543,13 +537,7 @@ export default function AttendanceHistoryPage() {
             <Download size={16} />
             {isArabic ? "Excel" : "Excel"}
           </button>
-          <button
-            onClick={exportPDF}
-            className="flex items-center gap-2 px-4 py-2 border border-blue-600 text-blue-600 rounded-lg hover:bg-blue-600 hover:text-white transition text-sm"
-          >
-            <Printer size={16} />
-            {isArabic ? "PDF" : "PDF"}
-          </button>
+          <PrintPdfButton label={isArabic ? "طباعة PDF" : "Print PDF"} onPrint={exportPDF} />
         </div>
       </div>
 

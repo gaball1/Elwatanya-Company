@@ -44,9 +44,14 @@ export class PrismaFundTransactionRepository implements IFundTransactionReposito
     return record ? this.toDomain(record) : null;
   }
 
-  async findAll(): Promise<FundTransaction[]> {
+  async findAll(projectIds?: string[]): Promise<FundTransaction[]> {
     const records = await this.prisma.fundTransaction.findMany({
-      where: { deletedAt: null },
+      where: {
+        deletedAt: null,
+        ...(projectIds && projectIds.length
+          ? { fund: { projectId: { in: projectIds }, deletedAt: null } }
+          : {}),
+      },
       orderBy: { createdAt: 'desc' },
     });
     return records.map((r) => this.toDomain(r));

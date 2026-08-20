@@ -1,5 +1,6 @@
 import { apiClient } from '@/lib/api/apiClient';
-import { getAccessToken } from '@/lib/api/tokenStorage';
+import { attachAuthHeader } from '@/lib/api/authInterceptor';
+import { API_BASE_URL } from '@/lib/api/env';
 import { safeFetch } from '@/lib/api/fetchTransport';
 
 export interface ReportDefinition {
@@ -13,6 +14,16 @@ export interface ReportDefinition {
   requiresBuilding: boolean;
 }
 
+function buildReportUrl(path: string, query?: Record<string, string>): string {
+  const base = API_BASE_URL.replace(/\/$/, '');
+  let url = `${base}/reporting/${path}`;
+  if (query) {
+    const qs = new URLSearchParams(query).toString();
+    if (qs) url += `?${qs}`;
+  }
+  return url;
+}
+
 export const reportsService = {
   async getAvailableReports(): Promise<ReportDefinition[]> {
     const data = await apiClient<{ reports?: ReportDefinition[] }>('/reporting/reports', { method: 'GET' });
@@ -20,30 +31,25 @@ export const reportsService = {
   },
 
   async generateReport(reportName: string, format: string, params: Record<string, unknown> = {}): Promise<Blob> {
-    const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
-    const token = getAccessToken() || '';
-
-    const queryParams = new URLSearchParams({ format });
-    const url = `${baseUrl}/reporting/${reportName}/generate?${queryParams}`;
+    const url = buildReportUrl(`${reportName}/generate`, { format });
+    const headers = attachAuthHeader({ 'Content-Type': 'application/json' });
 
     const response = await safeFetch(url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
+      headers,
       body: JSON.stringify(params),
     });
 
-    if (!response.ok) throw new Error('Report generation failed');
+    if (!response.ok) {
+      const text = await response.text().catch(() => '');
+      throw new Error(text || `Report generation failed (${response.status})`);
+    }
     return response.blob();
   },
 
   async previewReport(reportName: string, params: Record<string, unknown> = {}): Promise<string> {
-    const queryParams = new URLSearchParams(
-      Object.entries(params).filter(([, v]) => v !== undefined && v !== null) as [string, string][]
-    ).toString();
-    const suffix = queryParams ? `?${queryParams}` : '';
+    const filtered = Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== '') as [string, string][];
+    const suffix = filtered.length > 0 ? `?${new URLSearchParams(filtered).toString()}` : '';
     const data = await apiClient<{ html?: string }>(`/reporting/${reportName}/preview${suffix}`, {
       method: 'GET',
     });

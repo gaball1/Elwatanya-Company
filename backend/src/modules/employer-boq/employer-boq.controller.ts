@@ -4,6 +4,7 @@ import {
   ConflictException,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   HttpCode,
   HttpStatus,
@@ -152,6 +153,8 @@ export class EmployerBoqController {
           return new NotFoundException(error.message);
         case EmployerBoqErrorCode.BUILDING_NOT_FOUND:
           return new NotFoundException(error.message);
+        case EmployerBoqErrorCode.ITEM_IS_COMMITTED:
+          return new ForbiddenException(error.message);
         default:
           return new BadRequestException(error.message);
       }

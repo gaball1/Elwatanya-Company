@@ -4,6 +4,7 @@ import { APPROVAL_REPOSITORY } from './domain/approval.repository';
 import { IApprovalRepository } from './domain/approval.repository';
 import { PrismaApprovalRepository } from './infrastructure/prisma-approval.repository';
 import { ListApprovalsUseCase } from './application/use-cases/list-approvals.use-case';
+import { GetApprovalByIdUseCase } from './application/use-cases/get-approval-by-id.use-case';
 import { RequestApprovalUseCase } from './application/use-cases/request-approval.use-case';
 import { ApproveApprovalUseCase } from './application/use-cases/approve-approval.use-case';
 import { RejectApprovalUseCase } from './application/use-cases/reject-approval.use-case';
@@ -25,6 +26,11 @@ import { AuditService } from '@/modules/audit/audit.service';
     {
       provide: ListApprovalsUseCase,
       useFactory: (repo: IApprovalRepository) => new ListApprovalsUseCase(repo),
+      inject: [APPROVAL_REPOSITORY],
+    },
+    {
+      provide: GetApprovalByIdUseCase,
+      useFactory: (repo: IApprovalRepository) => new GetApprovalByIdUseCase(repo),
       inject: [APPROVAL_REPOSITORY],
     },
     {

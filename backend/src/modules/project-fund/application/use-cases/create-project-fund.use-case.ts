@@ -3,11 +3,18 @@ import { IProjectFundRepository } from '../../domain/project-fund.repository';
 import { CreateProjectFundInput, ProjectFundResult } from '../dto/project-fund.dto';
 import { ProjectFund } from '../../domain/project-fund.entity';
 import { toResult } from './list-project-funds.use-case';
+import { OwnershipActor, OwnershipService } from '@/common/services/ownership.service';
 
 export class CreateProjectFundUseCase {
-  constructor(private readonly funds: IProjectFundRepository) {}
+  constructor(
+    private readonly funds: IProjectFundRepository,
+    private readonly ownership: OwnershipService,
+  ) {}
 
-  async execute(input: CreateProjectFundInput): Promise<Result<ProjectFundResult>> {
+  async execute(input: CreateProjectFundInput, user: OwnershipActor | undefined, userId?: string): Promise<Result<ProjectFundResult>> {
+    await this.ownership.verifyProjectAccess(user, input.projectId);
+    const createdBy = userId ?? 'system';
+
     const existing = await this.funds.findByProjectId(input.projectId);
     if (existing) return Result.fail(new Error('Project fund already exists for this project'));
 

@@ -72,6 +72,22 @@ export class RecycleBinService {
     }
   }
 
+  async getStats() {
+    const stats: Record<string, { total: number; deleted: number }> = {};
+    for (const [key, mapping] of Object.entries(MODEL_MAP)) {
+      try {
+        const [total, deleted] = await Promise.all([
+          (this.prisma as any)[mapping.model].count({ where: { deletedAt: null } }),
+          (this.prisma as any)[mapping.model].count({ where: { deletedAt: { not: null } } }),
+        ]);
+        stats[key] = { total, deleted };
+      } catch {
+        stats[key] = { total: 0, deleted: 0 };
+      }
+    }
+    return stats;
+  }
+
   async permanentDelete(entity: string, id: string) {
     const mapping = MODEL_MAP[entity];
     if (!mapping) throw new Error(`Unknown entity: ${entity}`);

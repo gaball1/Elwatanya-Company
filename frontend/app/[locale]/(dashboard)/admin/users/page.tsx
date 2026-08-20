@@ -10,10 +10,35 @@ import {
   CheckCircle, XCircle, Trash2, KeyRound, RefreshCw,
 } from "lucide-react";
 import { userService, roleService } from "@/services/user.service";
+import DataLoader from "@/components/shared/DataLoader";
 import { projectService } from "@/services/project.service";
 import { employeeService, type Employee } from "@/services/employee.service";
 import type { User, Role } from "@/services/user.service";
 import type { Project } from "@/services/project.service";
+import ExportButtons from "@/components/shared/ExportButtons";
+import BulkActionsBar from "@/components/shared/BulkActionsBar";
+
+const ROLE_LABELS: Record<string, { nameAr: string; descAr: string }> = {
+  SUPER_ADMIN: { nameAr: "مدير النظام العام", descAr: "صلاحيات كاملة على النظام" },
+  PROJECT_MANAGER: { nameAr: "مدير المشروع", descAr: "المشاريع المعينة فقط" },
+  SITE_ENGINEER: { nameAr: "مهندس الموقع", descAr: "المشاريع المعينة فقط" },
+  TECHNICAL_OFFICE: { nameAr: "المكتب الفني", descAr: "إدارة المشاريع والمقايسات" },
+  ACCOUNTANT: { nameAr: "محاسب", descAr: "الخزينة والمدفوعات" },
+  HR: { nameAr: "موارد بشرية", descAr: "الموظفين والحضور" },
+  ATTENDANCE_OFFICER: { nameAr: "مسؤول الحضور", descAr: "إدارة الحضور" },
+  STORE_KEEPER: { nameAr: "أمين مخزن", descAr: "المستودعات والمخزون" },
+  PROCUREMENT: { nameAr: "مشتريات", descAr: "الموردين وأوامر الشراء" },
+  CLIENT: { nameAr: "عميل", descAr: "كشف الحساب والمشاريع الخاصة" },
+  CONTRACTOR: { nameAr: "مقاول", descAr: "المقايسة والاستخلاصات والمدفوعات الخاصة" },
+};
+
+function getRoleDisplay(role: { name: string; description?: string }, isArabic: boolean) {
+  if (isArabic) {
+    const translated = ROLE_LABELS[role.name];
+    if (translated) return { name: translated.nameAr, description: translated.descAr };
+  }
+  return { name: role.name, description: role.description || "" };
+}
 
 export default function AdminUsersPage() {
   const params = useParams();
@@ -45,6 +70,7 @@ export default function AdminUsersPage() {
   const [resetPwdForm, setResetPwdForm] = useState({ newPassword: "" });
   const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>([]);
   const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>([]);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -103,8 +129,9 @@ export default function AdminUsersPage() {
       setShowCreateModal(false);
       setCreateForm({ name: "", email: "", password: "", employeeId: "" });
       await loadData();
-    } catch {
-      showToast(isArabic ? "فشل إنشاء المستخدم" : "Failed to create user", "error");
+    } catch (err: any) {
+      const msg = err?.message || (isArabic ? "فشل إنشاء المستخدم" : "Failed to create user");
+      showToast(msg, "error");
     }
   };
 
@@ -168,6 +195,20 @@ export default function AdminUsersPage() {
     }
   };
 
+  const handleBulkDelete = async () => {
+    try {
+      await Promise.all(Array.from(selectedIds).map((id) => userService.remove(id)));
+      showToast(
+        isArabic ? `تم حذف ${selectedIds.size} مستخدم(ين)` : `${selectedIds.size} user(s) deleted`,
+        "success"
+      );
+      setSelectedIds(new Set());
+      await loadData();
+    } catch {
+      showToast(isArabic ? "فشل حذف بعض المستخدمين" : "Failed to delete some users", "error");
+    }
+  };
+
   const openRolesModal = (user: User) => {
     setSelectedUser(user);
     setSelectedRoleIds(user.roles.map((r) => r.id));
@@ -220,9 +261,9 @@ export default function AdminUsersPage() {
 
   const statusBadge = (status: string) => {
     switch (status) {
-      case "ACTIVE": return <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">Active</span>;
-      case "PENDING": return <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400">Pending</span>;
-      case "DISABLED": return <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">Disabled</span>;
+      case "ACTIVE": return <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">{isArabic ? "نشط" : "Active"}</span>;
+      case "PENDING": return <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400">{isArabic ? "قيد الانتظار" : "Pending"}</span>;
+      case "DISABLED": return <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">{isArabic ? "معطل" : "Disabled"}</span>;
       default: return <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700">{status}</span>;
     }
   };
@@ -241,9 +282,24 @@ export default function AdminUsersPage() {
             {isArabic ? "إدارة المستخدمين والصلاحيات والمشاريع" : "Manage users, roles, and project assignments"}
           </p>
         </div>
-        <Button onClick={() => setShowCreateModal(true)}>
-          <Plus size={18} /> {isArabic ? "مستخدم جديد" : "New User"}
-        </Button>
+        <div className="flex gap-2">
+          <ExportButtons
+            data={filteredUsers}
+            columns={[
+              { key: "name", labelAr: "الاسم", labelEn: "Name" },
+              { key: "email", labelAr: "البريد الإلكتروني", labelEn: "Email" },
+              { key: "status", labelAr: "الحالة", labelEn: "Status", format: (v: string) => v === "ACTIVE" ? "نشط" : v === "PENDING" ? "قيد الانتظار" : "معطل" },
+              { key: "createdAt", labelAr: "تاريخ الإنشاء", labelEn: "Created", format: (v: string) => v ? new Date(v).toLocaleDateString("ar-EG") : "—" },
+            ]}
+            titleAr="تقرير المستخدمين"
+            titleEn="Users Report"
+            filename="users"
+            locale={locale}
+          />
+          <Button onClick={() => setShowCreateModal(true)}>
+            <Plus size={18} /> {isArabic ? "مستخدم جديد" : "New User"}
+          </Button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -279,6 +335,20 @@ export default function AdminUsersPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-surface-secondary border-b border-border">
+                <th className="px-4 py-3 w-10">
+                  <input
+                    type="checkbox"
+                    checked={filteredUsers.length > 0 && filteredUsers.every((u) => selectedIds.has(u.id))}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedIds(new Set(filteredUsers.map((u) => u.id)));
+                      } else {
+                        setSelectedIds(new Set());
+                      }
+                    }}
+                    className="w-4 h-4 rounded border-border accent-gold"
+                  />
+                </th>
                 <th className="text-right px-4 py-3 font-medium text-text-muted">{isArabic ? "الاسم" : "Name"}</th>
                 <th className="text-right px-4 py-3 font-medium text-text-muted">{isArabic ? "الموظف" : "Employee"}</th>
                 <th className="text-right px-4 py-3 font-medium text-text-muted">{isArabic ? "البريد" : "Email"}</th>
@@ -292,18 +362,33 @@ export default function AdminUsersPage() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="text-center py-10 text-text-muted">
-                    {isArabic ? "جاري التحميل..." : "Loading..."}
+                  <td colSpan={9} className="text-center py-10">
+                    <DataLoader />
                   </td>
                 </tr>
               ) : filteredUsers.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="text-center py-10 text-text-muted">
+                  <td colSpan={9} className="text-center py-10 text-text-muted">
                     {isArabic ? "لا يوجد مستخدمين" : "No users found"}
                   </td>
                 </tr>
               ) : filteredUsers.map((user) => (
                 <tr key={user.id} className="border-b border-border hover:bg-surface-secondary/50 transition-colors">
+                  <td className="px-4 py-3 w-10">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(user.id)}
+                      onChange={() => {
+                        setSelectedIds((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(user.id)) next.delete(user.id);
+                          else next.add(user.id);
+                          return next;
+                        });
+                      }}
+                      className="w-4 h-4 rounded border-border accent-gold"
+                    />
+                  </td>
                   <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-full bg-gold/20 flex items-center justify-center text-xs font-bold text-gold">
@@ -311,7 +396,7 @@ export default function AdminUsersPage() {
                         </div>
                         <div>
                           <p className="font-medium text-text-primary">{user.name}</p>
-                          <p className="text-xs text-text-muted">{user.roles.length > 0 ? user.roles.map(r => r.name).join(", ") : user.role}</p>
+                          <p className="text-xs text-text-muted">{user.roles.length > 0 ? user.roles.map(r => getRoleDisplay(r, isArabic).name).join(", ") : user.role}</p>
                         </div>
                       </div>
                   </td>
@@ -327,8 +412,8 @@ export default function AdminUsersPage() {
                   <td className="px-4 py-3">
                     <div className="flex flex-wrap gap-1">
                       {user.roles.map((r) => (
-                        <span key={r.id} className="px-2 py-0.5 rounded text-xs bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
-                          {r.name}
+                        <span key={r.id} className="px-2 py-0.5 rounded text-xs bg-primary/10 text-primary">
+                          {getRoleDisplay(r, isArabic).name}
                         </span>
                       ))}
                       {user.roles.length === 0 && (
@@ -420,7 +505,7 @@ export default function AdminUsersPage() {
           <h2 className="text-lg font-bold">{isArabic ? "مستخدم جديد" : "New User"}</h2>
           <Input placeholder={isArabic ? "الاسم" : "Name"} value={createForm.name} onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })} />
           <Input placeholder={isArabic ? "البريد الإلكتروني" : "Email"} type="email" value={createForm.email} onChange={(e) => setCreateForm({ ...createForm, email: e.target.value })} />
-          <Input placeholder={isArabic ? "كلمة المرور" : "Password"} type="password" value={createForm.password} onChange={(e) => setCreateForm({ ...createForm, password: e.target.value })} />
+          <Input placeholder={isArabic ? "كلمة المرور (8+ أحرف، حروف وأرقام)" : "Password (8+ chars, upper/lower/number)"} type="password" value={createForm.password} onChange={(e) => setCreateForm({ ...createForm, password: e.target.value })} />
           <div>
             <label className="block text-xs font-medium text-text-muted mb-1">
               {isArabic ? "ربط الموظف (اختياري)" : "Link Employee (optional)"}
@@ -541,8 +626,8 @@ export default function AdminUsersPage() {
                   className="w-4 h-4 rounded border-border accent-gold"
                 />
                 <div>
-                  <p className="text-sm font-medium text-text-primary">{role.name}</p>
-                  {role.description && <p className="text-xs text-text-muted">{role.description}</p>}
+                  <p className="text-sm font-medium text-text-primary">{getRoleDisplay(role, isArabic).name}</p>
+                  {role.description && <p className="text-xs text-text-muted">{getRoleDisplay(role, isArabic).description}</p>}
                 </div>
               </label>
             ))}
@@ -586,6 +671,15 @@ export default function AdminUsersPage() {
           </div>
         </div>
       </Dialog>
+
+      <BulkActionsBar
+        selectedCount={selectedIds.size}
+        totalCount={filteredUsers.length}
+        onSelectAll={() => setSelectedIds(new Set(filteredUsers.map((u) => u.id)))}
+        onDeselectAll={() => setSelectedIds(new Set())}
+        onBulkDelete={handleBulkDelete}
+        entityLabel={{ ar: "مستخدم", en: "users" }}
+      />
     </div>
   );
 }

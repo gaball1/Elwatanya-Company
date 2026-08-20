@@ -11,6 +11,7 @@ import UploadFromDeviceButton, {
   type UploadedFileInfo,
 } from "@/components/shared/UploadFromDeviceButton";
 import { Can } from "@/components/Can";
+import DataLoader from "@/components/shared/DataLoader";
 
 function EmptyState({
   icon,
@@ -138,6 +139,10 @@ export default function BuildingClientStatementsPage() {
       // ignore
     }
   };
+
+  if (loading) {
+    return <DataLoader />;
+  }
 
   return (
     <div>

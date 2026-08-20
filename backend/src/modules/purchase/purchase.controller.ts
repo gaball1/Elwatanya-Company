@@ -19,6 +19,8 @@ import { handleError } from '../../common/utils/handle-error';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { RequirePermission } from '../../common/decorators/permissions.decorator';
 import { Permissions } from '../../common/constants/permissions.constant';
+import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
+import { OwnershipService } from '@/common/services/ownership.service';
 import { ListPurchasesUseCase } from './application/use-cases/list-purchases.use-case';
 import { CreatePurchaseUseCase } from './application/use-cases/create-purchase.use-case';
 import { UpdatePurchaseUseCase } from './application/use-cases/update-purchase.use-case';
@@ -39,6 +41,7 @@ export class PurchaseController {
     private readonly updatePurchase: UpdatePurchaseUseCase,
     private readonly deletePurchase: DeletePurchaseUseCase,
     private readonly updatePurchaseStatus: UpdatePurchaseStatusUseCase,
+    private readonly ownership: OwnershipService,
     @Inject(PURCHASE_REPOSITORY) private readonly purchaseRepo: IPurchaseRepository,
   ) {}
 
@@ -47,17 +50,18 @@ export class PurchaseController {
   @ApiQuery({ name: 'projectId', required: false })
   @ApiQuery({ name: 'status', required: false, enum: ['pending', 'approved', 'received', 'cancelled'] })
   @RequirePermission(Permissions.Purchases.Read)
-  async list(@Query('projectId') projectId?: string, @Query('status') status?: string) {
-    const result = await this.listPurchases.execute(projectId, status);
+  async list(@Query('projectId') projectId?: string, @Query('status') status?: string, @CurrentUser() user?: JwtPayload) {
+    const result = await this.listPurchases.execute(user, projectId, status);
     return { items: result.getValue() };
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Get purchase by id' })
   @RequirePermission(Permissions.Purchases.Read)
-  async getById(@Param('id', ParseUUIDPipe) id: string) {
+  async getById(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user?: JwtPayload) {
     const purchase = await this.purchaseRepo.findById(new UniqueEntityId(id));
     if (!purchase) throw new NotFoundException('Purchase not found');
+    await this.ownership.verifyProjectAccess(user, purchase.projectId);
     return { purchase: toResult(purchase) };
   }
 
@@ -65,7 +69,7 @@ export class PurchaseController {
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Create a purchase record' })
   @RequirePermission(Permissions.Purchases.Create)
-  async create(@Body() dto: CreatePurchaseDto) {
+  async create(@Body() dto: CreatePurchaseDto, @CurrentUser() user?: JwtPayload, @CurrentUser('sub') userId?: string) {
     const result = await this.createPurchase.execute({
       projectId: dto.projectId,
       buildingId: dto.buildingId,
@@ -78,10 +82,9 @@ export class PurchaseController {
       notes: dto.notes,
       invoiceFile: dto.invoiceFile,
       supplierName: dto.supplierName,
-      createdBy: dto.createdBy,
       categoryId: dto.categoryId,
       inventoryItemId: dto.inventoryItemId,
-    });
+    }, user, userId);
     if (result.isFailure) handleError(result.error?.message, 'Failed to create purchase');
     return { purchase: result.getValue() };
   }
@@ -89,7 +92,7 @@ export class PurchaseController {
   @Patch(':id')
   @ApiOperation({ summary: 'Update purchase fields' })
   @RequirePermission(Permissions.Purchases.Update)
-  async update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdatePurchaseDto) {
+  async update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdatePurchaseDto, @CurrentUser() user?: JwtPayload, @CurrentUser('sub') userId?: string) {
     const result = await this.updatePurchase.execute({
       id,
       itemName: dto.itemName,
@@ -102,10 +105,9 @@ export class PurchaseController {
       supplierName: dto.supplierName,
       buildingId: dto.buildingId,
       supplierId: dto.supplierId,
-      createdBy: dto.createdBy,
       categoryId: dto.categoryId,
       inventoryItemId: dto.inventoryItemId,
-    });
+    }, user, userId);
     if (result.isFailure) handleError(result.error?.message, 'Failed to update purchase');
     return { purchase: result.getValue() };
   }
@@ -113,8 +115,8 @@ export class PurchaseController {
   @Put(':id/status')
   @ApiOperation({ summary: 'Update purchase status' })
   @RequirePermission(Permissions.Purchases.Update)
-  async updateStatus(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdatePurchaseStatusDto) {
-    const result = await this.updatePurchaseStatus.execute(id, dto.status);
+  async updateStatus(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdatePurchaseStatusDto, @CurrentUser() user?: JwtPayload) {
+    const result = await this.updatePurchaseStatus.execute(id, dto.status, dto.warehouseId, user);
     if (result.isFailure) handleError(result.error?.message, 'Failed to update status');
     return { purchase: result.getValue() };
   }
@@ -123,8 +125,8 @@ export class PurchaseController {
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Soft-delete a purchase' })
   @RequirePermission(Permissions.Purchases.Delete)
-  async remove(@Param('id', ParseUUIDPipe) id: string) {
-    const result = await this.deletePurchase.execute(id);
+  async remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user?: JwtPayload) {
+    const result = await this.deletePurchase.execute(id, user);
     if (result.isFailure) handleError(result.error?.message, 'Failed to delete purchase');
   }
 }

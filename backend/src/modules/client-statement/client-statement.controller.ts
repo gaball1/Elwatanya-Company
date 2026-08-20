@@ -4,6 +4,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { RequirePermission } from '../../common/decorators/permissions.decorator';
 import { Permissions } from '../../common/constants/permissions.constant';
 import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
+import { OwnershipService } from '@/common/services/ownership.service';
 import { ListClientStatementsUseCase } from './application/use-cases/list-client-statements.use-case';
 import { CreateClientStatementUseCase } from './application/use-cases/create-client-statement.use-case';
 import { UpdateClientStatementUseCase } from './application/use-cases/update-client-statement.use-case';
@@ -19,6 +20,7 @@ export class ClientStatementController {
     private readonly create: CreateClientStatementUseCase,
     private readonly update: UpdateClientStatementUseCase,
     private readonly remove: DeleteClientStatementUseCase,
+    private readonly ownership: OwnershipService,
   ) {}
 
   @Get() @ApiOperation({ summary: 'List client statements' }) @RequirePermission(Permissions.ClientStatements.Read)
@@ -32,26 +34,26 @@ export class ClientStatementController {
   }
 
   @Post() @HttpCode(HttpStatus.CREATED) @ApiOperation({ summary: 'Create client statement' }) @RequirePermission(Permissions.ClientStatements.Create)
-  async createOne(@Body() dto: CreateClientStatementDto) {
+  async createOne(@Body() dto: CreateClientStatementDto, @CurrentUser() user?: JwtPayload, @CurrentUser('sub') userId?: string) {
     const r = await this.create.execute({
       ...dto, date: dto.date ? new Date(dto.date) : undefined,
-    });
+    }, user, userId);
     if (r.isFailure) handleError(r.error?.message, 'Failed to create');
     return { statement: r.getValue() };
   }
 
   @Patch(':id') @ApiOperation({ summary: 'Update client statement' }) @RequirePermission(Permissions.ClientStatements.Update)
-  async updateOne(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateClientStatementDto) {
+  async updateOne(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateClientStatementDto, @CurrentUser() user?: JwtPayload, @CurrentUser('sub') userId?: string) {
     const r = await this.update.execute({
       id, ...dto, date: dto.date !== undefined ? new Date(dto.date) : undefined,
-    });
+    }, user, userId);
     if (r.isFailure) handleError(r.error?.message, 'Failed to update');
     return { statement: r.getValue() };
   }
 
   @Delete(':id') @HttpCode(HttpStatus.NO_CONTENT) @ApiOperation({ summary: 'Soft-delete client statement' }) @RequirePermission(Permissions.ClientStatements.Delete)
-  async deleteOne(@Param('id', ParseUUIDPipe) id: string) {
-    const r = await this.remove.execute(id);
+  async deleteOne(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user?: JwtPayload) {
+    const r = await this.remove.execute(id, user);
     if (r.isFailure) handleError(r.error?.message, 'Failed to delete');
   }
 }

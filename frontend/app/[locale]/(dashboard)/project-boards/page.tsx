@@ -4,6 +4,8 @@
 import { useParams } from "next/navigation";
 import { useState, useMemo, useCallback, useEffect } from "react";
 import { Card } from "@/components/ui";
+import DataLoader from "@/components/shared/DataLoader";
+import PrintPdfButton from "@/components/shared/PrintPdfButton";
 import {
   ClipboardList,
   Plus,
@@ -12,7 +14,6 @@ import {
   X,
   Search,
   ArrowUpDown,
-  Printer,
   Download,
   Image as ImageIcon,
   Calendar,
@@ -120,10 +121,10 @@ export default function ProjectBoardsPage() {
     }
   }, [deletingId, isArabic, fetchBoards]);
 
-  const handlePrintPDF = useCallback(() => {
+  const handlePrintPDF = useCallback((logoUrl?: string) => {
     const headers = [isArabic ? "الاسم" : "Name", isArabic ? "الوصف" : "Description", isArabic ? "التاريخ" : "Date", isArabic ? "بواسطة" : "Created By"];
     const rows = filteredAndSortedBoards.map((b) => [b.name, b.description || "—", b.date, b.createdBy]);
-    printAsPDF(rows, headers, isArabic ? "تقرير لوحات المشروع" : "Project Boards Report", isArabic);
+    printAsPDF(rows, headers, isArabic ? "تقرير لوحات المشروع" : "Project Boards Report", isArabic, { logoUrl });
   }, [filteredAndSortedBoards, isArabic]);
 
   const exportToExcel = useCallback(() => {
@@ -155,7 +156,7 @@ export default function ProjectBoardsPage() {
             <p className="text-sm text-text-secondary mt-1">{isArabic ? "إدارة لوحات وملصقات المشروع" : "Manage project boards and posters"}</p>
           </div>
           <div className="flex gap-2">
-            <button onClick={handlePrintPDF} className="flex items-center gap-2 px-4 py-2 border border-info text-info rounded-lg hover:bg-info hover:text-white transition"><Printer size={18} /> {isArabic ? "طباعة PDF" : "Print PDF"}</button>
+            <PrintPdfButton label={isArabic ? "طباعة PDF" : "Print PDF"} onPrint={handlePrintPDF} />
             <button onClick={exportToExcel} className="flex items-center gap-2 px-4 py-2 border border-success-dark text-success-dark rounded-lg hover:bg-success-dark hover:text-white transition"><Download size={18} /> {isArabic ? "تصدير Excel" : "Export Excel"}</button>
             <Can permission="project-boards.create">
               <button onClick={openAddModal} className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition"><Plus size={18} /> {isArabic ? "إضافة لوحة" : "Add Board"}</button>
@@ -184,7 +185,7 @@ export default function ProjectBoardsPage() {
 
       <div className="p-6 pt-0">
         {loading ? (
-          <Card className="p-12 text-center"><p className="text-text-secondary">{isArabic ? "جاري التحميل..." : "Loading..."}</p></Card>
+          <DataLoader />
         ) : filteredAndSortedBoards.length === 0 ? (
           <Card className="p-12 text-center">
             <ClipboardList size={64} className="mx-auto text-text-muted mb-4" />

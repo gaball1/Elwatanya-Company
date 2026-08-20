@@ -1,5 +1,6 @@
 import { IsArray, IsEmail, IsOptional, IsString, IsUUID, MinLength } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsStrongPassword } from '../../../common/validators/password.validator';
 
 export class CreateUserDto {
   @ApiProperty()
@@ -13,7 +14,7 @@ export class CreateUserDto {
 
   @ApiProperty()
   @IsString()
-  @MinLength(6)
+  @IsStrongPassword()
   password: string;
 
   @ApiPropertyOptional({ description: 'Optional employee record to link to this account' })
@@ -62,7 +63,7 @@ export class AssignProjectsDto {
 export class ResetPasswordDto {
   @ApiProperty()
   @IsString()
-  @MinLength(6)
+  @IsStrongPassword()
   newPassword: string;
 }
 

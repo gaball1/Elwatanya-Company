@@ -1,5 +1,5 @@
-import { Controller, Get, Post, Param, Query, Body, Res, Headers } from '@nestjs/common';
-import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { Controller, Get, Post, Param, Query, Body, Res, UseGuards } from '@nestjs/common';
+import { ApiBearerAuth, ApiTags, ApiOperation } from '@nestjs/swagger';
 import { Response } from 'express';
 import { ReportingEngineService } from './application/reporting-engine.service';
 import { ReportFormat } from './domain/report-definition.entity';
@@ -7,8 +7,12 @@ import { GenerateReportParams } from './domain/report-handler.interface';
 import { sendFileResponse } from '../../common/pdf-header.util';
 import { RequirePermission } from '@/common/decorators/permissions.decorator';
 import { Permissions } from '@/common/constants/permissions.constant';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
 
 @ApiTags('Reporting Engine')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard)
 @Controller('reporting')
 export class ReportingEngineController {
   constructor(private readonly service: ReportingEngineService) {}
@@ -28,11 +32,8 @@ export class ReportingEngineController {
     @Query('format') format: ReportFormat,
     @Body() params: GenerateReportParams,
     @Res() res: Response,
-    @Headers('authorization') auth: string,
+    @CurrentUser() user: JwtPayload,
   ) {
-    const token = auth?.replace('Bearer ', '') || '';
-    const user = { token, sub: '', email: '', permissions: [] as string[], role: '' };
-
     const result = await this.service.generateReport(reportName, format || 'pdf', params, user);
 
     sendFileResponse(res, result.buffer, result.filename, result.mimeType, 'attachment');

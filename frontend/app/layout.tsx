@@ -25,8 +25,8 @@ export default async function RootLayout({
           dangerouslySetInnerHTML={{
             __html: `
               try {
-                const t = localStorage.getItem('theme');
-                const s = t || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+                var t = localStorage.getItem('theme');
+                var s = t || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
                 if (s === 'dark') document.documentElement.classList.add('dark');
               } catch(e) {}
             `,

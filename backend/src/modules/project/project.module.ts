@@ -10,12 +10,18 @@ import { UpdateProjectUseCase } from './application/use-cases/update-project.use
 import { GetProjectUseCase } from './application/use-cases/get-project.use-case';
 import { ListProjectsUseCase } from './application/use-cases/list-projects.use-case';
 import { SoftDeleteProjectUseCase } from './application/use-cases/soft-delete-project.use-case';
+import { ProjectDashboardService } from './project-dashboard.service';
 import { ProjectController } from './project.controller';
 
 @Module({
   imports: [PrismaModule],
   controllers: [ProjectController],
   providers: [
+    {
+      provide: ProjectDashboardService,
+      useFactory: (prisma: PrismaService) => new ProjectDashboardService(prisma),
+      inject: [PrismaService],
+    },
     { provide: PROJECT_REPOSITORY, useClass: PrismaProjectRepository },
     {
       provide: OwnershipService,
@@ -53,6 +59,6 @@ import { ProjectController } from './project.controller';
       inject: [PROJECT_REPOSITORY, OwnershipService],
     },
   ],
-  exports: [PROJECT_REPOSITORY, GetProjectUseCase],
+  exports: [PROJECT_REPOSITORY, GetProjectUseCase, ProjectDashboardService],
 })
 export class ProjectModule {}

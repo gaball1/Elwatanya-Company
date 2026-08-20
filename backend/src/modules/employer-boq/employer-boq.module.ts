@@ -3,8 +3,10 @@ import { PrismaModule } from '@/prisma/prisma.module';
 import { PrismaService } from '@/prisma/prisma.service';
 import { BuildingModule } from '@/modules/building/building.module';
 import { AnalyticalBoqModule } from '@/modules/analytical-boq/analytical-boq.module';
+import { FinalBoqModule } from '@/modules/final-boq/final-boq.module';
 import { BUILDING_REPOSITORY } from '@/modules/building/domain/building.repository';
 import { IBuildingRepository } from '@/modules/building/domain/building.repository';
+import { FINAL_BOQ_REPOSITORY, IFinalBoqRepository } from '@/modules/final-boq/domain/final-boq.repository';
 import { OwnershipService } from '@/common/services/ownership.service';
 import { AuditService } from '@/modules/audit/audit.service';
 import { NotificationService } from '@/common/services/notification.service';
@@ -24,7 +26,7 @@ import {
 import { RemoveAnalyticalBoqItemUseCase } from '@/modules/analytical-boq/application/use-cases/remove-analytical-boq-item.use-case';
 
 @Module({
-  imports: [PrismaModule, BuildingModule, forwardRef(() => AnalyticalBoqModule)],
+  imports: [PrismaModule, BuildingModule, forwardRef(() => AnalyticalBoqModule), forwardRef(() => FinalBoqModule)],
   controllers: [EmployerBoqController],
   providers: [
     { provide: EMPLOYER_BOQ_REPOSITORY, useClass: PrismaEmployerBoqRepository },
@@ -91,6 +93,7 @@ import { RemoveAnalyticalBoqItemUseCase } from '@/modules/analytical-boq/applica
       useFactory: (
         employerBoq: PrismaEmployerBoqRepository,
         buildings: IBuildingRepository,
+        finalBoq: IFinalBoqRepository,
         removeAnalytical: RemoveAnalyticalBoqItemUseCase,
         ownership: OwnershipService,
         audit: AuditService,
@@ -99,6 +102,7 @@ import { RemoveAnalyticalBoqItemUseCase } from '@/modules/analytical-boq/applica
         new DeleteEmployerBoqItemUseCase(
           employerBoq,
           buildings,
+          finalBoq,
           removeAnalytical,
           ownership,
           audit,
@@ -107,6 +111,7 @@ import { RemoveAnalyticalBoqItemUseCase } from '@/modules/analytical-boq/applica
       inject: [
         EMPLOYER_BOQ_REPOSITORY,
         BUILDING_REPOSITORY,
+        FINAL_BOQ_REPOSITORY,
         RemoveAnalyticalBoqItemUseCase,
         OwnershipService,
         AuditService,
@@ -118,6 +123,7 @@ import { RemoveAnalyticalBoqItemUseCase } from '@/modules/analytical-boq/applica
       useFactory: (
         employerBoq: PrismaEmployerBoqRepository,
         buildings: IBuildingRepository,
+        finalBoq: IFinalBoqRepository,
         removeAnalytical: RemoveAnalyticalBoqItemUseCase,
         ownership: OwnershipService,
         audit: AuditService,
@@ -126,6 +132,7 @@ import { RemoveAnalyticalBoqItemUseCase } from '@/modules/analytical-boq/applica
         new ClearEmployerBoqItemsUseCase(
           employerBoq,
           buildings,
+          finalBoq,
           removeAnalytical,
           ownership,
           audit,
@@ -134,6 +141,7 @@ import { RemoveAnalyticalBoqItemUseCase } from '@/modules/analytical-boq/applica
       inject: [
         EMPLOYER_BOQ_REPOSITORY,
         BUILDING_REPOSITORY,
+        FINAL_BOQ_REPOSITORY,
         RemoveAnalyticalBoqItemUseCase,
         OwnershipService,
         AuditService,

@@ -23,6 +23,7 @@ import { subcontractorService } from "@/services/subcontractor.service";
 import { inventoryItemService } from "@/services/inventory-item.service";
 import { projectFundService } from "@/services/project-fund.service";
 import { notificationService } from "@/services/notification.service";
+import DataLoader from "@/components/shared/DataLoader";
 import { useAuth } from "@/hooks/useAuth";
 
 interface KpiCardProps {
@@ -143,7 +144,6 @@ export default function AdminDashboard() {
   const quickActions = [
     { label: isArabic ? "مشروع جديد" : "New Project", icon: <Plus size={18} />, href: `/${locale}/projects`, color: "bg-gold/10 text-gold" },
     { label: isArabic ? "مقاول جديد" : "New Subcontractor", icon: <Users size={18} />, href: `/${locale}/subcontractors`, color: "bg-primary/10 text-primary" },
-    { label: isArabic ? "مستخلص جديد" : "New Statement", icon: <FileText size={18} />, href: `/${locale}/statements/new`, color: "bg-success/10 text-success" },
     { label: isArabic ? "حركة مخزون" : "Stock Movement", icon: <Package size={18} />, href: `/${locale}/inventory`, color: "bg-warning/10 text-warning" },
   ];
 
@@ -159,10 +159,10 @@ export default function AdminDashboard() {
   const timeAgo = (date: string) => {
     const diff = Date.now() - new Date(date).getTime();
     const mins = Math.floor(diff / 60000);
-    if (mins < 60) return `${mins}m`;
+    if (mins < 60) return isArabic ? `${mins} د` : `${mins}m`;
     const hrs = Math.floor(mins / 60);
-    if (hrs < 24) return `${hrs}h`;
-    return `${Math.floor(hrs / 24)}d`;
+    if (hrs < 24) return isArabic ? `${hrs} س` : `${hrs}h`;
+    return isArabic ? `${Math.floor(hrs / 24)} ي` : `${Math.floor(hrs / 24)}d`;
   };
 
   const liveNotifications = notifications.slice(0, 4).map((n) => ({
@@ -181,23 +181,7 @@ export default function AdminDashboard() {
   };
 
   if (loading) {
-    return (
-      <div className="space-y-6 animate-pulse">
-        <div className="h-8 w-48 bg-gray-200 rounded" />
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="h-28 bg-gray-200 rounded-xl" />
-          ))}
-        </div>
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 space-y-6">
-            <div className="h-40 bg-gray-200 rounded-xl" />
-            <div className="h-64 bg-gray-200 rounded-xl" />
-          </div>
-          <div className="h-80 bg-gray-200 rounded-xl" />
-        </div>
-      </div>
-    );
+    return <DataLoader />;
   }
 
   return (
@@ -317,7 +301,7 @@ export default function AdminDashboard() {
                   const proj = projects.find((p) => p.id === fund.projectId);
                   return (
                     <div key={fund.id} className="flex items-center justify-between text-sm">
-                      <span className="text-text-secondary truncate">{proj?.name || `Project ${shortRef(fund.projectId)}`}</span>
+                      <span className="text-text-secondary truncate">{proj?.name || (isArabic ? `مشروع ${shortRef(fund.projectId)}` : `Project ${shortRef(fund.projectId)}`)}</span>
                       <span className="font-medium text-text-primary">{fund.currentBalance.toLocaleString()} {isArabic ? "ج.م" : "EGP"}</span>
                     </div>
                   );

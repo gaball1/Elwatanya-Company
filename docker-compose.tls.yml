@@ -1,0 +1,61 @@
+# =============================================================================
+# El Wataniya ERP - TLS reverse proxy add-on (nginx + certbot)
+#
+# Run together with the production stack:
+#   docker compose -f docker-compose.prod.yml -f docker-compose.tls.yml build
+#   docker compose -f docker-compose.prod.yml -f docker-compose.tls.yml up -d
+#
+# First-run certificate issuance (set DOMAIN first, e.g. erp.example.com):
+#   docker compose -f docker-compose.prod.yml -f docker-compose.tls.yml run --rm certbot certonly \
+#     --webroot -w /var/www/certbot -d ${DOMAIN} --email ops@example.com --agree-tos --no-eff-email
+#
+# Renewal (cron): run the same `certbot renew` command; nginx reloads via
+# the `reload` service or a post-hook `docker compose ... exec nginx nginx -s reload`.
+# =============================================================================
+services:
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    depends_on:
+      - frontend
+      - backend
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/nginx/nginx.conf:/etc/nginx/templates/nginx.conf.template:ro
+      - ./deploy/nginx/certs:/etc/nginx/certs:ro
+      - ./deploy/nginx/www:/var/www/certbot:ro
+    environment:
+      # Template engine (envsubst) variables used in nginx.conf
+      NGINX_ENVSUBST_OUTPUT_DIR: /etc/nginx
+      NGINX_ENVSUBST_FILTER: "^(DOMAIN|FRONTEND_UPSTREAM|BACKEND_UPSTREAM)$$"
+      DOMAIN: ${DOMAIN:-erp.example.com}
+      FRONTEND_UPSTREAM: ${FRONTEND_UPSTREAM:-frontend:3000}
+      BACKEND_UPSTREAM: ${BACKEND_UPSTREAM:-backend:3001}
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx
+      - /var/run
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - backend
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+          cpus: "0.5"
+
+  certbot:
+    image: certbot/certbot
+    restart: "no"
+    volumes:
+      - ./deploy/nginx/certs:/etc/letsencrypt:rw
+      - ./deploy/nginx/www:/var/www/certbot:rw
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot --post-hook \"echo done\"; sleep 12h & wait $${!}; done'"

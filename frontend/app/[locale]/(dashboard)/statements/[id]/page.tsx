@@ -5,11 +5,14 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useState, useEffect } from "react";
 import { Card } from "@/components/ui";
-import { Printer, Download, Edit2, Plus, X } from "lucide-react";
+import { Download, Edit2, Plus, X } from "lucide-react";
 import { subcontractorStatementService, type SubcontractorStatement } from "@/services/subcontractor-statement.service";
 import { useToast } from "@/components/ui/Toast";
 import BackButton from "@/components/shared/BackButton";
+import DataLoader from "@/components/shared/DataLoader";
+import PrintPdfButton from "@/components/shared/PrintPdfButton";
 import { printHtmlDocument } from "@/lib/printUtils";
+import { PDF_COLORS } from "@/lib/pdfColors";
 
 interface Signature {
   id: string;
@@ -42,11 +45,7 @@ export default function StatementDetailsPage() {
   }, [statementId]);
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-text-secondary">...</p>
-      </div>
-    );
+    return <DataLoader />;
   }
 
   if (!statement) {
@@ -81,7 +80,7 @@ export default function StatementDetailsPage() {
 
   const signatures: Signature[] = (statement as any).signatures || [];
 
-  const handlePrint = () => {
+  const handlePrint = (logoUrl?: string) => {
     const itemsHtml = (statement.items || [])
       .map(
         (item: any, idx: number) => `
@@ -99,10 +98,10 @@ export default function StatementDetailsPage() {
             item.totalAmount?.toLocaleString() || 0
           }</td>
           <td>${statement.insurancePercent || 5}%</td>
-          <td style="color:#e53935">${
+          <td style="color:${PDF_COLORS.danger}">${
             item.insuranceAmount?.toLocaleString() || 0
           }</td>
-          <td style="color:#c9a03d;font-weight:700">${
+          <td style="color:${PDF_COLORS.accent};font-weight:700">${
             item.netAmount?.toLocaleString() || 0
           }</td>
         </tr>
@@ -113,9 +112,9 @@ export default function StatementDetailsPage() {
     const deductionsHtml = (statement.deductions || [])
       .map(
         (d: any) => `
-        <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dashed #ddd;font-size:12px;">
+        <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dashed ${PDF_COLORS.border};font-size:12px;">
           <span>${d.name || "—"}</span>
-          <span style="color:#e53935;font-weight:700">${
+          <span style="color:${PDF_COLORS.danger};font-weight:700">${
             d.amount?.toLocaleString() || 0
           }</span>
         </div>
@@ -126,15 +125,15 @@ export default function StatementDetailsPage() {
     const signaturesHtml =
       signatures.length > 0
         ? `
-        <div style="display:flex;justify-content:space-around;gap:30px;margin-top:30px;padding-top:20px;border-top:2px solid #ddd;flex-wrap:wrap;">
+        <div style="display:flex;justify-content:space-around;gap:30px;margin-top:30px;padding-top:20px;border-top:2px solid ${PDF_COLORS.border};flex-wrap:wrap;">
           ${signatures
             .map(
               (sig) => `
             <div style="flex:1;min-width:150px;text-align:center;padding-top:10px;">
               <div style="border-bottom:1px solid #333;width:80%;margin:0 auto 6px;height:30px;"></div>
-              <div style="font-weight:700;color:#1e3a5f;font-size:14px;">${sig.name}</div>
-              <div style="font-size:11px;color:#666;">${sig.title}</div>
-              <div style="font-size:10px;color:#999;">${sig.date}</div>
+              <div style="font-weight:700;color:${PDF_COLORS.primary};font-size:14px;">${sig.name}</div>
+              <div style="font-size:11px;color:${PDF_COLORS.textLight};">${sig.title}</div>
+              <div style="font-size:10px;color:${PDF_COLORS.textLight};">${sig.date}</div>
             </div>
           `
             )
@@ -151,22 +150,22 @@ export default function StatementDetailsPage() {
     <title>${statement.statementNumber}</title>
     <style>
       * { box-sizing: border-box; }
-      body { font-family: 'Cairo', Arial, sans-serif; margin: 0; padding: 20px; background: white; color: #1e3a5f; }
+      body { font-family: 'Cairo', Arial, sans-serif; margin: 0; padding: 20px; background: ${PDF_COLORS.white}; color: ${PDF_COLORS.primary}; }
       .print-container { max-width: 1200px; margin: 0 auto; padding: 20px; }
-      .header { text-align: center; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 3px solid #c9a03d; }
-      .header h1 { font-size: 24px; font-weight: 900; color: #1e3a5f; margin: 0; }
-      .header .subtitle { font-size: 14px; color: #666; margin-top: 5px; }
-      .info-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px; border-right: 4px solid #c9a03d; }
+      .header { text-align: center; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 3px solid ${PDF_COLORS.accent}; }
+      .header h1 { font-size: 24px; font-weight: 900; color: ${PDF_COLORS.primary}; margin: 0; }
+      .header .subtitle { font-size: 14px; color: ${PDF_COLORS.textLight}; margin-top: 5px; }
+      .info-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 20px; padding: 15px; background: ${PDF_COLORS.bg}; border-radius: 8px; border-right: 4px solid ${PDF_COLORS.accent}; }
       .info-item { display: flex; flex-direction: column; }
-      .info-item .label { font-size: 11px; color: #999; font-weight: 600; }
-      .info-item .value { font-size: 14px; font-weight: 700; color: #1e3a5f; margin-top: 2px; }
+      .info-item .label { font-size: 11px; color: ${PDF_COLORS.textLight}; font-weight: 600; }
+      .info-item .value { font-size: 14px; font-weight: 700; color: ${PDF_COLORS.primary}; margin-top: 2px; }
       table { width: 100%; border-collapse: collapse; font-size: 10px; margin: 15px 0 20px; }
-      th { background-color: #1e3a5f; color: white; font-weight: 700; padding: 6px 4px; border: 1px solid #1e3a5f; text-align: center; }
-      td { padding: 4px; border: 1px solid #ddd; text-align: center; }
-      tr:nth-child(even) { background-color: #f9f9f9; }
+      th { background-color: ${PDF_COLORS.primary}; color: white; font-weight: 700; padding: 6px 4px; border: 1px solid ${PDF_COLORS.primary}; text-align: center; }
+      td { padding: 4px; border: 1px solid ${PDF_COLORS.border}; text-align: center; }
+      tr:nth-child(even) { background-color: ${PDF_COLORS.bg}; }
       .summary { display: flex; justify-content: space-around; gap: 20px; margin: 20px 0; flex-wrap: wrap; }
       .summary-box { flex: 1; min-width: 150px; padding: 12px 15px; border-radius: 8px; text-align: center; }
-      .deductions-box { margin: 15px 0; padding: 15px; background: #f8f9fa; border-radius: 8px; border-right: 4px solid #e53935; }
+      .deductions-box { margin: 15px 0; padding: 15px; background: ${PDF_COLORS.bg}; border-radius: 8px; border-right: 4px solid ${PDF_COLORS.danger}; }
       @media print { body { padding: 10px; } }
     </style>
   </head>
@@ -225,7 +224,7 @@ export default function StatementDetailsPage() {
             <td>${totalWorkValue.toLocaleString()}</td>
             <td></td>
             <td>${totalInsurance.toLocaleString()}</td>
-            <td style="color:#c9a03d">${(
+            <td style="color:${PDF_COLORS.accent}">${(
               totalWorkValue - totalInsurance
             ).toLocaleString()}</td>
           </tr>
@@ -233,50 +232,45 @@ export default function StatementDetailsPage() {
       </table>
 
       <div class="deductions-box">
-        <div style="font-weight:700;margin-bottom:8px;color:#1e3a5f">${
+        <div style="font-weight:700;margin-bottom:8px;color:${PDF_COLORS.primary}">${
           isArabic ? "بيان الاستقطاعات" : "Deductions"
         }</div>
         ${
           deductionsHtml ||
-          `<div style="color:#999;font-size:12px">${
+          `<div style="color:${PDF_COLORS.textLight};font-size:12px">${
             isArabic ? "لا توجد خصومات" : "No deductions"
           }</div>`
         }
-        <div style="display:flex;justify-content:space-between;font-weight:700;margin-top:8px;padding-top:8px;border-top:2px solid #1e3a5f">
+        <div style="display:flex;justify-content:space-between;font-weight:700;margin-top:8px;padding-top:8px;border-top:2px solid ${PDF_COLORS.primary}">
           <span>${isArabic ? "إجمالي الاستقطاعات" : "Total Deductions"}</span>
-          <span style="color:#e53935">${totalDeductions.toLocaleString()}</span>
+          <span style="color:${PDF_COLORS.danger}">${totalDeductions.toLocaleString()}</span>
         </div>
       </div>
 
       <div class="summary">
         <div class="summary-box" style="background:#e8f5e9">
-          <div style="font-size:12px;color:#666">${
+          <div style="font-size:12px;color:${PDF_COLORS.textLight}">${
             isArabic ? "إجمالي قيمة الأعمال" : "Total Work Value"
           }</div>
-          <div style="font-size:18px;font-weight:900;color:#1e3a5f">${totalWorkValue.toLocaleString()}</div>
+          <div style="font-size:18px;font-weight:900;color:${PDF_COLORS.primary}">${totalWorkValue.toLocaleString()}</div>
         </div>
         <div class="summary-box" style="background:#ffebee">
-          <div style="font-size:12px;color:#666">${
+          <div style="font-size:12px;color:${PDF_COLORS.textLight}">${
             isArabic ? "إجمالي الاستقطاعات" : "Total Deductions"
           }</div>
-          <div style="font-size:18px;font-weight:900;color:#e53935">${totalDeductions.toLocaleString()}</div>
+          <div style="font-size:18px;font-weight:900;color:${PDF_COLORS.danger}">${totalDeductions.toLocaleString()}</div>
         </div>
-        <div class="summary-box" style="background:#fff8e1;border:1px solid #c9a03d">
-          <div style="font-size:12px;color:#666">${
+        <div class="summary-box" style="background:#fff8e1;border:1px solid ${PDF_COLORS.accent}">
+          <div style="font-size:12px;color:${PDF_COLORS.textLight}">${
             isArabic ? "المستحق صرفة" : "Net Payable"
           }</div>
-          <div style="font-size:18px;font-weight:900;color:#c9a03d">${netPayable.toLocaleString()}</div>
+          <div style="font-size:18px;font-weight:900;color:${PDF_COLORS.accent}">${netPayable.toLocaleString()}</div>
         </div>
       </div>
 
       ${signaturesHtml}
 
-      <div style="text-align:center;margin-top:30px;padding-top:15px;border-top:1px solid #eee;font-size:10px;color:#999">
-        ${
-          isArabic
-            ? "تم إنشاء هذا التقرير بواسطة النظام الآلي - الوطنية للتنمية العمرانية"
-            : "Generated automatically - Al-Wataniya Urban Development"
-        }
+      <div style="text-align:center;margin-top:30px;padding-top:15px;border-top:1px solid ${PDF_COLORS.border};font-size:10px;color:${PDF_COLORS.textLight}">
       </div>
     </div>
   </body>
@@ -286,7 +280,8 @@ export default function StatementDetailsPage() {
     printHtmlDocument(
       isArabic ? "مستخلص أعمال جاري" : "Current Work Statement",
       htmlContent,
-      `${statement.statementNumber}.pdf`
+      `${statement.statementNumber}.pdf`,
+      { logoUrl }
     );
   };
 
@@ -395,12 +390,10 @@ export default function StatementDetailsPage() {
             >
               <Download size={18} /> {isArabic ? "تصدير Excel" : "Export Excel"}
             </button>
-            <button
-              onClick={handlePrint}
-              className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg"
-            >
-              <Printer size={18} /> {isArabic ? "طباعة PDF" : "Print PDF"}
-            </button>
+            <PrintPdfButton
+              label={isArabic ? "طباعة PDF" : "Print PDF"}
+              onPrint={handlePrint}
+            />
           </div>
         </div>
       </div>

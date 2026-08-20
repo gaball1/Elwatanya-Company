@@ -72,6 +72,17 @@ export const finalBoqService = {
     return res.item;
   },
 
+  async unanalyze(
+    buildingId: string,
+    itemCode: string
+  ): Promise<FinalBoqItem> {
+    const res = await apiClient<{ item: FinalBoqItem }>(
+      `/buildings/${buildingId}/boq/final/items/${itemCode}/unanalyze`,
+      { method: 'POST' }
+    );
+    return res.item;
+  },
+
   async addComponent(
     buildingId: string,
     itemCode: string,

@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { Card } from "@/components/ui";
 import { Edit2, Download, Printer } from "lucide-react";
 import BackButton from "@/components/shared/BackButton";
+import DataLoader from "@/components/shared/DataLoader";
 import PrintPdfButton from "@/components/shared/PrintPdfButton";
 import SignaturesSection from "@/components/boq/SignaturesSection";
 import ExtractDeductionsTable from "@/components/boq/ExtractDeductionsTable";
@@ -42,11 +43,7 @@ export default function ExtractDetailPage() {
   }, [buildingId, contractorId, extractId]);
 
   if (!extract) {
-    return (
-      <div className="p-8 text-center text-text-secondary">
-        {isArabic ? "جاري التحميل..." : "Loading..."}
-      </div>
-    );
+    return <DataLoader />;
   }
 
   const buildDocumentHtml = () => {
@@ -197,7 +194,7 @@ export default function ExtractDetailPage() {
             ) : (
               <Link
                 href={`${base}/${extractId}/edit`}
-                className="flex items-center gap-2 px-4 py-2 border border-blue-500 text-info rounded-lg hover:bg-info hover:text-white text-sm"
+                className="flex items-center gap-2 px-4 py-2 border border-info text-info rounded-lg hover:bg-info hover:text-white text-sm"
               >
                 <Edit2 size={18} />
                 {isArabic ? "تعديل" : "Edit"}

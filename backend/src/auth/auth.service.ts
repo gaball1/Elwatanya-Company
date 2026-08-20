@@ -86,7 +86,7 @@ export class AuthService {
 
   async refresh(refreshToken: string) {
     const stored = await this.prisma.refreshToken.findUnique({
-      where: { token: refreshToken },
+      where: { token: this.hashToken(refreshToken) },
       include: {
         user: {
           include: {
@@ -137,7 +137,7 @@ export class AuthService {
 
   async logout(refreshToken: string, userId?: string) {
     await this.prisma.refreshToken.updateMany({
-      where: { token: refreshToken },
+      where: { token: this.hashToken(refreshToken) },
       data: { revokedAt: new Date() },
     });
     if (userId) {
@@ -152,22 +152,24 @@ export class AuthService {
       return { success: true, message: 'If the email exists, a reset link has been sent.' };
     }
 
-    const token = randomBytes(32).toString('hex');
+    const rawToken = randomBytes(32).toString('hex');
+    const hashedToken = this.hashToken(rawToken);
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
 
     await this.prisma.passwordResetToken.create({
-      data: { token, userId: user.id, email, expiresAt },
+      data: { token: hashedToken, userId: user.id, email, expiresAt },
     });
 
     if (process.env.NODE_ENV === 'production') {
       // In production, send email via mail service instead
       return { success: true, message: 'If the email exists, a reset link has been sent.' };
     }
-    return { success: true, resetToken: token, message: 'Password reset token generated. (DEV MODE)' };
+    return { success: true, resetToken: rawToken, message: 'Password reset token generated. (DEV MODE)' };
   }
 
   async resetPassword(token: string, newPassword: string) {
-    const stored = await this.prisma.passwordResetToken.findUnique({ where: { token } });
+    const hashedToken = this.hashToken(token);
+    const stored = await this.prisma.passwordResetToken.findUnique({ where: { token: hashedToken } });
 
     if (!stored || stored.expiresAt < new Date() || stored.usedAt) {
       throw new BadRequestException('Invalid or expired reset token');
@@ -280,7 +282,7 @@ export class AuthService {
     const expiresAt = this.addDuration(new Date(), refreshExpiresIn);
 
     await this.prisma.refreshToken.create({
-      data: { token: refreshToken, userId, family: tokenFamily, expiresAt },
+      data: { token: this.hashToken(refreshToken), userId, family: tokenFamily, expiresAt },
     });
 
     return {
@@ -334,6 +336,10 @@ export class AuthService {
         },
       },
     });
+  }
+
+  private hashToken(token: string): string {
+    return createHash('sha256').update(token).digest('hex');
   }
 
   private addDuration(date: Date, duration: string): Date {

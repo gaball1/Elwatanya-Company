@@ -5,11 +5,13 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useState, useRef, useEffect } from "react";
 import { Card } from "@/components/ui";
-import { Plus, Edit2, Trash2, X, Printer, Download } from "lucide-react";
+import { Plus, Edit2, Trash2, X, Download } from "lucide-react";
 import { employerBoqService } from "@/services/employerBoq.service";
 import BackButton from "@/components/shared/BackButton";
+import DataLoader from "@/components/shared/DataLoader";
 import { useToast } from "@/components/ui/Toast";
 import { printHtmlDocument } from "@/lib/printUtils";
+import PrintPdfButton from "@/components/shared/PrintPdfButton";
 
 interface EstimateItem {
   id: string;
@@ -95,9 +97,7 @@ export default function ClientEstimateDetailsPage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-light flex items-center justify-center">
-        <div className="animate-pulse text-text-muted">
-          {isArabic ? "جاري التحميل..." : "Loading..."}
-        </div>
+        <DataLoader />
       </div>
     );
   }
@@ -126,14 +126,12 @@ export default function ClientEstimateDetailsPage() {
   if (!mounted) {
     return (
       <div className="min-h-screen bg-gray-light flex items-center justify-center">
-        <div className="animate-pulse text-text-muted">
-          {isArabic ? "جاري التحميل..." : "Loading..."}
-        </div>
+        <DataLoader />
       </div>
     );
   }
 
-  const handlePrint = () => {
+  const handlePrint = (logoUrl?: string) => {
     const itemsHtml = items
       .map(
         (item, idx) => `
@@ -237,11 +235,6 @@ export default function ClientEstimateDetailsPage() {
       </table>
 
       <div style="text-align:center;margin-top:30px;padding-top:15px;border-top:1px solid #eee;font-size:10px;color:#999">
-        ${
-          isArabic
-            ? "تم إنشاء هذا التقرير بواسطة الشركه - الوطنية للتنمية العمرانية"
-            : "Generated automatically - Al-Wataniya Urban Development"
-        }
       </div>
     </div>
   </body>
@@ -251,7 +244,8 @@ export default function ClientEstimateDetailsPage() {
     printHtmlDocument(
       isArabic ? "عرض سعر عميل" : "Client Estimate",
       htmlContent,
-      `${estimate.number}.pdf`
+      `${estimate.number}.pdf`,
+      { logoUrl }
     );
   };
 
@@ -377,13 +371,10 @@ export default function ClientEstimateDetailsPage() {
             >
               <Download size={18} /> {isArabic ? "تصدير Excel" : "Export Excel"}
             </button>
-            <button
-              onClick={handlePrint}
-              className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition text-sm font-medium"
-            >
-              <Printer size={18} />
-              {isArabic ? "طباعة PDF" : "Print PDF"}
-            </button>
+            <PrintPdfButton
+              label={isArabic ? "طباعة PDF" : "Print PDF"}
+              onPrint={handlePrint}
+            />
           </div>
         </div>
       </div>

@@ -6,6 +6,11 @@ export function usePermissions(): string[] {
   return useMemo(() => user?.permissions ?? [], [user]);
 }
 
+export function useRoleNames(): string[] {
+  const { user } = useUser();
+  return useMemo(() => user?.roleNames ?? [], [user]);
+}
+
 const WRITE_ACTIONS = ['create', 'update', 'delete'];
 
 function permissionSatisfied(permissions: string[], permission: string): boolean {
@@ -21,21 +26,27 @@ function permissionSatisfied(permissions: string[], permission: string): boolean
 
 export function useHasPermission(permission: string): boolean {
   const permissions = usePermissions();
-  return useMemo(() => permissionSatisfied(permissions, permission), [permissions, permission]);
+  const roleNames = useRoleNames();
+  return useMemo(
+    () => roleNames.includes('SUPER_ADMIN') || permissionSatisfied(permissions, permission),
+    [permissions, permission, roleNames],
+  );
 }
 
 export function useHasAllPermissions(...required: string[]): boolean {
   const permissions = usePermissions();
+  const roleNames = useRoleNames();
   return useMemo(
-    () => required.every((p) => permissionSatisfied(permissions, p)),
-    [permissions, required]
+    () => roleNames.includes('SUPER_ADMIN') || required.every((p) => permissionSatisfied(permissions, p)),
+    [permissions, required, roleNames],
   );
 }
 
 export function useHasAnyPermission(...required: string[]): boolean {
   const permissions = usePermissions();
+  const roleNames = useRoleNames();
   return useMemo(
-    () => required.some((p) => permissionSatisfied(permissions, p)),
-    [permissions, required]
+    () => roleNames.includes('SUPER_ADMIN') || required.some((p) => permissionSatisfied(permissions, p)),
+    [permissions, required, roleNames],
   );
 }

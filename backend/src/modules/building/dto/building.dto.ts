@@ -10,6 +10,7 @@ import {
   Min,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
 
 export class CreateBuildingDto {
   @ApiProperty({ example: 'Building A' })
@@ -31,6 +32,7 @@ export class CreateBuildingDto {
 
   @ApiPropertyOptional({ example: '2024-01-15' })
   @IsOptional()
+  @Transform(({ value }) => (value === '' || value === null ? undefined : value))
   @IsDateString()
   startDate?: string;
 
@@ -89,6 +91,7 @@ export class UpdateBuildingDto {
 
   @ApiPropertyOptional({ example: '2024-01-15' })
   @IsOptional()
+  @Transform(({ value }) => (value === '' || value === null ? undefined : value))
   @IsDateString()
   startDate?: string;
 

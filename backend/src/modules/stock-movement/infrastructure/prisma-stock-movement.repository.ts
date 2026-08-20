@@ -44,9 +44,14 @@ export class PrismaStockMovementRepository implements IStockMovementRepository {
     return record ? this.toDomain(record) : null;
   }
 
-  async findAll(): Promise<StockMovement[]> {
+  async findAll(projectIds?: string[]): Promise<StockMovement[]> {
     const records = await this.prisma.stockMovement.findMany({
-      where: { deletedAt: null },
+      where: {
+        deletedAt: null,
+        ...(projectIds && projectIds.length
+          ? { item: { projectId: { in: projectIds }, deletedAt: null } }
+          : {}),
+      },
       orderBy: { createdAt: 'desc' },
     });
     return records.map((r) => this.toDomain(r));

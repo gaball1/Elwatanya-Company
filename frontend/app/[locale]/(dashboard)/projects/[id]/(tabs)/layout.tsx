@@ -15,6 +15,8 @@ import {
   ShoppingCart,
   PieChart,
   Coffee,
+  FileEdit,
+  LayoutDashboard,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { projectService } from '@/services/project.service';
@@ -38,6 +40,13 @@ export default function ProjectTabsLayout({
 
   const tabs = useMemo(
     () => [
+      {
+        id: "dashboard",
+        href: `/${locale}/projects/${projectId}/dashboard`,
+        label: isArabic ? "لوحة التحكم" : "Dashboard",
+        icon: <LayoutDashboard size={18} />,
+        exact: false,
+      },
       {
         id: "buildings",
         href: `/${locale}/projects/${projectId}/buildings`,
@@ -79,6 +88,13 @@ export default function ProjectTabsLayout({
         href: `/${locale}/projects/${projectId}/analytics`,
         label: isArabic ? "تحليل البيانات" : "Analytics",
         icon: <PieChart size={18} />,
+        exact: false,
+      },
+      {
+        id: "change-orders",
+        href: `/${locale}/projects/${projectId}/change-orders`,
+        label: isArabic ? "أوامر التغيير" : "Change Orders",
+        icon: <FileEdit size={18} />,
         exact: false,
       },
     ],

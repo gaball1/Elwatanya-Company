@@ -13,6 +13,7 @@ export class MonitorController {
 
   @Get('health')
   @ApiOperation({ summary: 'System health check' })
+  @RequirePermission('monitor:view')
   async health() {
     return this.monitor.health();
   }

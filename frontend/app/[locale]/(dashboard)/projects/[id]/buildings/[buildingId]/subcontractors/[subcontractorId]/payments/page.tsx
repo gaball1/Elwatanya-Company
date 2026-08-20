@@ -4,6 +4,7 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Card, Button, Input } from "@/components/ui";
+import DataLoader from "@/components/shared/DataLoader";
 import { ExternalLink, Pencil, Trash2, CheckCircle2, Plus, X } from "lucide-react";
 import { paymentService, type Payment, type CreatePaymentData } from "@/services/payment.service";
 import { useToast } from "@/components/ui/Toast";
@@ -166,9 +167,7 @@ export default function ContractorPaymentsPage() {
       </div>
 
       {loading ? (
-        <Card className="p-6 text-center text-text-muted">
-          {isArabic ? "جاري التحميل..." : "Loading..."}
-        </Card>
+        <DataLoader />
       ) : payments.length === 0 ? (
         <Card className="p-6 text-center text-text-secondary">
           {isArabic ? "لا توجد دفعات بعد" : "No payments yet"}

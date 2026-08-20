@@ -5,16 +5,20 @@ import { UpdateInventoryItemInput, InventoryItemResult } from '../dto/inventory-
 import { toResult } from './list-inventory-items.use-case';
 import { PrismaService } from '@/prisma/prisma.service';
 import { normalizeKey } from '@/shared/utils/string-normalizer';
+import { OwnershipActor, OwnershipService } from '@/common/services/ownership.service';
 
 export class UpdateInventoryItemUseCase {
   constructor(
     private readonly items: IInventoryItemRepository,
     private readonly prisma: PrismaService,
+    private readonly ownership: OwnershipService,
   ) {}
 
-  async execute(input: UpdateInventoryItemInput): Promise<Result<InventoryItemResult>> {
+  async execute(input: UpdateInventoryItemInput, user: OwnershipActor | undefined, userId?: string): Promise<Result<InventoryItemResult>> {
     const item = await this.items.findById(new UniqueEntityId(input.id));
     if (!item) return Result.fail(new Error('Inventory item not found'));
+
+    if (item.projectId) await this.ownership.verifyProjectAccess(user, item.projectId);
 
     try {
       // Category must be valid (existing + active) whenever provided.

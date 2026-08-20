@@ -4,6 +4,7 @@ import { PrismaService } from '@/prisma/prisma.service';
 import { FinancialService } from '@/common/services/financial.service';
 import { EventBusImpl } from '@/modules/domain-events/event-bus.impl';
 import { NotificationService } from '@/common/services/notification.service';
+import { OwnershipService } from '@/common/services/ownership.service';
 import { PURCHASE_REPOSITORY } from './domain/purchase.repository';
 import { IPurchaseRepository } from './domain/purchase.repository';
 import { PrismaPurchaseRepository } from './infrastructure/prisma-purchase.repository';
@@ -20,35 +21,41 @@ import { PurchaseController } from './purchase.controller';
   controllers: [PurchaseController],
   providers: [
     FinancialService,
+    {
+      provide: OwnershipService,
+      useFactory: (prisma: PrismaService) => new OwnershipService(prisma),
+      inject: [PrismaService],
+    },
     { provide: PURCHASE_REPOSITORY, useClass: PrismaPurchaseRepository },
     {
       provide: ListPurchasesUseCase,
-      useFactory: (repo: IPurchaseRepository) => new ListPurchasesUseCase(repo),
-      inject: [PURCHASE_REPOSITORY],
+      useFactory: (repo: IPurchaseRepository, ownership: OwnershipService) =>
+        new ListPurchasesUseCase(repo, ownership),
+      inject: [PURCHASE_REPOSITORY, OwnershipService],
     },
     {
       provide: CreatePurchaseUseCase,
-      useFactory: (repo: IPurchaseRepository, fs: FinancialService, prisma: PrismaService, eventBus: EventBusImpl) =>
-        new CreatePurchaseUseCase(repo, fs, prisma, eventBus),
-      inject: [PURCHASE_REPOSITORY, FinancialService, PrismaService, EventBusImpl],
+      useFactory: (repo: IPurchaseRepository, fs: FinancialService, prisma: PrismaService, eventBus: EventBusImpl, ownership: OwnershipService) =>
+        new CreatePurchaseUseCase(repo, fs, prisma, eventBus, ownership),
+      inject: [PURCHASE_REPOSITORY, FinancialService, PrismaService, EventBusImpl, OwnershipService],
     },
     {
       provide: UpdatePurchaseUseCase,
-      useFactory: (repo: IPurchaseRepository, fs: FinancialService, prisma: PrismaService) =>
-        new UpdatePurchaseUseCase(repo, fs, prisma),
-      inject: [PURCHASE_REPOSITORY, FinancialService, PrismaService],
+      useFactory: (repo: IPurchaseRepository, fs: FinancialService, prisma: PrismaService, ownership: OwnershipService) =>
+        new UpdatePurchaseUseCase(repo, fs, prisma, ownership),
+      inject: [PURCHASE_REPOSITORY, FinancialService, PrismaService, OwnershipService],
     },
     {
       provide: DeletePurchaseUseCase,
-      useFactory: (repo: IPurchaseRepository, fs: FinancialService, prisma: PrismaService) =>
-        new DeletePurchaseUseCase(repo, fs, prisma),
-      inject: [PURCHASE_REPOSITORY, FinancialService, PrismaService],
+      useFactory: (repo: IPurchaseRepository, fs: FinancialService, prisma: PrismaService, ownership: OwnershipService) =>
+        new DeletePurchaseUseCase(repo, fs, prisma, ownership),
+      inject: [PURCHASE_REPOSITORY, FinancialService, PrismaService, OwnershipService],
     },
     {
       provide: UpdatePurchaseStatusUseCase,
-      useFactory: (repo: IPurchaseRepository, fs: FinancialService, prisma: PrismaService, notifications: NotificationService, stockService: PurchaseStockService) =>
-        new UpdatePurchaseStatusUseCase(repo, fs, prisma, notifications, stockService),
-      inject: [PURCHASE_REPOSITORY, FinancialService, PrismaService, NotificationService, PurchaseStockService],
+      useFactory: (repo: IPurchaseRepository, fs: FinancialService, prisma: PrismaService, notifications: NotificationService, stockService: PurchaseStockService, ownership: OwnershipService) =>
+        new UpdatePurchaseStatusUseCase(repo, fs, prisma, notifications, stockService, ownership),
+      inject: [PURCHASE_REPOSITORY, FinancialService, PrismaService, NotificationService, PurchaseStockService, OwnershipService],
     },
     PurchaseStockService,
   ],

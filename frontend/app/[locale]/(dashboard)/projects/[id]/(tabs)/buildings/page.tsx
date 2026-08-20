@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { buildingService, type Building } from "@/services/building.service";
 import { Can } from "@/components/Can";
+import ExportButtons from "@/components/shared/ExportButtons";
 
 export default function ProjectBuildingsPage() {
   const params = useParams();
@@ -86,10 +87,17 @@ export default function ProjectBuildingsPage() {
   const handleBuildingSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      const body = {
+        ...buildingForm,
+        startDate: buildingForm.startDate || undefined,
+        code: buildingForm.code || undefined,
+        type: buildingForm.type || undefined,
+        description: buildingForm.description || undefined,
+      };
       if (editingBuilding) {
-        await buildingService.updateBuilding(editingBuilding.id, buildingForm);
+        await buildingService.updateBuilding(editingBuilding.id, body);
       } else {
-        await buildingService.createBuilding(projectId, buildingForm);
+        await buildingService.createBuilding(projectId, body);
       }
       const data = await buildingService.getBuildings(projectId);
       setBuildings(data as any[]);
@@ -120,15 +128,31 @@ export default function ProjectBuildingsPage() {
         <h2 className="text-lg font-bold text-primary">
           {isArabic ? "المباني" : "Buildings"}
         </h2>
-        <Can permission="buildings.create">
-          <button
-            onClick={openAddBuildingModal}
-            className="flex items-center gap-2 px-3 py-1.5 bg-primary text-white rounded-lg text-sm hover:bg-primary-dark transition"
-          >
-            <Plus size={16} />
-            {isArabic ? "إضافة مبنى" : "Add Building"}
-          </button>
-        </Can>
+        <div className="flex items-center gap-2">
+          <ExportButtons
+            data={buildings}
+            columns={[
+              { key: "name", labelAr: "اسم المبنى", labelEn: "Building Name" },
+              { key: "code", labelAr: "الكود", labelEn: "Code" },
+              { key: "type", labelAr: "النوع", labelEn: "Type" },
+              { key: "startDate", labelAr: "تاريخ البدء", labelEn: "Start Date", format: (v) => v ? new Date(v).toLocaleDateString("ar-EG") : "—" },
+              { key: "status", labelAr: "الحالة", labelEn: "Status", format: (v) => v === "active" ? "نشط" : v === "completed" ? "مكتمل" : "معلق" },
+            ]}
+            titleAr="تقرير المباني"
+            titleEn="Buildings Report"
+            filename={`buildings_${projectId}`}
+            locale={locale}
+          />
+          <Can permission="buildings.create">
+            <button
+              onClick={openAddBuildingModal}
+              className="flex items-center gap-2 px-3 py-1.5 bg-primary text-white rounded-lg text-sm hover:bg-primary-dark transition"
+            >
+              <Plus size={16} />
+              {isArabic ? "إضافة مبنى" : "Add Building"}
+            </button>
+          </Can>
+        </div>
       </div>
 
       {buildings.length === 0 ? (

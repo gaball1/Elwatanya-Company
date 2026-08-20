@@ -83,6 +83,12 @@ export class RenderPdfDto {
   @MaxLength(MAX_PDF_TITLE_LENGTH)
   arabicTitle?: string;
 
+  @ApiPropertyOptional({ maxLength: MAX_PDF_TITLE_LENGTH, description: 'Subtitle shown below the title (e.g. project name, subcontractor name)' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(MAX_PDF_TITLE_LENGTH)
+  subtitle?: string;
+
   @ApiPropertyOptional({ maxLength: 100 })
   @IsOptional()
   @IsString()
@@ -149,10 +155,10 @@ export class RenderPdfDto {
   @IsIn(['ar', 'en'])
   locale?: 'ar' | 'en';
 
-  @ApiPropertyOptional({ maxLength: 500, description: 'Company asset URL or /api/v1/files/public/:id path' })
+  @ApiPropertyOptional({ description: 'Company asset URL, /api/v1/files/public/:id path, or data:image URI' })
   @IsOptional()
   @IsString()
-  @MaxLength(500)
-  @Matches(/^(data:image\/(png|jpeg|gif|webp);base64,|https?:\/\/|\/[^/])/)
+  @MaxLength(2_000_000)
+  @Matches(/^(data:image\/(png|jpe?g|gif|webp|svg\+xml);base64,|https?:\/\/|\/[^/])/)
   logoUrl?: string;
 }

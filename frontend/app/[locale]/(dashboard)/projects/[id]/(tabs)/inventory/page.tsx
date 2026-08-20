@@ -9,7 +9,6 @@ import {
   Plus,
   Search,
   Filter,
-  Printer,
   Download,
   Edit2,
   Trash2,
@@ -28,6 +27,8 @@ import { inventoryItemService, type InventoryItem } from "@/services/inventory-i
 import { categoryService, type Category } from "@/services/category.service";
 import { approvalService } from "@/services/approval.service";
 import { Can } from "@/components/Can";
+import DataLoader from "@/components/shared/DataLoader";
+import PrintPdfButton from "@/components/shared/PrintPdfButton";
 import { printAsPDF } from "@/lib/printUtils";
 
 interface InventoryItemExtended extends InventoryItem {
@@ -576,7 +577,7 @@ export default function ProjectInventoryPage() {
   }, [filteredItems, showToast, isArabic]);
 
   // ✅ طباعة
-  const handlePrint = useCallback(() => {
+  const handlePrint = useCallback((logoUrl?: string) => {
     if (filteredItems.length === 0) {
       showToast(
         isArabic ? "لا توجد بيانات للطباعة" : "No data to print",
@@ -615,6 +616,10 @@ export default function ProjectInventoryPage() {
       isArabic
     );
   }, [filteredItems, showToast, isArabic]);
+
+  if (loading) {
+    return <DataLoader />;
+  }
 
   return (
     <div className="space-y-6" suppressHydrationWarning>
@@ -707,14 +712,11 @@ export default function ProjectInventoryPage() {
           <Download size={18} />
           {isArabic ? "تصدير Excel" : "Export Excel"}
         </button>
-        <button
-          onClick={handlePrint}
-          className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition text-sm font-medium"
-          suppressHydrationWarning
-        >
-          <Printer size={18} />
-          {isArabic ? "طباعة PDF" : "Print PDF"}
-        </button>
+        <PrintPdfButton
+          label={isArabic ? "طباعة PDF" : "Print PDF"}
+          onPrint={handlePrint}
+          className="text-sm font-medium"
+        />
       </div>
 
       {/* Filters */}

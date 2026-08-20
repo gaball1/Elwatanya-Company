@@ -6,10 +6,11 @@ import { useParams } from "next/navigation";
 import { Card, Button, Input } from "@/components/ui";
 import { useToast } from "@/components/ui/Toast";
 import { Can } from "@/components/Can";
+import DataLoader from "@/components/shared/DataLoader";
 import { companyService, type Company } from "@/services/company.service";
 import {
   Building2, Upload, Camera, Save, Image,
-  Palette, MapPin, DollarSign, Clock,
+  Palette, MapPin, DollarSign, Clock, Bell, Mail, MessageSquare,
 } from "lucide-react";
 
 export default function SettingsPage() {
@@ -131,10 +132,10 @@ export default function SettingsPage() {
 
   const currencyOptions = [
     { value: "EGP", label: isArabic ? "جنيه مصري" : "EGP (Egyptian Pound)" },
-    { value: "USD", label: "USD (US Dollar)" },
+    { value: "USD", label: isArabic ? "دولار أمريكي" : "USD (US Dollar)" },
     { value: "SAR", label: isArabic ? "ريال سعودي" : "SAR (Saudi Riyal)" },
     { value: "AED", label: isArabic ? "درهم إماراتي" : "AED (UAE Dirham)" },
-    { value: "EUR", label: "EUR (Euro)" },
+    { value: "EUR", label: isArabic ? "يورو" : "EUR (Euro)" },
   ];
 
   const languageOptions = [
@@ -143,23 +144,7 @@ export default function SettingsPage() {
   ];
 
   if (loading) {
-    return (
-      <div className="space-y-6 animate-fade-in">
-        <div className="h-8 w-48 bg-surface rounded animate-pulse" />
-        <div className="grid gap-6">
-          {[1, 2, 3].map((i) => (
-            <Card key={i} className="p-6">
-              <div className="h-6 w-32 bg-surface rounded animate-pulse mb-4" />
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {[1, 2, 3, 4].map((j) => (
-                  <div key={j} className="h-10 bg-surface rounded animate-pulse" />
-                ))}
-              </div>
-            </Card>
-          ))}
-        </div>
-      </div>
-    );
+    return <DataLoader />;
   }
 
   if (error) {
@@ -548,6 +533,47 @@ export default function SettingsPage() {
                       {isArabic ? "رفع" : "Upload"}
                     </Button>
                   </Can>
+                </div>
+              </div>
+            </div>
+          </Card>
+
+          {/* Notification Settings */}
+          <Card className="p-6">
+            <h2 className="text-lg font-semibold text-text-primary mb-4 flex items-center gap-2">
+              <Bell size={20} />
+              {isArabic ? "إعدادات الإشعارات" : "Notification Settings"}
+            </h2>
+            <div className="space-y-4">
+              <p className="text-sm text-text-secondary">
+                {isArabic
+                  ? "الإشعارات الفورية (In-App) مفعلة. يمكن تفعيل إشعارات البريد الإلكتروني والرسائل القصيرة من هنا."
+                  : "In-app notifications are active. Enable email and SMS notifications from here."}
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="p-4 bg-surface-secondary rounded-lg">
+                  <div className="flex items-center gap-3 mb-2">
+                    <Mail size={18} className="text-primary" />
+                    <span className="font-medium text-text-primary">{isArabic ? "البريد الإلكتروني" : "Email Notifications"}</span>
+                  </div>
+                  <p className="text-xs text-text-secondary mb-3">
+                    {isArabic ? "إرسال إشعارات عبر البريد الإلكتروني (يتطلب إعداد SMTP)" : "Send notifications via email (requires SMTP configuration)"}
+                  </p>
+                  <span className="inline-flex px-2 py-0.5 rounded-full text-xs bg-warning/10 text-warning font-medium">
+                    {isArabic ? "يتطلب إعداد" : "Requires Setup"}
+                  </span>
+                </div>
+                <div className="p-4 bg-surface-secondary rounded-lg">
+                  <div className="flex items-center gap-3 mb-2">
+                    <MessageSquare size={18} className="text-primary" />
+                    <span className="font-medium text-text-primary">{isArabic ? "الرسائل القصيرة" : "SMS Notifications"}</span>
+                  </div>
+                  <p className="text-xs text-text-secondary mb-3">
+                    {isArabic ? "إرسال إشعارات عبر الرسائل القصيرة (يتطلب مزود خدمة SMS)" : "Send notifications via SMS (requires SMS provider)"}
+                  </p>
+                  <span className="inline-flex px-2 py-0.5 rounded-full text-xs bg-warning/10 text-warning font-medium">
+                    {isArabic ? "يتطلب إعداد" : "Requires Setup"}
+                  </span>
                 </div>
               </div>
             </div>

@@ -51,9 +51,12 @@ export class PrismaProjectFundRepository implements IProjectFundRepository {
     return record ? this.toDomain(record) : null;
   }
 
-  async findAll(): Promise<ProjectFund[]> {
+  async findAll(projectIds?: string[]): Promise<ProjectFund[]> {
     const records = await this.prisma.projectFund.findMany({
-      where: { deletedAt: null },
+      where: {
+        deletedAt: null,
+        ...(projectIds && projectIds.length ? { projectId: { in: projectIds } } : {}),
+      },
       orderBy: { createdAt: 'desc' },
     });
     return records.map((r) => this.toDomain(r));

@@ -1,7 +1,7 @@
 // lib/boqExcel.ts
 // Client-side Excel (.xlsx) import/export for BOQ item lists.
 
-import ExcelJS from "exceljs";
+import type ExcelJS from "exceljs";
 
 export interface BoqImportRow {
   itemCode?: string;
@@ -28,6 +28,7 @@ function toTrimmedString(value: unknown): string {
  * (description, unit, quantity, unitPrice).
  */
 export async function parseBoqExcelFile(file: File): Promise<BoqImportRow[]> {
+  const ExcelJS = (await import("exceljs")).default;
   const buffer = await file.arrayBuffer();
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(buffer);
@@ -143,6 +144,7 @@ export interface ExtractImportRow {
  * summary/section rows.
  */
 export async function parseExtractExcelFile(file: File): Promise<ExtractImportRow[]> {
+  const ExcelJS = (await import("exceljs")).default;
   const buffer = await file.arrayBuffer();
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(buffer);
@@ -255,6 +257,7 @@ export interface BoqExcelRow {
   headers: string[],
   sheetName = "مقايسة",
 ): Promise<void> {
+  const ExcelJS = (await import("exceljs")).default;
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "Elwataniya ERP";
   const sheet = workbook.addWorksheet(sheetName);
@@ -313,6 +316,7 @@ export async function exportExtractsListToExcel(
   title: string,
   locale: "ar" | "en" = "ar",
 ): Promise<void> {
+  const ExcelJS = (await import("exceljs")).default;
   const t = (ar: string, en: string) => (locale === "ar" ? ar : en);
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "Elwataniya ERP";
@@ -416,6 +420,7 @@ const MONEY_FMT = '#,##0.00';
  * Export a contractor extract as a real .xlsx workbook (RTL, styled).
  */
 export async function exportExtractToExcel(payload: ExtractExcelPayload): Promise<void> {
+  const ExcelJS = (await import("exceljs")).default;
   const locale = payload.locale ?? "ar";
   const t = (ar: string, en: string) => (locale === "ar" ? ar : en);
   const workbook = new ExcelJS.Workbook();

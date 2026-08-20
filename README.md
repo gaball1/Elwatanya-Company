@@ -62,6 +62,6 @@ See [docs/BACKEND_MIGRATION_PLAN.md](docs/BACKEND_MIGRATION_PLAN.md) for the ful
 ### Backend (`backend/`)
 - NestJS 11, Prisma 6, PostgreSQL 16, JWT, Swagger
 
-## Default Admin (seed)
+## Seed Admin
 - Email: `admin@elwataniya.com`
-- Password: `Admin@123`
+- Password: provided via `ADMIN_PASSWORD` env, or a randomly generated password printed by the seed script. No default password is ever created.

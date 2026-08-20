@@ -9,10 +9,12 @@
 #   docker compose -f docker-compose.prod.yml ps
 #   docker compose -f docker-compose.prod.yml logs -f backend
 #
-# Production must supply strong secrets and the backend API base the frontend
-# should proxy to. Example:
+# Production must supply strong secrets and the public API origin the browser
+# will call through the TLS reverse proxy. Example:
 #   docker compose -f docker-compose.prod.yml build \
-#     --build-arg NEXT_PUBLIC_API_URL=http://backend:3001/api/v1
+#     --build-arg NEXT_PUBLIC_API_URL=https://erp.example.com/api/v1
+# Do NOT use a docker-internal hostname (e.g. backend:3001): the browser
+# must be able to resolve and reach NEXT_PUBLIC_API_URL directly.
 # =============================================================================
 name: elwataniya-prod
 
@@ -90,8 +92,10 @@ services:
       context: .
       dockerfile: frontend/Dockerfile
       args:
-        # The Next.js rewrites proxy /api/v1/* here at build time.
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://backend:3001/api/v1}
+        # Public origin reached by the browser through the TLS reverse proxy.
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?set NEXT_PUBLIC_API_URL (public HTTPS origin, e.g. https://erp.example.com/api/v1)}
+        # Server-only: target for the Next.js rewrites (internal backend).
+        BACKEND_API_URL: ${BACKEND_API_URL:-http://backend:3001/api/v1}
     restart: unless-stopped
     environment:
       NODE_ENV: production

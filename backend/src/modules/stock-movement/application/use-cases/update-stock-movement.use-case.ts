@@ -8,6 +8,8 @@ import { EventBusImpl } from '@/modules/domain-events/event-bus.impl';
 import { StockMovementUpdatedEvent } from '@/modules/domain-events/events';
 import { PrismaService } from '@/prisma/prisma.service';
 import { StockEffectService } from '../stock-effect.service';
+import { OwnershipActor, OwnershipService } from '@/common/services/ownership.service';
+import { verifyStockMovementAccess } from '../stock-movement-ownership.util';
 
 export class UpdateStockMovementUseCase {
   constructor(
@@ -15,12 +17,14 @@ export class UpdateStockMovementUseCase {
     private readonly prisma: PrismaService,
     private readonly eventBus: EventBusImpl,
     private readonly stockEffect: StockEffectService,
+    private readonly ownership: OwnershipService,
   ) {}
 
-  async execute(input: UpdateStockMovementInput): Promise<Result<StockMovementResult>> {
+  async execute(input: UpdateStockMovementInput, user: OwnershipActor | undefined, userId?: string): Promise<Result<StockMovementResult>> {
     const stockMovement = await this.stockMovements.findById(new UniqueEntityId(input.id));
     if (!stockMovement) return Result.fail(new Error('Stock movement not found'));
 
+    const createdBy = userId ?? 'system';
     const originalType = stockMovement.type;
     const originalItemId = stockMovement.itemId;
     const originalQuantity = stockMovement.quantity;
@@ -34,7 +38,7 @@ export class UpdateStockMovementUseCase {
       reference: input.reference,
       reason: input.reason,
       notes: input.notes,
-      createdBy: input.createdBy,
+      createdBy,
       issuedTo: input.issuedTo,
       supplier: input.supplier,
       fromWarehouse: input.fromWarehouse,
@@ -42,6 +46,14 @@ export class UpdateStockMovementUseCase {
     });
 
     if (updateResult.isFailure) return Result.fail(updateResult.error as Error);
+
+    await verifyStockMovementAccess(
+      this.prisma,
+      this.ownership,
+      user,
+      [stockMovement.itemId],
+      [stockMovement.fromWarehouse, stockMovement.toWarehouse],
+    );
 
     try {
       await this.prisma.$transaction(async (tx) => {
@@ -91,7 +103,7 @@ export class UpdateStockMovementUseCase {
           itemId: stockMovement.itemId,
           type: stockMovement.type,
           quantity: stockMovement.quantity,
-          updatedBy: input.createdBy,
+          updatedBy: createdBy,
         },
       ),
     );

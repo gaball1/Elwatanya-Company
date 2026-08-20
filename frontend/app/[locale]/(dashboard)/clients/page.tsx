@@ -4,6 +4,7 @@
 import { useParams } from "next/navigation";
 import { useState, useMemo, useCallback, useEffect } from "react";
 import { Card } from "@/components/ui";
+import DataLoader from "@/components/shared/DataLoader";
 import { Can } from '@/components/Can';
 import {
   Building2,
@@ -20,8 +21,8 @@ import {
   Filter,
   Download,
   ArrowUpDown,
-  Printer,
 } from "lucide-react";
+import PrintPdfButton from "@/components/shared/PrintPdfButton";
 import { clientService, type Client } from "@/services/client.service";
 import { useToast } from "@/components/ui/Toast";
 import { printAsPDF } from "@/lib/printUtils";
@@ -172,7 +173,7 @@ export default function ClientsPage() {
     }
   }, [deletingId, isArabic, fetchClients]);
 
-  const handlePrintPDF = useCallback(() => {
+  const handlePrintPDF = useCallback((logoUrl?: string) => {
     const headers = [
       isArabic ? "اسم العميل" : "Client Name",
       isArabic ? "البريد الإلكتروني" : "Email",
@@ -191,7 +192,7 @@ export default function ClientsPage() {
       c.joinDate || "—",
       c.status === "active" ? (isArabic ? "نشط" : "Active") : (isArabic ? "غير نشط" : "Inactive"),
     ]);
-    printAsPDF(rows, headers, isArabic ? "تقرير العملاء" : "Clients Report", isArabic);
+    printAsPDF(rows, headers, isArabic ? "تقرير العملاء" : "Clients Report", isArabic, { logoUrl });
   }, [filteredAndSortedClients, isArabic]);
 
   const exportToExcel = useCallback(() => {
@@ -234,9 +235,7 @@ export default function ClientsPage() {
             <p className="text-sm text-text-secondary mt-1">{isArabic ? "إدارة بيانات العملاء وجهات الإسناد" : "Manage client data"}</p>
           </div>
           <div className="flex gap-2">
-            <button onClick={handlePrintPDF} className="flex items-center gap-2 px-4 py-2 border border-info text-info rounded-lg hover:bg-info hover:text-white transition">
-              <Printer size={18} /> {isArabic ? "طباعة PDF" : "Print PDF"}
-            </button>
+            <PrintPdfButton label={isArabic ? "طباعة PDF" : "Print PDF"} onPrint={handlePrintPDF} />
             <button onClick={exportToExcel} className="flex items-center gap-2 px-4 py-2 border border-success-dark text-success-dark rounded-lg hover:bg-success-dark hover:text-white transition">
               <Download size={18} /> {isArabic ? "تصدير Excel" : "Export Excel"}
             </button>
@@ -283,7 +282,7 @@ export default function ClientsPage() {
 
       <div className="p-6 pt-0">
         {loading ? (
-          <Card className="p-12 text-center"><p className="text-text-secondary">{isArabic ? "جاري التحميل..." : "Loading..."}</p></Card>
+          <DataLoader />
         ) : filteredAndSortedClients.length === 0 ? (
           <Card className="p-12 text-center">
             <Building2 size={64} className="mx-auto text-text-muted mb-4" />

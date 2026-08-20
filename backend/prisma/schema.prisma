@@ -3,6 +3,7 @@
 generator client {
   provider        = "prisma-client-js"
   previewFeatures = ["postgresqlExtensions"]
+  binaryTargets   = ["native", "debian-openssl-3.0.x"]
 }
 
 datasource db {
@@ -41,6 +42,7 @@ model Project {
   attendanceRecords     Attendance[]
   warehouses            Warehouse[]
   inventoryItems        InventoryItem[]
+  changeOrders          ChangeOrder[]
 
   @@index([status])
 }
@@ -69,6 +71,8 @@ model Building {
   subcontractorContracts SubcontractorContract[]
   boqCodeCounter         BoqCodeCounter?
   attendanceRecords      Attendance[]
+
+  @@index([projectId])
 }
 
 model BoqCodeCounter {
@@ -129,6 +133,7 @@ model FinalBoq {
 
   @@unique([projectId, businessCode])
   @@index([id, version])
+  @@index([buildingId])
 }
 
 model FinalBoqItem {
@@ -214,6 +219,7 @@ model BuildingSubcontractor {
 
   @@unique([buildingId, subcontractorId])
   @@index([buildingId])
+  @@index([subcontractorId])
 }
 
 model ContractorBoq {
@@ -233,6 +239,7 @@ model ContractorBoq {
 
   @@unique([buildingId, subcontractorId])
   @@index([buildingId])
+  @@index([subcontractorId])
 }
 
 model ContractorBoqItem {
@@ -317,6 +324,8 @@ model Statement {
   items            StatementItem[]
   deductions       StatementDeduction[]
   payments         Payment[]
+
+  @@index([contractorBoqId])
 }
 
 model StatementItem {
@@ -367,6 +376,10 @@ model Payment {
   updatedAt    DateTime   @updatedAt
   deletedAt    DateTime?
   statement    Statement? @relation(fields: [statementId], references: [id])
+
+  @@index([buildingId])
+  @@index([contractorId])
+  @@index([statementId])
 }
 
 model Distribution {
@@ -378,6 +391,8 @@ model Distribution {
   deletedAt  DateTime?
   finalBoq   FinalBoq          @relation(fields: [finalBoqId], references: [id])
   rows       DistributionRow[]
+
+  @@index([finalBoqId])
 }
 
 model DistributionRow {
@@ -393,6 +408,10 @@ model DistributionRow {
   distribution      Distribution  @relation(fields: [distributionId], references: [id])
   finalBoqItem      FinalBoqItem? @relation(fields: [finalBoqItemId], references: [id])
   component         Component?    @relation(fields: [componentId], references: [id])
+
+  @@index([distributionId])
+  @@index([finalBoqItemId])
+  @@index([componentId])
 }
 
 enum UserRole {
@@ -424,6 +443,10 @@ model User {
   roleAssignments     UserRoleAssignment[]
   projectAssignments  UserProjectAssignment[]
   notifications       Notification[]
+  entityNotes         EntityNote[]
+
+  @@index([projectId])
+  @@index([status])
 }
 
 model Role {
@@ -666,6 +689,7 @@ model Attendance {
   @@index([date])
   @@index([attendanceStatus])
   @@index([projectId])
+  @@index([buildingId])
 }
 
 model Leave {
@@ -961,9 +985,9 @@ model ClientStatement {
   clientName      String    @default("")
   date            DateTime  @default(now())
   status          String    @default("pending")
-  totalWorkValue  Float     @default(0)
-  totalDeductions Float     @default(0)
-  netPayable      Float     @default(0)
+  totalWorkValue  Decimal   @default(0) @db.Decimal(12, 2)
+  totalDeductions Decimal   @default(0) @db.Decimal(12, 2)
+  netPayable      Decimal   @default(0) @db.Decimal(12, 2)
   items           Json      @default("[]")
   deductions      Json      @default("[]")
   signatures      Json      @default("[]")
@@ -990,12 +1014,12 @@ model SubcontractorStatement {
   status            String    @default("pending")
   blockNumber       String    @default("")
   formNumber        String    @default("")
-  insurancePercent  Float     @default(0)
-  totalWorkValue    Float     @default(0)
-  totalInsurance    Float     @default(0)
-  totalDeductions   Float     @default(0)
-  previousPaid      Float     @default(0)
-  netPayable        Float     @default(0)
+  insurancePercent  Decimal   @default(0) @db.Decimal(12, 2)
+  totalWorkValue    Decimal   @default(0) @db.Decimal(12, 2)
+  totalInsurance    Decimal   @default(0) @db.Decimal(12, 2)
+  totalDeductions   Decimal   @default(0) @db.Decimal(12, 2)
+  previousPaid      Decimal   @default(0) @db.Decimal(12, 2)
+  netPayable        Decimal   @default(0) @db.Decimal(12, 2)
   runningNumber     Int       @default(0)
   items             Json      @default("[]")
   deductions        Json      @default("[]")
@@ -1310,4 +1334,48 @@ model AiConversationMessage {
   conversation   AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
   @@index([conversationId, createdAt])
+}
+
+model ChangeOrder {
+  id              String   @id @default(uuid())
+  projectId       String
+  changeNumber    Int      @default(0)
+  title           String
+  description     String   @default("")
+  reason          String   @default("")
+  originalAmount  Decimal  @default(0) @db.Decimal(14, 2)
+  changeAmount    Decimal  @default(0) @db.Decimal(14, 2)
+  newAmount       Decimal  @default(0) @db.Decimal(14, 2)
+  status          String   @default("draft")
+  requestedBy     String?
+  approvedBy      String?
+  requestedAt     DateTime?
+  approvedAt      DateTime?
+  rejectedAt      DateTime?
+  rejectionReason String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  deletedAt       DateTime?
+
+  project Project @relation(fields: [projectId], references: [id])
+
+  @@index([projectId])
+  @@index([status])
+  @@index([projectId, deletedAt])
+}
+
+model EntityNote {
+  id         String   @id @default(uuid())
+  entityType String
+  entityId   String
+  userId     String
+  content    String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  deletedAt  DateTime?
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([userId])
 }

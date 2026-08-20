@@ -35,18 +35,21 @@ export class ProfileController {
 
   @Get('signature')
   @ApiOperation({ summary: 'Get current user signature' })
+  @RequirePermission('profile.read')
   async getSignature(@CurrentUser('sub') userId: string) {
     return this.profile.getSignature(userId);
   }
 
   @Put('signature')
   @ApiOperation({ summary: 'Save signature image (base64 data URL)' })
+  @RequirePermission('profile.update')
   async saveSignature(@CurrentUser('sub') userId: string, @Body() dto: SaveSignatureDto) {
     return this.profile.saveSignature(userId, dto.signatureUrl);
   }
 
   @Delete('signature')
   @ApiOperation({ summary: 'Clear current user signature' })
+  @RequirePermission('profile.update')
   async clearSignature(@CurrentUser('sub') userId: string) {
     await this.profile.saveSignature(userId, '');
     return { success: true };
@@ -54,6 +57,7 @@ export class ProfileController {
 
   @Put('avatar')
   @ApiOperation({ summary: 'Save profile picture (base64 data URL)' })
+  @RequirePermission('profile.update')
   async saveAvatar(@CurrentUser('sub') userId: string, @Body() dto: SaveAvatarDto) {
     return this.profile.saveAvatar(userId, dto.avatarUrl);
   }

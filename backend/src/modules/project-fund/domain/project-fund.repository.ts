@@ -8,5 +8,5 @@ export interface IProjectFundRepository {
   findById(id: UniqueEntityId): Promise<ProjectFund | null>;
   findByProjectId(projectId: string): Promise<ProjectFund | null>;
   findDeletedByProjectId(projectId: string): Promise<ProjectFund | null>;
-  findAll(): Promise<ProjectFund[]>;
+  findAll(projectIds?: string[]): Promise<ProjectFund[]>;
 }

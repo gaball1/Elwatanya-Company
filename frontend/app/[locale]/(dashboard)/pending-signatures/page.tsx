@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 import { Card, Button, Badge, PageHeader, EmptyState, Dialog } from "@/components/ui";
 import { useToast } from "@/components/ui/Toast";
 import SignaturePad from "@/components/signature/SignaturePad";
+import DataLoader from "@/components/shared/DataLoader";
 import { signatureWorkflowService } from "@/services/signature-workflow.service";
 import { shortRef } from "@/lib/formatRef";
 import { Pen, CheckCircle, XCircle, FileText, Clock } from "lucide-react";
@@ -97,13 +98,7 @@ export default function PendingSignaturesPage() {
       />
 
       {loading ? (
-        <div className="space-y-4">
-          {[1, 2, 3].map((i) => (
-            <Card key={i} className="p-4">
-              <div className="h-16 bg-surface rounded animate-pulse" />
-            </Card>
-          ))}
-        </div>
+        <DataLoader />
       ) : pending.length === 0 ? (
         <EmptyState
           icon={<CheckCircle className="w-12 h-12" />}

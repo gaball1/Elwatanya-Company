@@ -4,6 +4,7 @@
 import { useParams } from "next/navigation";
 import { useState, useMemo, useCallback, useEffect } from "react";
 import { Card } from "@/components/ui";
+import DataLoader from "@/components/shared/DataLoader";
 import { Can } from '@/components/Can';
 import {
   Building2,
@@ -15,11 +16,11 @@ import {
   Filter,
   Download,
   ArrowUpDown,
-  Printer,
   Hash,
   FileText,
   User,
 } from "lucide-react";
+import PrintPdfButton from "@/components/shared/PrintPdfButton";
 import { departmentService, type Department } from "@/services/department.service";
 import { employeeService, type Employee } from "@/services/employee.service";
 import { useToast } from "@/components/ui/Toast";
@@ -166,7 +167,7 @@ export default function DepartmentsPage() {
     }
   }, [deletingId, isArabic, fetchDepartments]);
 
-  const handlePrintPDF = useCallback(() => {
+  const handlePrintPDF = useCallback((logoUrl?: string) => {
     const headers = [
       isArabic ? "الكود" : "Code",
       isArabic ? "اسم القسم" : "Name",
@@ -181,7 +182,7 @@ export default function DepartmentsPage() {
       d.managerId || "—",
       d.status === "active" ? (isArabic ? "نشط" : "Active") : (isArabic ? "غير نشط" : "Inactive"),
     ]);
-    printAsPDF(rows, headers, isArabic ? "تقرير الأقسام" : "Departments Report", isArabic);
+    printAsPDF(rows, headers, isArabic ? "تقرير الأقسام" : "Departments Report", isArabic, { logoUrl });
   }, [filteredAndSortedDepartments, isArabic]);
 
   const exportToExcel = useCallback(() => {
@@ -223,9 +224,7 @@ export default function DepartmentsPage() {
             <p className="text-sm text-text-secondary mt-1">{isArabic ? "إدارة أقسام الشركة" : "Manage company departments"}</p>
           </div>
           <div className="flex gap-2">
-            <button onClick={handlePrintPDF} className="flex items-center gap-2 px-4 py-2 border border-info text-info rounded-lg hover:bg-info hover:text-white transition">
-              <Printer size={18} /> {isArabic ? "طباعة PDF" : "Print PDF"}
-            </button>
+            <PrintPdfButton label={isArabic ? "طباعة PDF" : "Print PDF"} onPrint={handlePrintPDF} />
             <button onClick={exportToExcel} className="flex items-center gap-2 px-4 py-2 border border-green-600 text-success-dark rounded-lg hover:bg-success-dark hover:text-white transition">
               <Download size={18} /> {isArabic ? "تصدير Excel" : "Export Excel"}
             </button>
@@ -272,7 +271,7 @@ export default function DepartmentsPage() {
 
       <div className="p-6 pt-0">
         {loading ? (
-          <Card className="p-12 text-center"><p className="text-text-secondary">{isArabic ? "جاري التحميل..." : "Loading..."}</p></Card>
+          <DataLoader />
         ) : filteredAndSortedDepartments.length === 0 ? (
           <Card className="p-12 text-center">
             <Building2 size={64} className="mx-auto text-text-muted mb-4" />

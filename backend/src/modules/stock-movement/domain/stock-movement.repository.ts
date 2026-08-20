@@ -6,5 +6,5 @@ export const STOCK_MOVEMENT_REPOSITORY = Symbol('STOCK_MOVEMENT_REPOSITORY');
 export interface IStockMovementRepository {
   save(stockMovement: StockMovement): Promise<void>;
   findById(id: UniqueEntityId): Promise<StockMovement | null>;
-  findAll(): Promise<StockMovement[]>;
+  findAll(projectIds?: string[]): Promise<StockMovement[]>;
 }

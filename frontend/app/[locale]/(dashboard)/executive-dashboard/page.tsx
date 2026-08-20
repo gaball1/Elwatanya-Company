@@ -5,6 +5,7 @@ import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Card, Button, Badge, Dialog } from "@/components/ui";
 import { useToast } from "@/components/ui/Toast";
+import DataLoader from "@/components/shared/DataLoader";
 import { analyticsService, type ExecutiveDashboard, type ProjectAnalytics } from "@/services/analytics.service";
 import { DonutChart, ProgressBar, HorizontalBars } from "@/components/analytics/charts";
 import {
@@ -74,14 +75,7 @@ export default function ExecutiveDashboardPage() {
       </div>
 
       {loading ? (
-        <div className="space-y-6">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
-              <Card key={i} className="p-4"><div className="h-16 bg-surface rounded animate-pulse" /></Card>
-            ))}
-          </div>
-          <Card className="p-8"><div className="h-48 bg-surface rounded animate-pulse" /></Card>
-        </div>
+        <DataLoader />
       ) : !data ? (
         <Card className="p-12 text-center">
           <Activity className="w-12 h-12 text-text-secondary mx-auto mb-3" />

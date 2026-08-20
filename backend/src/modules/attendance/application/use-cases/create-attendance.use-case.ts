@@ -6,6 +6,7 @@ import { EventBusImpl } from '@/modules/domain-events/event-bus.impl';
 import { PrismaService } from '@/prisma/prisma.service';
 import { evaluateGeofence } from '../geofence.util';
 import { AttendanceOverrideService } from '@/modules/attendance-override/attendance-override.service';
+import { NotificationService } from '@/common/services/notification.service';
 import { toResult } from './list-attendance.use-case';
 
 export type CreateAttendanceOutcome =
@@ -13,11 +14,14 @@ export type CreateAttendanceOutcome =
   | { override: { id: string; reason: string; status: string; distance: number | null }; requiresApproval: true };
 
 export class CreateAttendanceUseCase {
+  private readonly MANAGER_ROLES = ['HR', 'CEO', 'TECHNICAL_OFFICE'];
+
   constructor(
     private readonly attendance: IAttendanceRepository,
     private readonly eventBus: EventBusImpl,
     private readonly prisma: PrismaService,
     private readonly overrideService: AttendanceOverrideService,
+    private readonly notifications: NotificationService,
   ) {}
 
   async execute(input: CreateAttendanceInput): Promise<Result<CreateAttendanceOutcome>> {
@@ -52,6 +56,7 @@ export class CreateAttendanceUseCase {
       if (record.isFailure) return Result.fail(record.error as Error);
       const attendance = record.getValue();
       await this.attendance.save(attendance);
+      void this.notifyManagers('check_in', input.employeeId, input.projectId, input.buildingId, input.date);
       return Result.ok({ record: toResult(attendance) });
     }
 
@@ -130,5 +135,48 @@ export class CreateAttendanceUseCase {
       select: { id: true },
     });
     return user?.id ?? null;
+  }
+
+  private async notifyManagers(
+    type: 'check_in' | 'check_out',
+    employeeId: string,
+    projectId?: string | null,
+    buildingId?: string | null,
+    date?: Date,
+  ): Promise<void> {
+    try {
+      const employee = await this.prisma.employee.findUnique({
+        where: { id: employeeId },
+        select: { fullName: true, code: true },
+      });
+      const label = employee?.fullName ?? employeeId;
+      const timeStr = date
+        ? new Date(date).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Cairo' })
+        : '';
+
+      const isCheckIn = type === 'check_in';
+      const title = isCheckIn ? 'تسجيل حضور' : 'تسجيل انصراف';
+      const titleEn = isCheckIn ? 'Attendance Check-in' : 'Attendance Check-out';
+      const msg = `${label} — ${timeStr}`;
+      const msgEn = `${label} — ${timeStr}`;
+
+      const link = projectId && buildingId
+        ? `/projects/${projectId}/buildings/${buildingId}/attendance`
+        : '/attendance/history';
+
+      await this.notifications.createForRoles(this.MANAGER_ROLES, {
+        title,
+        titleEn,
+        message: msg,
+        messageEn: msgEn,
+        type: 'info',
+        entityType: 'attendance',
+        entityId: employeeId,
+        link,
+        createdBy: employeeId,
+      });
+    } catch {
+      // notification failure must never break attendance flow
+    }
   }
 }

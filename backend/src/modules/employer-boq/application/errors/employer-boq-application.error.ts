@@ -3,6 +3,7 @@ export enum EmployerBoqErrorCode {
   BUILDING_NOT_FOUND = 'BUILDING_NOT_FOUND',
   ITEM_NOT_FOUND = 'ITEM_NOT_FOUND',
   DUPLICATE_ITEM_CODE = 'DUPLICATE_ITEM_CODE',
+  ITEM_IS_COMMITTED = 'ITEM_IS_COMMITTED',
 }
 
 export class EmployerBoqApplicationError extends Error {

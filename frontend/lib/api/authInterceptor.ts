@@ -4,9 +4,7 @@ import { safeFetch, isNetworkError } from "./fetchTransport";
 import {
   clearTokens,
   getAccessToken,
-  getRefreshToken,
   saveAccessToken,
-  saveRefreshToken,
 } from "./tokenStorage";
 
 interface RefreshResponse {
@@ -37,14 +35,6 @@ export async function refreshAccessToken(): Promise<boolean> {
   }
 
   refreshPromise = (async () => {
-    const refreshToken = getRefreshToken();
-    debugLog("[AUTH_INTERCEPTOR] refreshAccessToken - has refreshToken:", !!refreshToken);
-    if (!refreshToken) {
-      debugLog("[AUTH_INTERCEPTOR] refreshAccessToken - NO refreshToken, clearing tokens");
-      clearTokens();
-      return false;
-    }
-
     try {
       const base = API_BASE_URL.replace(/\/$/, "");
       const url = `${base}/auth/refresh`;
@@ -52,7 +42,8 @@ export async function refreshAccessToken(): Promise<boolean> {
       const response = await safeFetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ refreshToken }),
+        credentials: "include",
+        body: JSON.stringify({}),
       });
       debugLog("[AUTH_INTERCEPTOR] refreshAccessToken - response status:", response.status);
 
@@ -77,9 +68,15 @@ export async function refreshAccessToken(): Promise<boolean> {
         clearTokens();
         return false;
       }
-      debugLog("[AUTH_INTERCEPTOR] refreshAccessToken - saving new tokens");
+
+      if (!data.accessToken) {
+        debugLog("[AUTH_INTERCEPTOR] refreshAccessToken - no accessToken in response, clearing tokens");
+        clearTokens();
+        return false;
+      }
+
+      debugLog("[AUTH_INTERCEPTOR] refreshAccessToken - saving new access token");
       saveAccessToken(data.accessToken);
-      saveRefreshToken(data.refreshToken);
       debugLog("[AUTH_INTERCEPTOR] refreshAccessToken - SUCCESS, returning true");
       return true;
     } catch (err) {

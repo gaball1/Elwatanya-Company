@@ -4,6 +4,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { RequirePermission } from '../../common/decorators/permissions.decorator';
 import { Permissions } from '../../common/constants/permissions.constant';
 import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
+import { OwnershipService } from '@/common/services/ownership.service';
 import { ListSubcontractorStatementsUseCase } from './application/use-cases/list-subcontractor-statements.use-case';
 import { CreateSubcontractorStatementUseCase } from './application/use-cases/create-subcontractor-statement.use-case';
 import { UpdateSubcontractorStatementUseCase } from './application/use-cases/update-subcontractor-statement.use-case';
@@ -19,6 +20,7 @@ export class SubcontractorStatementController {
     private readonly create: CreateSubcontractorStatementUseCase,
     private readonly update: UpdateSubcontractorStatementUseCase,
     private readonly remove: DeleteSubcontractorStatementUseCase,
+    private readonly ownership: OwnershipService,
   ) {}
 
   @Get() @ApiOperation({ summary: 'List subcontractor statements' }) @RequirePermission(Permissions.SubcontractorStatements.Read) async listAll(@CurrentUser() user?: JwtPayload) {
@@ -31,20 +33,20 @@ export class SubcontractorStatementController {
     return { statement: item };
   }
 
-  @Post() @HttpCode(HttpStatus.CREATED) @ApiOperation({ summary: 'Create subcontractor statement' }) @RequirePermission(Permissions.SubcontractorStatements.Create) async createOne(@Body() dto: CreateSubcontractorStatementDto) {
-    const r = await this.create.execute({ ...dto, date: dto.date ? new Date(dto.date) : undefined });
+  @Post() @HttpCode(HttpStatus.CREATED) @ApiOperation({ summary: 'Create subcontractor statement' }) @RequirePermission(Permissions.SubcontractorStatements.Create) async createOne(@Body() dto: CreateSubcontractorStatementDto, @CurrentUser() user?: JwtPayload, @CurrentUser('sub') userId?: string) {
+    const r = await this.create.execute({ ...dto, date: dto.date ? new Date(dto.date) : undefined }, user, userId);
     if (r.isFailure) handleError(r.error?.message, 'Failed to create');
     return { statement: r.getValue() };
   }
 
-  @Patch(':id') @ApiOperation({ summary: 'Update subcontractor statement' }) @RequirePermission(Permissions.SubcontractorStatements.Update) async updateOne(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateSubcontractorStatementDto) {
-    const r = await this.update.execute({ id, ...dto, date: dto.date !== undefined ? new Date(dto.date) : undefined });
+  @Patch(':id') @ApiOperation({ summary: 'Update subcontractor statement' }) @RequirePermission(Permissions.SubcontractorStatements.Update) async updateOne(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateSubcontractorStatementDto, @CurrentUser() user?: JwtPayload, @CurrentUser('sub') userId?: string) {
+    const r = await this.update.execute({ id, ...dto, date: dto.date !== undefined ? new Date(dto.date) : undefined }, user, userId);
     if (r.isFailure) handleError(r.error?.message, 'Failed to update');
     return { statement: r.getValue() };
   }
 
-  @Delete(':id') @HttpCode(HttpStatus.NO_CONTENT) @ApiOperation({ summary: 'Soft-delete subcontractor statement' }) @RequirePermission(Permissions.SubcontractorStatements.Delete) async deleteOne(@Param('id', ParseUUIDPipe) id: string) {
-    const r = await this.remove.execute(id);
+  @Delete(':id') @HttpCode(HttpStatus.NO_CONTENT) @ApiOperation({ summary: 'Soft-delete subcontractor statement' }) @RequirePermission(Permissions.SubcontractorStatements.Delete) async deleteOne(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user?: JwtPayload) {
+    const r = await this.remove.execute(id, user);
     if (r.isFailure) handleError(r.error?.message, 'Failed to delete');
   }
 }

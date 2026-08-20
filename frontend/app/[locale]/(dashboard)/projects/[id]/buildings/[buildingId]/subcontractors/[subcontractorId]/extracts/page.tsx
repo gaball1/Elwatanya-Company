@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { Card } from "@/components/ui";
+import DataLoader from "@/components/shared/DataLoader";
 import { DollarSign, Plus, Eye, Edit2, Trash2, Download } from "lucide-react";
 import UploadFromDeviceButton from "@/components/shared/UploadFromDeviceButton";
 import DeleteConfirmModal from "@/components/boq/DeleteConfirmModal";
@@ -112,9 +113,7 @@ export default function ContractorExtractsPage() {
       </div>
 
       {loading ? (
-        <Card className="p-8 text-center text-text-muted">
-          {isArabic ? "جاري التحميل..." : "Loading..."}
-        </Card>
+        <DataLoader />
       ) : list.length === 0 ? (
         <Card className="p-8 text-center">
           <DollarSign size={48} className="mx-auto text-text-muted mb-3" />

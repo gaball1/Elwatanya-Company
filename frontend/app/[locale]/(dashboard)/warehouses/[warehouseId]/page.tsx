@@ -9,6 +9,7 @@ import { warehouseService, type Warehouse } from "@/services/warehouse.service";
 import { inventoryItemService, type InventoryItem } from "@/services/inventory-item.service";
 import { stockMovementService, type StockMovement } from "@/services/stock-movement.service";
 import { useToast } from "@/components/ui/Toast";
+import DataLoader from "@/components/shared/DataLoader";
 
 export default function WarehouseDetailPage() {
   const params = useParams();
@@ -66,7 +67,7 @@ export default function WarehouseDetailPage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-light flex items-center justify-center">
-        <p className="text-text-muted">{isArabic ? "جاري التحميل..." : "Loading..."}</p>
+        <DataLoader />
       </div>
     );
   }

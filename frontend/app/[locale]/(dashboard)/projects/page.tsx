@@ -5,11 +5,13 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useState, useCallback, useEffect } from "react";
 import { Card } from "@/components/ui";
+import DataLoader from "@/components/shared/DataLoader";
 import {
   Plus,
   X,
   Edit2,
   Trash2,
+  FolderOpen,
 } from "lucide-react";
 import { Can } from '@/components/Can';
 import { projectService, type Project, type CreateProjectData } from '@/services/project.service';
@@ -28,14 +30,18 @@ export default function ProjectsPage() {
     null
   );
   const [projects, setProjects] = useState<Project[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchProjects = async () => {
       try {
+        setLoading(true);
         const data = await projectService.getProjects();
         setProjects(data);
       } catch (error) {
         console.error('Failed to fetch projects', error);
+      } finally {
+        setLoading(false);
       }
     };
     fetchProjects();
@@ -153,8 +159,28 @@ export default function ProjectsPage() {
         </Can>
       </div>
 
-      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {projects.map((project: Project) => (
+      <div className="p-6 pt-0">
+        {loading ? (
+          <DataLoader />
+        ) : projects.length === 0 ? (
+          <Card className="p-12 text-center">
+            <FolderOpen size={64} className="mx-auto text-text-muted mb-4" />
+            <p className="text-text-secondary">
+              {isArabic ? "لا توجد مشاريع بعد" : "No projects yet"}
+            </p>
+            <Can permission="projects.create">
+              <button
+                onClick={openAddModal}
+                className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition"
+              >
+                <Plus size={18} />
+                {isArabic ? "إضافة مشروع" : "Add Project"}
+              </button>
+            </Can>
+          </Card>
+        ) : (
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {projects.map((project: Project) => (
           <Card key={project.id} hover className="p-5">
             <div className="flex justify-between items-start mb-3">
               <Link
@@ -193,32 +219,50 @@ export default function ProjectsPage() {
               </div>
             </div>
             <Link href={`/${locale}/projects/${project.id}`}>
-              <div className="space-y-1 text-xs text-text-secondary">
+              <div className="space-y-2 text-xs text-text-secondary">
                 {project.client && (
-                  <p>{isArabic ? "العميل:" : "Client:"} {project.client}</p>
+                  <p className="font-medium text-text-primary">{project.client}</p>
                 )}
                 {project.location && (
-                  <p>{isArabic ? "الموقع:" : "Location:"} {project.location}</p>
+                  <p>{project.location}</p>
                 )}
                 <div className="flex items-center gap-2">
-                  <span className={`inline-block w-2 h-2 rounded-full ${project.status === "active" ? "bg-success" : project.status === "completed" ? "bg-info" : "bg-warning"}`} />
-                  <span>{project.status === "active" ? (isArabic ? "نشط" : "Active") : project.status === "completed" ? (isArabic ? "مكتمل" : "Completed") : (isArabic ? "معلق" : "On Hold")}</span>
-                  <span className="text-text-muted">— {project.progress}%</span>
+                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold ${
+                    project.status === "active" ? "bg-success/10 text-success" : project.status === "completed" ? "bg-info/10 text-info" : "bg-warning/10 text-warning"
+                  }`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${
+                      project.status === "active" ? "bg-success" : project.status === "completed" ? "bg-info" : "bg-warning"
+                    }`} />
+                    {project.status === "active" ? (isArabic ? "نشط" : "Active") : project.status === "completed" ? (isArabic ? "مكتمل" : "Completed") : (isArabic ? "معلق" : "On Hold")}
+                  </span>
                 </div>
-                <p className="text-text-muted mt-1">
-                  {isArabic ? "تاريخ الإنشاء:" : "Created:"}{" "}
+                <div className="space-y-1">
+                  <div className="flex justify-between items-center">
+                    <span className="text-text-muted">{isArabic ? "الإنجاز" : "Progress"}</span>
+                    <span className="font-semibold text-text-primary">{project.progress ?? 0}%</span>
+                  </div>
+                  <div className="w-full h-1.5 bg-surface-tertiary rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-l from-gold to-gold-dark rounded-full transition-all duration-500"
+                      style={{ width: `${project.progress ?? 0}%` }}
+                    />
+                  </div>
+                </div>
+                <p className="text-text-muted pt-1">
                   {project.createdAt ? new Date(project.createdAt).toLocaleDateString(isArabic ? "ar-EG" : "en-US") : "—"}
                 </p>
               </div>
             </Link>
           </Card>
         ))}
+          </div>
+        )}
       </div>
 
       {/* Add/Edit Modal */}
       {showModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-surface rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black/50 modal-backdrop animate-backdrop-in flex items-center justify-center z-50 p-4">
+          <div className="bg-surface rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto animate-modal-in">
             <div className="flex justify-between items-center p-5 border-b">
               <h2 className="text-xl font-bold text-primary">
                 {editingProject

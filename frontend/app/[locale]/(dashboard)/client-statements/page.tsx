@@ -19,6 +19,7 @@ import {
 import { clientStatementService, type ClientStatement } from "@/services/client-statement.service";
 import { useToast } from "@/components/ui/Toast";
 import BackButton from "@/components/shared/BackButton";
+import DataLoader from "@/components/shared/DataLoader";
 import UploadFromDeviceButton, {
   type UploadedFileInfo,
 } from "@/components/shared/UploadFromDeviceButton";
@@ -177,6 +178,10 @@ export default function ClientStatementsPage() {
     document.body.removeChild(link);
     showToast(isArabic ? "تم تصدير البيانات" : "Data exported", "success");
   };
+
+  if (loading) {
+    return <DataLoader />;
+  }
 
   return (
     <div className="min-h-screen bg-gray-light">

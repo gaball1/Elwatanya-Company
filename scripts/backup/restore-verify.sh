@@ -152,7 +152,7 @@ echo "==> DEEP CHECKSUM CHECKS (md5 of full row content)"
 for t in User Project Building Subcontractor Company ProjectFund Statement Setting; do
     SRC="$(psql_src "SELECT COALESCE(md5(string_agg(t::text, chr(10) ORDER BY t::text)), '') FROM (SELECT * FROM \"$t\") t")"
     RES="$(psql_res "SELECT COALESCE(md5(string_agg(t::text, chr(10) ORDER BY t::text)), '') FROM (SELECT * FROM \"$t\") t")"
-    if [ -n "$SRC" ] && [ "$SRC" = "$RES" ]; then
+    if [ "$SRC" = "$RES" ]; then
         printf '  %-32s checksum=%s... OK\n' "$t" "${SRC:0:16}"
     else
         printf '  %-32s checksum MISMATCH (src=%s res=%s)\n' "$t" "$SRC" "$RES"

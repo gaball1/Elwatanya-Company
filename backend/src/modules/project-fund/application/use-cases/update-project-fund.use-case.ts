@@ -3,13 +3,19 @@ import { UniqueEntityId } from '@/shared/kernel/unique-entity-id.vo';
 import { IProjectFundRepository } from '../../domain/project-fund.repository';
 import { UpdateProjectFundInput, ProjectFundResult } from '../dto/project-fund.dto';
 import { toResult } from './list-project-funds.use-case';
+import { OwnershipActor, OwnershipService } from '@/common/services/ownership.service';
 
 export class UpdateProjectFundUseCase {
-  constructor(private readonly funds: IProjectFundRepository) {}
+  constructor(
+    private readonly funds: IProjectFundRepository,
+    private readonly ownership: OwnershipService,
+  ) {}
 
-  async execute(input: UpdateProjectFundInput): Promise<Result<ProjectFundResult>> {
+  async execute(input: UpdateProjectFundInput, user: OwnershipActor | undefined, userId?: string): Promise<Result<ProjectFundResult>> {
     const fund = await this.funds.findById(new UniqueEntityId(input.id));
     if (!fund) return Result.fail(new Error('Project fund not found'));
+
+    await this.ownership.verifyProjectAccess(user, fund.projectId);
 
     const updateResult = fund.update({
       initialBalance: input.initialBalance,

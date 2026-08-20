@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useState, useMemo, useCallback, useEffect } from "react";
 import { Card } from "@/components/ui";
+import DataLoader from "@/components/shared/DataLoader";
 import { Can } from '@/components/Can';
 import {
   Package,
@@ -16,10 +17,10 @@ import {
   Filter,
   Download,
   ArrowUpDown,
-  Printer,
   AlertTriangle,
   ClipboardCheck,
 } from "lucide-react";
+import PrintPdfButton from "@/components/shared/PrintPdfButton";
 import { inventoryItemService, type InventoryItem } from "@/services/inventory-item.service";
 import { categoryService, type Category } from "@/services/category.service";
 import { warehouseService, type Warehouse } from "@/services/warehouse.service";
@@ -254,7 +255,7 @@ export default function InventoryPage() {
     }
   }, [approvalItem, approvalComment, approvalStatus, showToast, isArabic]);
 
-  const handlePrintPDF = useCallback(() => {
+  const handlePrintPDF = useCallback((logoUrl?: string) => {
     const headers = [
       isArabic ? "الكود" : "Code",
       isArabic ? "الاسم" : "Name",
@@ -275,7 +276,7 @@ export default function InventoryPage() {
       String(i.price),
       i.status === "active" ? (isArabic ? "نشط" : "Active") : (isArabic ? "غير نشط" : "Inactive"),
     ]);
-    printAsPDF(rows, headers, isArabic ? "تقرير المخزون" : "Inventory Report", isArabic);
+    printAsPDF(rows, headers, isArabic ? "تقرير المخزون" : "Inventory Report", isArabic, { logoUrl });
   }, [filteredAndSortedItems, isArabic]);
 
   const exportToExcel = useCallback(() => {
@@ -321,9 +322,7 @@ export default function InventoryPage() {
             <p className="text-sm text-text-secondary mt-1">{isArabic ? "إدارة أصناف المخزون" : "Manage inventory items"}</p>
           </div>
           <div className="flex gap-2">
-            <button onClick={handlePrintPDF} className="flex items-center gap-2 px-4 py-2 border border-info text-info rounded-lg hover:bg-info hover:text-white transition">
-              <Printer size={18} /> {isArabic ? "طباعة PDF" : "Print PDF"}
-            </button>
+            <PrintPdfButton label={isArabic ? "طباعة PDF" : "Print PDF"} onPrint={handlePrintPDF} />
             <button onClick={exportToExcel} className="flex items-center gap-2 px-4 py-2 border border-green-600 text-success-dark rounded-lg hover:bg-success-dark hover:text-white transition">
               <Download size={18} /> {isArabic ? "تصدير Excel" : "Export Excel"}
             </button>
@@ -391,7 +390,7 @@ export default function InventoryPage() {
 
       <div className="p-6 pt-0">
         {loading ? (
-          <Card className="p-12 text-center"><p className="text-text-secondary">{isArabic ? "جاري التحميل..." : "Loading..."}</p></Card>
+          <DataLoader />
         ) : filteredAndSortedItems.length === 0 ? (
           <Card className="p-12 text-center">
             <Package size={64} className="mx-auto text-text-muted mb-4" />

@@ -4,17 +4,22 @@ import { IPurchaseRepository } from '../../domain/purchase.repository';
 import { UpdatePurchaseInput, PurchaseResult, toResult } from '../dto/purchase.dto';
 import { FinancialService } from '@/common/services/financial.service';
 import { PrismaService } from '@/prisma/prisma.service';
+import { OwnershipActor, OwnershipService } from '@/common/services/ownership.service';
 
 export class UpdatePurchaseUseCase {
   constructor(
     private readonly purchaseRepo: IPurchaseRepository,
     private readonly financialService: FinancialService,
     private readonly prisma: PrismaService,
+    private readonly ownership: OwnershipService,
   ) {}
 
-  async execute(input: UpdatePurchaseInput): Promise<Result<PurchaseResult>> {
+  async execute(input: UpdatePurchaseInput, user: OwnershipActor | undefined, userId?: string): Promise<Result<PurchaseResult>> {
     const purchase = await this.purchaseRepo.findById(new UniqueEntityId(input.id));
     if (!purchase) return Result.fail(new Error('Purchase not found'));
+
+    await this.ownership.verifyProjectAccess(user, purchase.projectId);
+    if (input.buildingId) await this.ownership.verifyBuildingAccess(user, input.buildingId);
 
     if (purchase.status !== 'pending') {
       return Result.fail(new Error('Only pending purchases can be edited. Approved/received/cancelled purchases are locked'));
@@ -53,7 +58,7 @@ export class UpdatePurchaseUseCase {
               category: 'purchase',
               referenceId: purchase.id.toValue(),
               description: `تعديل مشتريات: ${purchase.itemName} (زيادة ${diff.toFixed(2)})`,
-              createdBy: input.createdBy ?? 'system',
+              createdBy: userId ?? 'system',
               date: new Date(),
             }, tx);
           } else {
@@ -63,7 +68,7 @@ export class UpdatePurchaseUseCase {
               category: 'purchase',
               referenceId: purchase.id.toValue(),
               description: `تعديل مشتريات: ${purchase.itemName} (نقص ${Math.abs(diff).toFixed(2)})`,
-              createdBy: input.createdBy ?? 'system',
+              createdBy: userId ?? 'system',
             }, tx);
           }
         }

@@ -8,6 +8,7 @@ import { useToast } from "@/components/ui/Toast";
 import { FileText, Image as ImageIcon, Upload, Download, Trash2, Loader2 } from "lucide-react";
 import { fileService, type FileItem } from "@/services/file.service";
 import { Can } from "@/components/Can";
+import DataLoader from "@/components/shared/DataLoader";
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -15,9 +16,9 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function formatDate(value: string): string {
+function formatDate(value: string, isArabic: boolean): string {
   const d = new Date(value);
-  return d.toLocaleDateString("en-GB");
+  return d.toLocaleDateString(isArabic ? "ar-EG" : "en-GB");
 }
 
 const isImage = (mimeType: string) => (mimeType || "").startsWith("image/");
@@ -146,9 +147,7 @@ export default function BuildingDocumentsPage() {
       </div>
 
       {loading ? (
-        <Card className="p-8 text-center text-text-secondary">
-          {isArabic ? "جارٍ التحميل..." : "Loading..."}
-        </Card>
+        <DataLoader />
       ) : files.length === 0 ? (
         <Card className="p-12 text-center">
           <div className="mx-auto text-text-muted mb-3">
@@ -179,7 +178,7 @@ export default function BuildingDocumentsPage() {
                 <div className="min-w-0">
                   <p className="font-medium text-primary truncate">{file.originalName}</p>
                   <p className="text-xs text-text-muted mt-1">
-                    {formatSize(file.size)} · {formatDate(file.createdAt)}
+                    {formatSize(file.size)} · {formatDate(file.createdAt, isArabic)}
                   </p>
                 </div>
               </button>

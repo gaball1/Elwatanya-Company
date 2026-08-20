@@ -4,6 +4,7 @@
 import { useParams, useRouter } from "next/navigation";
 import { useState, useMemo, useCallback, useEffect } from "react";
 import { Card } from "@/components/ui";
+import DataLoader from "@/components/shared/DataLoader";
 import { Can } from '@/components/Can';
 import {
   Bell,
@@ -150,7 +151,7 @@ export default function NotificationsPage() {
 
       <div className="p-6">
         {loading ? (
-          <Card className="p-12 text-center"><p className="text-text-secondary">{isArabic ? "جاري التحميل..." : "Loading..."}</p></Card>
+          <DataLoader />
         ) : filteredNotifications.length === 0 ? (
           <Card className="p-12 text-center">
             <Bell size={64} className="mx-auto text-text-muted mb-4" />

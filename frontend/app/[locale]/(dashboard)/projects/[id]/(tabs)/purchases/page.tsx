@@ -33,6 +33,8 @@ import { usePagination } from "@/hooks/usePagination";
 import Pagination from "@/components/ui/Pagination";
 import { Can } from "@/components/Can";
 import { useAuth } from "@/hooks/useAuth";
+import DataLoader from "@/components/shared/DataLoader";
+import ExportButtons from "@/components/shared/ExportButtons";
 
 export default function ProjectPurchasesPage() {
   const params = useParams();
@@ -467,6 +469,10 @@ export default function ProjectPurchasesPage() {
     [projectFund, showToast, isArabic]
   );
 
+  if (loading) {
+    return <DataLoader />;
+  }
+
   return (
     <div className="space-y-6" suppressHydrationWarning>
       {ToastComponent}
@@ -530,6 +536,22 @@ export default function ProjectPurchasesPage() {
 
       {/* Actions */}
       <div className="flex flex-wrap gap-3" suppressHydrationWarning>
+        <ExportButtons
+          data={filteredPurchases}
+          columns={[
+            { key: "itemName", labelAr: "الصنف", labelEn: "Item" },
+            { key: "quantity", labelAr: "الكمية", labelEn: "Qty" },
+            { key: "unit", labelAr: "الوحدة", labelEn: "Unit" },
+            { key: "unitPrice", labelAr: "السعر", labelEn: "Price", format: (v) => v?.toLocaleString() ?? "—" },
+            { key: "total", labelAr: "الإجمالي", labelEn: "Total", format: (v) => v?.toLocaleString() ?? "—" },
+            { key: "date", labelAr: "التاريخ", labelEn: "Date" },
+            { key: "status", labelAr: "الحالة", labelEn: "Status" },
+          ]}
+          titleAr="تقرير المشتريات"
+          titleEn="Purchases Report"
+          filename={`purchases_${projectId}`}
+          locale={locale}
+        />
         <Can permission="purchases.create">
           <button
             onClick={openAddModal}

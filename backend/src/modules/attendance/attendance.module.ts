@@ -4,6 +4,7 @@ import { PrismaService } from '@/prisma/prisma.service';
 import { EventBusImpl } from '@/modules/domain-events/event-bus.impl';
 import { AttendanceOverrideService } from '@/modules/attendance-override/attendance-override.service';
 import { AttendanceOverrideModule } from '@/modules/attendance-override/attendance-override.module';
+import { NotificationService } from '@/common/services/notification.service';
 import { ATTENDANCE_REPOSITORY, IAttendanceRepository } from './domain/attendance.repository';
 import { PrismaAttendanceRepository } from './infrastructure/prisma-attendance.repository';
 import { ListAttendanceUseCase } from './application/use-cases/list-attendance.use-case';
@@ -43,8 +44,9 @@ import { AttendanceController } from './attendance.controller';
         eventBus: EventBusImpl,
         prisma: PrismaService,
         overrideService: AttendanceOverrideService,
-      ) => new CreateAttendanceUseCase(repo, eventBus, prisma, overrideService),
-      inject: [ATTENDANCE_REPOSITORY, EventBusImpl, PrismaService, AttendanceOverrideService],
+        notifications: NotificationService,
+      ) => new CreateAttendanceUseCase(repo, eventBus, prisma, overrideService, notifications),
+      inject: [ATTENDANCE_REPOSITORY, EventBusImpl, PrismaService, AttendanceOverrideService, NotificationService],
     },
     {
       provide: CheckOutUseCase,
@@ -53,8 +55,9 @@ import { AttendanceController } from './attendance.controller';
         eventBus: EventBusImpl,
         prisma: PrismaService,
         overrideService: AttendanceOverrideService,
-      ) => new CheckOutUseCase(repo, eventBus, prisma, overrideService),
-      inject: [ATTENDANCE_REPOSITORY, EventBusImpl, PrismaService, AttendanceOverrideService],
+        notifications: NotificationService,
+      ) => new CheckOutUseCase(repo, eventBus, prisma, overrideService, notifications),
+      inject: [ATTENDANCE_REPOSITORY, EventBusImpl, PrismaService, AttendanceOverrideService, NotificationService],
     },
     {
       provide: UpdateAttendanceUseCase,
